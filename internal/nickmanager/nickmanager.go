@@ -1,11 +1,10 @@
-// File: internal/nickmanager/nickmanager.go
-
 package nickmanager
 
 import (
 	"encoding/json"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/kofany/gNb/internal/types"
 	"github.com/kofany/gNb/internal/util"
@@ -16,6 +15,8 @@ type NickManager struct {
 	availableNicks chan string
 	bots           []types.Bot
 	mutex          sync.Mutex
+	botManager     types.BotManager
+	isonResponses  chan []string
 }
 
 type NicksData struct {
@@ -24,7 +25,8 @@ type NicksData struct {
 
 func NewNickManager() *NickManager {
 	return &NickManager{
-		availableNicks: make(chan string, 100), // Buffer for 100 nicks
+		availableNicks: make(chan string, 100),  // Buffer for 100 nicks
+		isonResponses:  make(chan []string, 10), // Buffer for ISON responses
 	}
 }
 
@@ -56,13 +58,26 @@ func (nm *NickManager) LoadNicks(filename string) error {
 	return nil
 }
 
-func (nm *NickManager) RegisterBot(bot types.Bot) {
-	nm.mutex.Lock()
-	defer nm.mutex.Unlock()
-	nm.bots = append(nm.bots, bot)
+func (nm *NickManager) Start() {
+	go nm.processISONResponses()
+	go nm.distributeNicksLoop()
 }
 
-func (nm *NickManager) HandleISONResponse(onlineNicks []string) {
+func (nm *NickManager) processISONResponses() {
+	for onlineNicks := range nm.isonResponses {
+		nm.handleISONResponse(onlineNicks)
+	}
+}
+
+func (nm *NickManager) ReceiveISONResponse(onlineNicks []string) {
+	select {
+	case nm.isonResponses <- onlineNicks:
+	default:
+		util.Debug("ISON response channel full; dropping response")
+	}
+}
+
+func (nm *NickManager) handleISONResponse(onlineNicks []string) {
 	nm.mutex.Lock()
 	defer nm.mutex.Unlock()
 
@@ -85,42 +100,51 @@ func (nm *NickManager) HandleISONResponse(onlineNicks []string) {
 				util.Debug("Channel full, skipping nick %s", nick)
 			}
 		}
-		nm.distributeNicks()
 	} else {
 		util.Debug("NickManager: No available nicks to process")
 	}
 }
 
-func (nm *NickManager) distributeNicks() {
-	nm.mutex.Lock()
-	defer nm.mutex.Unlock()
-
-	botIndex := 0
-	botsCount := len(nm.bots)
-
+func (nm *NickManager) distributeNicksLoop() {
 	for {
 		select {
 		case nick := <-nm.availableNicks:
-			if botsCount == 0 {
-				util.Debug("No bots available to distribute nick %s", nick)
-				return
-			}
-
-			// Find a bot that is connected and can change nick
-			for i := 0; i < botsCount; i++ {
-				bot := nm.bots[botIndex]
-				botIndex = (botIndex + 1) % botsCount
-
-				if bot.IsConnected() {
-					util.Debug("Assigning nick %s to bot %s", nick, bot.GetCurrentNick())
-					go bot.AttemptNickChange(nick)
-					break
-				}
-			}
-		default:
-			return
+			nm.distributeNick(nick)
 		}
 	}
+}
+
+func (nm *NickManager) distributeNick(nick string) {
+	nm.mutex.Lock()
+	bot := nm.getAvailableBot()
+	nm.mutex.Unlock()
+
+	if bot == nil {
+		util.Debug("No available bots to assign nick %s", nick)
+		// Requeue the nick after some time
+		go func() {
+			time.Sleep(5 * time.Second)
+			nm.ReturnNickToPool(nick)
+		}()
+		return
+	}
+	util.Debug("Assigning nick %s to bot %s", nick, bot.GetCurrentNick())
+	go bot.AttemptNickChange(nick)
+}
+
+func (nm *NickManager) RegisterBot(bot types.Bot) {
+	nm.mutex.Lock()
+	defer nm.mutex.Unlock()
+	nm.bots = append(nm.bots, bot)
+}
+
+func (nm *NickManager) getAvailableBot() types.Bot {
+	for _, bot := range nm.bots {
+		if bot.IsConnected() && !util.IsTargetNick(bot.GetCurrentNick(), nm.nicksToCatch) {
+			return bot
+		}
+	}
+	return nil
 }
 
 func (nm *NickManager) ReturnNickToPool(nick string) {
@@ -134,5 +158,7 @@ func (nm *NickManager) ReturnNickToPool(nick string) {
 func (nm *NickManager) GetNicksToCatch() []string {
 	nm.mutex.Lock()
 	defer nm.mutex.Unlock()
-	return nm.nicksToCatch
+	nicksCopy := make([]string, len(nm.nicksToCatch))
+	copy(nicksCopy, nm.nicksToCatch)
+	return nicksCopy
 }

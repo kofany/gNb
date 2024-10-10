@@ -1,5 +1,3 @@
-// Plik internal/irc/parser.go
-
 package irc
 
 import (
@@ -7,7 +5,7 @@ import (
 	"strings"
 )
 
-// Event reprezentuje sparsowaną wiadomość IRC.
+// Event represents a parsed IRC message
 type Event struct {
 	Raw     string
 	Source  string
@@ -19,19 +17,19 @@ type Event struct {
 	Message string
 }
 
-// ParseIRCMessage parsuje surową wiadomość IRC do struktury Event.
+// ParseIRCMessage parses a raw IRC message into an Event structure
 func ParseIRCMessage(raw string) *Event {
 	e := &Event{
 		Raw: raw,
 	}
 
-	// Parsowanie prefiksu
+	// Parse prefix
 	if strings.HasPrefix(raw, ":") {
 		parts := strings.SplitN(raw[1:], " ", 2)
 		e.Source = parts[0]
 		raw = parts[1]
 
-		// Parsowanie nick!user@host
+		// Parse nick!user@host
 		re := regexp.MustCompile(`^(?P<Nick>[^!]+)!?(?P<User>[^@]*)@?(?P<Host>.*)$`)
 		match := re.FindStringSubmatch(e.Source)
 		if match != nil {
@@ -43,7 +41,7 @@ func ParseIRCMessage(raw string) *Event {
 		}
 	}
 
-	// Parsowanie komendy i argumentów
+	// Parse command and arguments
 	if idx := strings.Index(raw, " :"); idx != -1 {
 		e.Args = strings.Fields(raw[:idx])
 		e.Message = raw[idx+2:]

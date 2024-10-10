@@ -1,5 +1,3 @@
-// File: internal/bot/bot.go
-
 package bot
 
 import (
@@ -14,10 +12,10 @@ import (
 	irc "github.com/kofany/go-ircevent"
 )
 
-// Upewnij się, że Bot implementuje types.Bot
+// Ensure Bot implements types.Bot
 var _ types.Bot = (*Bot)(nil)
 
-// Bot reprezentuje pojedynczego bota IRC
+// Bot represents a single IRC bot
 type Bot struct {
 	Config          *config.BotConfig
 	GlobalConfig    *config.GlobalConfig
@@ -36,6 +34,7 @@ type Bot struct {
 	gaveUp          bool
 }
 
+// NewBot creates a new Bot instance
 func NewBot(cfg *config.BotConfig, globalConfig *config.GlobalConfig, nm types.NickManager, bm types.BotManager) *Bot {
 	nick, err := util.GenerateRandomNick(globalConfig.NickAPI.URL, globalConfig.NickAPI.MaxWordLength, globalConfig.NickAPI.Timeout)
 	if err != nil {
@@ -68,17 +67,17 @@ func NewBot(cfg *config.BotConfig, globalConfig *config.GlobalConfig, nm types.N
 	return bot
 }
 
-// IsConnected zwraca status połączenia bota
+// IsConnected returns the connection status of the bot
 func (b *Bot) IsConnected() bool {
 	return b.isConnected
 }
 
-// Connect nawiązuje połączenie z serwerem IRC z logiką ponownych prób
+// Connect establishes a connection to the IRC server with retry logic
 func (b *Bot) Connect() error {
 	return b.connectWithRetry()
 }
 
-// connectWithRetry próbuje połączyć się z serwerem z określoną liczbą ponownych prób
+// connectWithRetry attempts to connect to the server with a specified number of retries
 func (b *Bot) connectWithRetry() error {
 	maxRetries := b.GlobalConfig.ReconnectRetries
 	retryInterval := time.Duration(b.GlobalConfig.ReconnectInterval) * time.Second
@@ -90,79 +89,95 @@ func (b *Bot) connectWithRetry() error {
 		b.Connection.UseTLS = b.Config.SSL
 		b.Connection.RealName = b.Realname
 
-		// Inicjalizacja kanału connected
+		// Initialize connected channel
 		b.connected = make(chan struct{})
 
-		// Dodaj callbacki
+		// Add callbacks
 		b.addCallbacks()
 
-		util.Info("Bot %s próbuje połączyć się z %s", b.CurrentNick, b.Config.ServerAddress())
+		util.Info("Bot %s is attempting to connect to %s", b.CurrentNick, b.Config.ServerAddress())
 		err := b.Connection.Connect(b.Config.ServerAddress())
 		if err != nil {
-			util.Error("Próba %d: Nie udało się połączyć bota %s: %v", attempts+1, b.CurrentNick, err)
+			util.Error("Attempt %d: Failed to connect bot %s: %v", attempts+1, b.CurrentNick, err)
 			time.Sleep(retryInterval)
 			continue
 		}
 
 		go b.Connection.Loop()
 
-		// Czekaj na potwierdzenie połączenia lub timeout
+		// Wait for connection confirmation or timeout
 		select {
 		case <-b.connected:
-			// Połączenie nawiązane
-			util.Info("Bot %s pomyślnie połączony", b.CurrentNick)
+			// Connection established
+			util.Info("Bot %s successfully connected", b.CurrentNick)
 			return nil
 		case <-time.After(30 * time.Second):
-			util.Warning("Bot %s nie otrzymał potwierdzenia połączenia w ciągu 30 sekund", b.CurrentNick)
+			util.Warning("Bot %s did not receive connection confirmation within 30 seconds", b.CurrentNick)
 			b.Connection.Quit()
 		}
 	}
 
-	return fmt.Errorf("bot %s nie mógł się połączyć po %d próbach", b.CurrentNick, maxRetries)
+	return fmt.Errorf("bot %s could not connect after %d attempts", b.CurrentNick, maxRetries)
 }
 
-// addCallbacks dodaje niezbędne callbacki do połączenia IRC
+// addCallbacks adds necessary callbacks to the IRC connection
 func (b *Bot) addCallbacks() {
-	// Callback dla pomyślnego połączenia
+	// Callback for successful connection
 	b.Connection.AddCallback("001", func(e *irc.Event) {
 		b.isConnected = true
-		b.gaveUp = false // Resetowanie flagi po pomyślnym połączeniu
+		b.gaveUp = false // Reset flag upon successful connection
 		b.lastConnectTime = time.Now()
-		util.Info("Bot %s połączony z %s jako %s", b.CurrentNick, b.Config.Server, b.CurrentNick)
-		// Dołącz do kanałów
+		util.Info("Bot %s connected to %s as %s", b.CurrentNick, b.Config.Server, b.CurrentNick)
+		// Join channels
 		for _, channel := range b.channels {
 			b.JoinChannel(channel)
 		}
-		close(b.connected) // Sygnał, że połączenie zostało nawiązane
+		close(b.connected) // Signal that connection has been established
 	})
 
-	// Callback dla zmian nicka
+	// Callback for nick changes
 	b.Connection.AddCallback("NICK", func(e *irc.Event) {
 		if e.Nick == b.CurrentNick {
 			b.CurrentNick = e.Message()
-			util.Info("Bot %s zmienił nick na %s", e.Nick, b.CurrentNick)
+			util.Info("Bot %s changed nick to %s", e.Nick, b.CurrentNick)
 		}
 	})
 
-	// Callback dla odpowiedzi ISON
+	// Callback for ISON response
 	b.Connection.AddCallback("303", b.handleISONResponse)
 
-	// Callback dla wiadomości prywatnych i publicznych
+	// Handle error replies for nick changes
+	b.Connection.AddCallback("433", func(e *irc.Event) {
+		if e.Arguments[0] == b.CurrentNick {
+			util.Warning("Bot %s attempted to change nick to %s, but it's already in use", b.CurrentNick, e.Arguments[1])
+			// Return nick to pool
+			b.nickManager.ReturnNickToPool(e.Arguments[1])
+		}
+	})
+
+	// Callback for private and public messages
 	b.Connection.AddCallback("PRIVMSG", b.handlePrivMsg)
 
-	// Callback dla rozłączenia
+	// Callback for disconnection
 	b.Connection.AddCallback("DISCONNECTED", func(e *irc.Event) {
-		util.Warning("Bot %s rozłączony z serwerem", b.CurrentNick)
+		util.Warning("Bot %s disconnected from server", b.CurrentNick)
 		b.isConnected = false
 		if !b.isReconnecting && !b.gaveUp {
 			go b.handleReconnect()
 		} else if b.gaveUp {
-			util.Info("Bot %s zrezygnował z ponownych prób połączenia", b.CurrentNick)
+			util.Info("Bot %s has given up on reconnecting", b.CurrentNick)
 		}
 	})
 }
 
-// handleReconnect obsługuje próby ponownego połączenia po rozłączeniu
+// handleISONResponse handles the ISON responses and forwards them to the NickManager
+func (b *Bot) handleISONResponse(e *irc.Event) {
+	isonResponse := strings.Fields(e.Message())
+	util.Debug("Bot %s received ISON response: %v", b.CurrentNick, isonResponse)
+	b.nickManager.ReceiveISONResponse(isonResponse)
+}
+
+// handleReconnect handles reconnection attempts after disconnection
 func (b *Bot) handleReconnect() {
 	b.isReconnecting = true
 	defer func() { b.isReconnecting = false }()
@@ -171,146 +186,145 @@ func (b *Bot) handleReconnect() {
 	retryInterval := time.Duration(b.GlobalConfig.ReconnectInterval) * time.Second
 
 	for attempts := 0; attempts < maxRetries; attempts++ {
-		util.Info("Bot %s próbuje ponownie się połączyć (próba %d/%d)", b.CurrentNick, attempts+1, maxRetries)
+		util.Info("Bot %s is attempting to reconnect (attempt %d/%d)", b.CurrentNick, attempts+1, maxRetries)
 		err := b.connectWithRetry()
 		if err == nil {
-			util.Info("Bot %s ponownie połączony", b.CurrentNick)
+			util.Info("Bot %s reconnected", b.CurrentNick)
 			return
 		}
-		util.Error("Próba %d nie powiodła się: %v", attempts+1, err)
+		util.Error("Attempt %d failed: %v", attempts+1, err)
 		time.Sleep(retryInterval)
 	}
 
-	util.Error("Bot %s nie mógł ponownie się połączyć po %d próbach", b.CurrentNick, maxRetries)
+	util.Error("Bot %s could not reconnect after %d attempts", b.CurrentNick, maxRetries)
 	b.gaveUp = true
 }
 
-// SendISON wysyła komendę ISON z listą nicków do sprawdzenia
+// SendISON sends an ISON command with a list of nicks to check
 func (b *Bot) SendISON(nicks []string) {
 	if b.IsConnected() {
 		command := fmt.Sprintf("ISON %s", strings.Join(nicks, " "))
-		util.Debug("Bot %s wysyła komendę ISON: %s", b.CurrentNick, command)
+		util.Debug("Bot %s is sending ISON command: %s", b.CurrentNick, command)
 		b.Connection.SendRaw(command)
 	} else {
-		util.Debug("Bot %s nie jest połączony; nie można wysłać ISON", b.CurrentNick)
+		util.Debug("Bot %s is not connected; cannot send ISON", b.CurrentNick)
 	}
 }
 
-// ChangeNick próbuje zmienić nick bota na nowy
+// ChangeNick attempts to change the bot's nick to a new one
 func (b *Bot) ChangeNick(newNick string) {
 	if b.IsConnected() {
-		util.Info("Bot %s próbuje zmienić nick na %s", b.CurrentNick, newNick)
+		util.Info("Bot %s is attempting to change nick to %s", b.CurrentNick, newNick)
 		b.Connection.Nick(newNick)
 	} else {
-		util.Debug("Bot %s nie jest połączony; nie można zmienić nicka", b.CurrentNick)
+		util.Debug("Bot %s is not connected; cannot change nick", b.CurrentNick)
 	}
 }
 
-// JoinChannel dołącza do określonego kanału
+// JoinChannel joins a specified channel
 func (b *Bot) JoinChannel(channel string) {
 	if b.IsConnected() {
-		util.Debug("Bot %s dołącza do kanału %s", b.CurrentNick, channel)
+		util.Debug("Bot %s is joining channel %s", b.CurrentNick, channel)
 		b.Connection.Join(channel)
 	} else {
-		util.Debug("Bot %s nie jest połączony; nie można dołączyć do kanału %s", b.CurrentNick, channel)
+		util.Debug("Bot %s is not connected; cannot join channel %s", b.CurrentNick, channel)
 	}
 }
 
-// PartChannel opuszcza określony kanał
+// PartChannel leaves a specified channel
 func (b *Bot) PartChannel(channel string) {
 	if b.IsConnected() {
-		util.Debug("Bot %s opuszcza kanał %s", b.CurrentNick, channel)
+		util.Debug("Bot %s is leaving channel %s", b.CurrentNick, channel)
 		b.Connection.Part(channel)
 	} else {
-		util.Debug("Bot %s nie jest połączony; nie można opuścić kanału %s", b.CurrentNick, channel)
+		util.Debug("Bot %s is not connected; cannot part channel %s", b.CurrentNick, channel)
 	}
 }
 
-// Reconnect rozłącza i ponownie łączy bota z serwerem IRC
+// Reconnect disconnects and reconnects the bot to the IRC server
 func (b *Bot) Reconnect() {
 	if b.IsConnected() {
-		b.Quit("Ponowne łączenie")
+		b.Quit("Reconnecting")
 	}
 	time.Sleep(5 * time.Second)
 	err := b.Connect()
 	if err != nil {
-		util.Error("Nie udało się ponownie połączyć bota %s: %v", b.CurrentNick, err)
+		util.Error("Failed to reconnect bot %s: %v", b.CurrentNick, err)
 	}
 }
 
-// SendMessage wysyła wiadomość do określonego celu (kanał lub użytkownik)
+// SendMessage sends a message to a specified target (channel or user)
 func (b *Bot) SendMessage(target, message string) {
 	if b.IsConnected() {
-		util.Debug("Bot %s wysyła wiadomość do %s: %s", b.CurrentNick, target, message)
+		util.Debug("Bot %s is sending message to %s: %s", b.CurrentNick, target, message)
 		b.Connection.Privmsg(target, message)
 	} else {
-		util.Debug("Bot %s nie jest połączony; nie można wysłać wiadomości do %s", b.CurrentNick, target)
+		util.Debug("Bot %s is not connected; cannot send message to %s", b.CurrentNick, target)
 	}
 }
 
-// SendNotice wysyła notice do określonego celu (kanał lub użytkownik)
+// SendNotice sends a notice to a specified target (channel or user)
 func (b *Bot) SendNotice(target, message string) {
 	if b.IsConnected() {
-		util.Debug("Bot %s wysyła notice do %s: %s", b.CurrentNick, target, message)
+		util.Debug("Bot %s is sending notice to %s: %s", b.CurrentNick, target, message)
 		b.Connection.Notice(target, message)
 	} else {
-		util.Debug("Bot %s nie jest połączony; nie można wysłać notice do %s", b.CurrentNick, target)
+		util.Debug("Bot %s is not connected; cannot send notice to %s", b.CurrentNick, target)
 	}
 }
 
-// Quit rozłącza bota z serwerem IRC
+// Quit disconnects the bot from the IRC server
 func (b *Bot) Quit(message string) {
 	if b.IsConnected() {
-		util.Info("Bot %s rozłącza się: %s", b.CurrentNick, message)
+		util.Info("Bot %s is disconnecting: %s", b.CurrentNick, message)
 		b.Connection.QuitMessage = message
 		b.Connection.Quit()
 		b.isConnected = false
 	}
 }
 
-func (b *Bot) handleISONResponse(e *irc.Event) {
-	isonResponse := strings.Fields(e.Message())
-	util.Debug("Bot %s otrzymał odpowiedź ISON: %v", b.CurrentNick, isonResponse)
-	b.nickManager.HandleISONResponse(isonResponse)
-}
-
-// AttemptNickChange próbuje zmienić nick na dostępny
+// AttemptNickChange attempts to change the bot's nick to an available nick
 func (b *Bot) AttemptNickChange(nick string) {
-	util.Debug("Bot %s otrzymał prośbę o zmianę nicka na %s", b.CurrentNick, nick)
+	util.Debug("Bot %s received request to change nick to %s", b.CurrentNick, nick)
 	if b.shouldChangeNick(nick) {
-		util.Info("Bot %s próbuje zmienić nick na %s", b.CurrentNick, nick)
+		util.Info("Bot %s is attempting to change nick to %s", b.CurrentNick, nick)
 		b.ChangeNick(nick)
 	} else {
-		util.Debug("Bot %s zdecydował nie zmieniać nicka na %s", b.CurrentNick, nick)
+		util.Debug("Bot %s decided not to change nick to %s", b.CurrentNick, nick)
 		b.nickManager.ReturnNickToPool(nick)
 	}
 }
 
+// shouldChangeNick determines if the bot should change its nick
 func (b *Bot) shouldChangeNick(nick string) bool {
+	// Check if current nick is already a target nick
+	if util.IsTargetNick(b.CurrentNick, b.nickManager.GetNicksToCatch()) {
+		return false
+	}
 	return b.CurrentNick != nick
 }
 
-// handlePrivMsg obsługuje wiadomości prywatne i publiczne oraz komendy właścicieli
+// handlePrivMsg handles private and public messages and owner commands
 func (b *Bot) handlePrivMsg(e *irc.Event) {
 	message := e.Message()
 	sender := e.Nick
 
-	// Sprawdź, czy wiadomość zaczyna się od któregoś z prefiksów komend
+	// Check if message starts with any command prefixes
 	if !startsWithAny(message, b.GlobalConfig.CommandPrefixes) {
 		return
 	}
 
-	// Sprawdź, czy nadawca jest właścicielem
+	// Check if sender is an owner
 	if !auth.IsOwner(e, b.owners) {
 		return
 	}
 
-	// Przed przetworzeniem komendy, sprawdź, czy ten bot powinien ją obsłużyć
+	// Before processing the command, check if this bot should handle it
 	if !b.shouldHandleCommand() {
 		return
 	}
 
-	// Parsuj komendę
+	// Parse the command
 	commandLine := strings.TrimLeft(message, strings.Join(b.GlobalConfig.CommandPrefixes, ""))
 	args := strings.Fields(commandLine)
 
@@ -318,10 +332,10 @@ func (b *Bot) handlePrivMsg(e *irc.Event) {
 		return
 	}
 
-	// Obsługa komend
+	// Handle commands
 	switch strings.ToLower(args[0]) {
 	case "quit":
-		b.Quit("Komenda od właściciela")
+		b.Quit("Command from owner")
 	case "say":
 		if len(args) >= 3 {
 			targetChannel := args[1]
@@ -341,33 +355,33 @@ func (b *Bot) handlePrivMsg(e *irc.Event) {
 	case "reconnect":
 		b.Reconnect()
 	default:
-		b.SendNotice(sender, "Nieznana komenda")
+		b.SendNotice(sender, "Unknown command")
 	}
 }
 
-// shouldHandleCommand określa, czy ten bot powinien obsłużyć komendę
+// shouldHandleCommand determines if this bot should handle the command
 func (b *Bot) shouldHandleCommand() bool {
 	return b.botManager.ShouldHandleCommand(b)
 }
 
-// SetOwnerList ustawia listę właścicieli dla bota
+// SetOwnerList sets the list of owners for the bot
 func (b *Bot) SetOwnerList(owners auth.OwnerList) {
 	b.owners = owners
-	util.Debug("Bot %s ustawił właścicieli: %v", b.CurrentNick, owners)
+	util.Debug("Bot %s set owners: %v", b.CurrentNick, owners)
 }
 
-// SetChannels ustawia listę kanałów, do których bot ma dołączyć
+// SetChannels sets the list of channels for the bot to join
 func (b *Bot) SetChannels(channels []string) {
 	b.channels = channels
-	util.Debug("Bot %s ustawił kanały: %v", b.CurrentNick, channels)
+	util.Debug("Bot %s set channels: %v", b.CurrentNick, channels)
 }
 
-// GetCurrentNick zwraca aktualny nick bota
+// GetCurrentNick returns the bot's current nick
 func (b *Bot) GetCurrentNick() string {
 	return b.CurrentNick
 }
 
-// Funkcja pomocnicza sprawdzająca, czy string zaczyna się od któregoś z podanych prefiksów
+// Function to check if the string starts with any of the provided prefixes
 func startsWithAny(s string, prefixes []string) bool {
 	for _, prefix := range prefixes {
 		if strings.HasPrefix(s, prefix) {

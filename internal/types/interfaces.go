@@ -15,7 +15,7 @@ type Bot interface {
 }
 
 type NickManager interface {
-	HandleISONResponse(onlineNicks []string)
+	ReceiveISONResponse(onlineNicks []string)
 	ReturnNickToPool(nick string)
 	RegisterBot(bot Bot)
 	GetNicksToCatch() []string
@@ -23,4 +23,6 @@ type NickManager interface {
 
 type BotManager interface {
 	ShouldHandleCommand(bot Bot) bool
+	GetAvailableBots() []Bot
+	AssignBotForNick(nick string) Bot
 }

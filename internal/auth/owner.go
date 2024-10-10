@@ -4,16 +4,16 @@ import (
 	"encoding/json"
 	"os"
 
-	"github.com/kofany/gNb/internal/util" // Import modułu util z matcherem
+	"github.com/kofany/gNb/internal/util"
 	irc "github.com/kofany/go-ircevent"
 )
 
-// OwnerList zawiera listę właścicieli zdefiniowanych w pliku JSON.
+// OwnerList contains the list of owners defined in the JSON file.
 type OwnerList struct {
 	Owners []string `json:"owners"`
 }
 
-// LoadOwners wczytuje listę właścicieli z pliku JSON.
+// LoadOwners loads the list of owners from a JSON file.
 func LoadOwners(filename string) (OwnerList, error) {
 	var owners OwnerList
 	data, err := os.ReadFile(filename)
@@ -24,13 +24,13 @@ func LoadOwners(filename string) (OwnerList, error) {
 	return owners, err
 }
 
-// IsOwner sprawdza, czy użytkownik jest właścicielem.
+// IsOwner checks if a user is an owner.
 func IsOwner(event *irc.Event, owners OwnerList) bool {
-	// Tworzymy instancję matchera
+	// Create an instance of Matcher
 	matcher := util.Matcher{}
 	userHost := event.Nick + "!" + event.User + "@" + event.Host
 
-	// Sprawdzamy, czy userHost pasuje do którejś z masek właścicieli
+	// Check if userHost matches any owner masks
 	for _, ownerMask := range owners.Owners {
 		if matcher.MatchUserHost(ownerMask, userHost) {
 			return true

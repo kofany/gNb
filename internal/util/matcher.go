@@ -1,5 +1,3 @@
-// Plik internal/util/matcher.go
-
 package util
 
 import (
@@ -7,39 +5,39 @@ import (
 	"strings"
 )
 
-// Matcher jest strukturą odpowiedzialną za porównywanie userhostów IRC z maskami.
+// Matcher is responsible for comparing IRC userhosts with masks.
 type Matcher struct{}
 
-// MatchUserHost sprawdza, czy pełny userhost (nick!ident@host) pasuje do maski.
+// MatchUserHost checks if the full userhost matches the mask.
 func (m *Matcher) MatchUserHost(mask, userHost string) bool {
-	// Rozdzielamy maskę i userHost na odpowiednie części
+	// Split mask and userHost into parts
 	maskParts := strings.SplitN(mask, "!", 2)
 	hostParts := strings.SplitN(userHost, "!", 2)
 	if len(maskParts) != 2 || len(hostParts) != 2 {
-		return false // Nieprawidłowy format maski lub hosta
+		return false // Invalid format
 	}
 
 	maskIdentHost := strings.SplitN(maskParts[1], "@", 2)
 	hostIdentHost := strings.SplitN(hostParts[1], "@", 2)
 	if len(maskIdentHost) != 2 || len(hostIdentHost) != 2 {
-		return false // Nieprawidłowy format maski lub hosta
+		return false // Invalid format
 	}
 
 	maskIdent, maskHost := maskIdentHost[0], maskIdentHost[1]
 	hostIdent, hostHost := hostIdentHost[0], hostIdentHost[1]
 
-	// Sprawdzenie identa
+	// Check ident
 	if !m.matchWildcard(maskIdent, hostIdent) {
 		return false
 	}
 
-	// Sprawdzenie hosta/IP
+	// Check host/IP
 	return m.MatchHost(maskHost, hostHost)
 }
 
-// MatchHost sprawdza, czy host pasuje do maski, uwzględniając wildcardy i pełną formę IPv6.
+// MatchHost checks if the host matches the mask, including wildcards and IPv6 expansion.
 func (m *Matcher) MatchHost(mask, host string) bool {
-	// Specjalne traktowanie dla IPv6 - rozwijamy do pełnej formy, korzystając z funkcji ExpandIPv6 z iputil.go
+	// Special handling for IPv6
 	if strings.Contains(host, ":") {
 		host = ExpandIPv6(host)
 	}
@@ -47,15 +45,15 @@ func (m *Matcher) MatchHost(mask, host string) bool {
 	return m.matchWildcard(mask, host)
 }
 
-// matchWildcard zamienia maskę z wildcardami (*, ?, #) na regex i sprawdza zgodność z tekstem.
+// matchWildcard converts wildcard patterns to regex and matches the string.
 func (m *Matcher) matchWildcard(pattern, str string) bool {
-	// Ucieczka specjalnych znaków regex
+	// Escape regex special characters
 	pattern = regexp.QuoteMeta(pattern)
-	// Zamiana wildcardów na regex
-	pattern = strings.Replace(pattern, `\*`, ".*", -1)    // * zastępuje dowolny ciąg znaków
-	pattern = strings.Replace(pattern, `\?`, ".", -1)     // ? zastępuje dowolny znak
-	pattern = strings.Replace(pattern, `\#`, "[0-9]", -1) // # zastępuje jedną cyfrę
-	// Dodanie anchorów początku i końca
+	// Replace wildcards with regex equivalents
+	pattern = strings.Replace(pattern, `\*`, ".*", -1)    // * matches any string
+	pattern = strings.Replace(pattern, `\?`, ".", -1)     // ? matches any character
+	pattern = strings.Replace(pattern, `\#`, "[0-9]", -1) // # matches any digit
+	// Add start and end anchors
 	pattern = "^" + pattern + "$"
 
 	matched, _ := regexp.MatchString(pattern, str)

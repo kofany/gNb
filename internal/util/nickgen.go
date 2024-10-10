@@ -1,5 +1,3 @@
-// Plik internal/util/nickgen.go
-
 package util
 
 import (
@@ -21,35 +19,35 @@ func GenerateRandomNick(apiURL string, maxWordLength int, timeoutSeconds int) (s
 		Timeout: time.Duration(timeoutSeconds) * time.Second,
 	}
 
-	// Dodajemy parametry do URL
+	// Add parameters to URL
 	fullURL := fmt.Sprintf("%s?upto=%d&count=100", apiURL, maxWordLength)
 
 	resp, err := client.Get(fullURL)
 	if err != nil {
-		return "", fmt.Errorf("błąd podczas pobierania nicków z API: %v", err)
+		return "", fmt.Errorf("error fetching nicks from API: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API zwróciło status %d", resp.StatusCode)
+		return "", fmt.Errorf("API returned status %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("błąd podczas odczytu odpowiedzi API: %v", err)
+		return "", fmt.Errorf("error reading API response: %v", err)
 	}
 
 	var apiResp APIResponse
 	err = json.Unmarshal(body, &apiResp)
 	if err != nil {
-		return "", fmt.Errorf("błąd podczas parsowania odpowiedzi API: %v", err)
+		return "", fmt.Errorf("error parsing API response: %v", err)
 	}
 
 	if len(apiResp.Words) == 0 {
-		return "", fmt.Errorf("API nie zwróciło żadnych słów")
+		return "", fmt.Errorf("API returned no words")
 	}
 
-	// Filtrujemy słowa o odpowiedniej długości i składające się tylko z liter
+	// Filter words of appropriate length and letters only
 	validWords := []string{}
 	for _, word := range apiResp.Words {
 		word = strings.TrimSpace(word)
@@ -59,10 +57,10 @@ func GenerateRandomNick(apiURL string, maxWordLength int, timeoutSeconds int) (s
 	}
 
 	if len(validWords) == 0 {
-		return "", fmt.Errorf("brak odpowiednich słów po filtracji")
+		return "", fmt.Errorf("no suitable words after filtering")
 	}
 
-	// Losowo wybieramy jedno słowo
+	// Randomly select one word
 	nick := validWords[rand.Intn(len(validWords))]
 	return nick, nil
 }

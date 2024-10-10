@@ -1,5 +1,3 @@
-// File: internal/util/logger.go
-
 package util
 
 import (
