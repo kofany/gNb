@@ -1,0 +1,332 @@
+INFO: 2024/09/28 12:00:49 Logger zainicjalizowany z poziomem: debug
+DEBUG: 2024/09/28 12:00:49 Właściciele wczytani: {Owners:[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:00:49 NickManager zainicjalizowany z nickami: [CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z]
+DEBUG: 2024/09/28 12:00:49 Bot Electioneers ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:00:49 Bot Electioneers ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:00:49 BotManager dodał bota Electioneers
+DEBUG: 2024/09/28 12:00:49 Bot Opisales ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:00:49 Bot Opisales ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:00:49 BotManager dodał bota Opisales
+DEBUG: 2024/09/28 12:00:49 Bot Magdziami ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:00:49 Bot Magdziami ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:00:49 BotManager dodał bota Magdziami
+DEBUG: 2024/09/28 12:00:49 Bot Ufetowalem ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:00:49 Bot Ufetowalem ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:00:49 BotManager dodał bota Ufetowalem
+DEBUG: 2024/09/28 12:00:50 Bot Akrylamidzie ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:00:50 Bot Akrylamidzie ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:00:50 BotManager dodał bota Akrylamidzie
+DEBUG: 2024/09/28 12:00:50 Bot Podlegasz ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:00:50 Bot Podlegasz ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:00:50 BotManager dodał bota Podlegasz
+DEBUG: 2024/09/28 12:00:50 Bot Kminowcami ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:00:50 Bot Kminowcami ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:00:50 BotManager dodał bota Kminowcami
+DEBUG: 2024/09/28 12:00:50 Bot Plewiarek ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:00:50 Bot Plewiarek ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:00:50 BotManager dodał bota Plewiarek
+DEBUG: 2024/09/28 12:00:50 Konfiguracja wczytana: &{Global:{LogLevel:debug IsonInterval:1 MaxNickLength:14 CommandPrefixes:[! . @] NickAPI:{URL:https://i.got.al/words.php MaxWordLength:12 Timeout:5} Channels:[] ReconnectRetries:2 ReconnectInterval:1} Bots:[{Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e} {Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e} {Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e} {Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e}] Channels:[#irpg]}
+INFO: 2024/09/28 12:00:50 Bot Electioneers próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:00:50 Bot Akrylamidzie próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:00:50 Bot Opisales próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:00:50 Bot Magdziami próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:00:50 Bot Kminowcami próbuje połączyć się z mirc.irc.al:6667
+DEBUG: 2024/09/28 12:00:50 BotManager: monitorNicks started
+INFO: 2024/09/28 12:00:50 Bot Podlegasz próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:00:50 Bot Plewiarek próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:00:50 Bot jest uruchomiony. Naciśnij Ctrl+C, aby zakończyć.
+INFO: 2024/09/28 12:00:50 Bot Ufetowalem próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:00:50 Bot Magdziami połączony z mirc.irc.al jako Magdziami
+DEBUG: 2024/09/28 12:00:50 Bot Magdziami dołącza do kanału #irpg
+INFO: 2024/09/28 12:00:50 Bot Magdziami pomyślnie połączony
+INFO: 2024/09/28 12:00:50 Bot Plewiarek połączony z mirc.irc.al jako Plewiarek
+DEBUG: 2024/09/28 12:00:50 Bot Plewiarek dołącza do kanału #irpg
+INFO: 2024/09/28 12:00:50 Bot Ufetowalem połączony z mirc.irc.al jako Ufetowalem
+DEBUG: 2024/09/28 12:00:50 Bot Ufetowalem dołącza do kanału #irpg
+INFO: 2024/09/28 12:00:50 Bot Ufetowalem pomyślnie połączony
+INFO: 2024/09/28 12:00:50 Bot Plewiarek pomyślnie połączony
+DEBUG: 2024/09/28 12:00:51 BotManager: ticker fired
+DEBUG: 2024/09/28 12:00:51 BotManager: Bot Magdziami wysyła ISON
+DEBUG: 2024/09/28 12:00:51 Bot Magdziami wysyła komendę ISON: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
+DEBUG: 2024/09/28 12:00:51 Bot Magdziami otrzymał odpowiedź ISON: []
+DEBUG: 2024/09/28 12:00:51 NickManager otrzymał odpowiedź ISON: []
+DEBUG: 2024/09/28 12:00:51 NickManager przetwarza dostępne nicki: [CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z]
+DEBUG: 2024/09/28 12:00:51 Nick CoolBot dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick NickKeeper dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick IRCGuardian dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick NetWatcher dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick a dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick b dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick c dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick d dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick e dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick f dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick g dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick h dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick i dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick j dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick k dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick l dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick m dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick n dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick o dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick p dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick q dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick r dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick s dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick t dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick u dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick v dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick w dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick x dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick y dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Nick z dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:00:51 Przydzielanie nicka CoolBot do bota Magdziami
+DEBUG: 2024/09/28 12:00:51 Przydzielanie nicka NickKeeper do bota Ufetowalem
+DEBUG: 2024/09/28 12:00:51 Przydzielanie nicka IRCGuardian do bota Plewiarek
+DEBUG: 2024/09/28 12:00:51 Bot Plewiarek otrzymał prośbę o zmianę nicka na IRCGuardian
+DEBUG: 2024/09/28 12:00:51 Bot Magdziami otrzymał prośbę o zmianę nicka na CoolBot
+DEBUG: 2024/09/28 12:00:51 Bot Ufetowalem otrzymał prośbę o zmianę nicka na NickKeeper
+DEBUG: 2024/09/28 12:00:52 BotManager: ticker fired
+WARNING: 2024/09/28 12:01:00 Bot Akrylamidzie nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+WARNING: 2024/09/28 12:01:00 Bot Kminowcami nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+INFO: 2024/09/28 12:01:00 Bot Akrylamidzie próbuje połączyć się z mirc.irc.al:6667
+WARNING: 2024/09/28 12:01:00 Bot Electioneers nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+INFO: 2024/09/28 12:01:00 Bot Kminowcami próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:01:00 Bot Electioneers próbuje połączyć się z mirc.irc.al:6667
+WARNING: 2024/09/28 12:01:00 Bot Opisales nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+WARNING: 2024/09/28 12:01:00 Bot Podlegasz nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+INFO: 2024/09/28 12:01:00 Bot Opisales próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:01:00 Bot Podlegasz próbuje połączyć się z mirc.irc.al:6667
+WARNING: 2024/09/28 12:01:10 Bot Electioneers nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+ERROR: 2024/09/28 12:01:10 Bot Electioneers nie mógł się połączyć: bot Electioneers nie mógł się połączyć po 2 próbach
+WARNING: 2024/09/28 12:01:10 Bot Akrylamidzie nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+WARNING: 2024/09/28 12:01:10 Bot Kminowcami nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+ERROR: 2024/09/28 12:01:10 Bot Kminowcami nie mógł się połączyć: bot Kminowcami nie mógł się połączyć po 2 próbach
+ERROR: 2024/09/28 12:01:10 Bot Akrylamidzie nie mógł się połączyć: bot Akrylamidzie nie mógł się połączyć po 2 próbach
+WARNING: 2024/09/28 12:01:10 Bot Podlegasz nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+ERROR: 2024/09/28 12:01:10 Bot Podlegasz nie mógł się połączyć: bot Podlegasz nie mógł się połączyć po 2 próbach
+WARNING: 2024/09/28 12:01:10 Bot Opisales nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+ERROR: 2024/09/28 12:01:10 Bot Opisales nie mógł się połączyć: bot Opisales nie mógł się połączyć po 2 próbach
+INFO: 2024/09/28 12:12:09 Logger zainicjalizowany z poziomem: debug
+DEBUG: 2024/09/28 12:12:09 Właściciele wczytani: {Owners:[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:12:09 NickManager zainicjalizowany z nickami: [CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z]
+DEBUG: 2024/09/28 12:12:09 Bot Nieszklonymi ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:12:09 Bot Nieszklonymi ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:12:09 BotManager dodał bota Nieszklonymi
+DEBUG: 2024/09/28 12:12:09 Bot Rokefelerze ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:12:09 Bot Rokefelerze ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:12:09 BotManager dodał bota Rokefelerze
+DEBUG: 2024/09/28 12:12:09 Bot Hajduki ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:12:09 Bot Hajduki ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:12:09 BotManager dodał bota Hajduki
+DEBUG: 2024/09/28 12:12:09 Bot Niewezbrania ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:12:09 Bot Niewezbrania ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:12:09 BotManager dodał bota Niewezbrania
+DEBUG: 2024/09/28 12:12:10 Bot Pogrubionemu ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:12:10 Bot Pogrubionemu ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:12:10 BotManager dodał bota Pogrubionemu
+DEBUG: 2024/09/28 12:12:10 Bot Niezawodny ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:12:10 Bot Niezawodny ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:12:10 BotManager dodał bota Niezawodny
+DEBUG: 2024/09/28 12:12:10 Bot Dopasuj ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:12:10 Bot Dopasuj ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:12:10 BotManager dodał bota Dopasuj
+DEBUG: 2024/09/28 12:12:10 Bot Srebrzonemu ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:12:10 Bot Srebrzonemu ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:12:10 BotManager dodał bota Srebrzonemu
+DEBUG: 2024/09/28 12:12:10 Konfiguracja wczytana: &{Global:{LogLevel:debug IsonInterval:1 MaxNickLength:14 CommandPrefixes:[! . @] NickAPI:{URL:https://i.got.al/words.php MaxWordLength:12 Timeout:5} Channels:[] ReconnectRetries:2 ReconnectInterval:1} Bots:[{Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e} {Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e} {Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e} {Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e}] Channels:[#irpg]}
+INFO: 2024/09/28 12:12:10 Bot Nieszklonymi próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:12:10 Bot Niezawodny próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:12:10 Bot Pogrubionemu próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:12:10 Bot Srebrzonemu próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:12:10 Bot Niewezbrania próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:12:10 Bot Rokefelerze próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:12:10 Bot Dopasuj próbuje połączyć się z mirc.irc.al:6667
+DEBUG: 2024/09/28 12:12:10 BotManager: monitorNicks started
+INFO: 2024/09/28 12:12:10 Bot Hajduki próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:12:10 Bot Niewezbrania połączony z mirc.irc.al jako Niewezbrania
+DEBUG: 2024/09/28 12:12:10 Bot Niewezbrania dołącza do kanału #irpg
+INFO: 2024/09/28 12:12:10 Bot Niewezbrania pomyślnie połączony
+INFO: 2024/09/28 12:12:10 Bot Niezawodny połączony z mirc.irc.al jako Niezawodny
+DEBUG: 2024/09/28 12:12:10 Bot Niezawodny dołącza do kanału #irpg
+INFO: 2024/09/28 12:12:10 Bot Niezawodny pomyślnie połączony
+INFO: 2024/09/28 12:12:10 Bot Hajduki połączony z mirc.irc.al jako Hajduki
+DEBUG: 2024/09/28 12:12:10 Bot Hajduki dołącza do kanału #irpg
+INFO: 2024/09/28 12:12:10 Bot Hajduki pomyślnie połączony
+DEBUG: 2024/09/28 12:12:11 BotManager: ticker fired
+DEBUG: 2024/09/28 12:12:11 BotManager: Bot Hajduki wysyła ISON
+DEBUG: 2024/09/28 12:12:11 Bot Hajduki wysyła komendę ISON: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
+DEBUG: 2024/09/28 12:12:11 Bot Hajduki otrzymał odpowiedź ISON: []
+DEBUG: 2024/09/28 12:12:11 NickManager otrzymał odpowiedź ISON: []
+DEBUG: 2024/09/28 12:12:11 NickManager przetwarza dostępne nicki: [CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z]
+DEBUG: 2024/09/28 12:12:11 Nick CoolBot dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick NickKeeper dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick IRCGuardian dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick NetWatcher dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick a dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick b dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick c dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick d dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick e dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick f dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick g dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick h dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick i dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick j dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick k dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick l dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick m dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick n dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick o dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick p dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick q dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick r dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick s dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick t dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick u dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick v dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick w dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick x dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick y dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Nick z dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:12:11 Przydzielanie nicka CoolBot do bota Hajduki
+DEBUG: 2024/09/28 12:12:11 Przydzielanie nicka NickKeeper do bota Niewezbrania
+DEBUG: 2024/09/28 12:12:11 Przydzielanie nicka IRCGuardian do bota Niezawodny
+DEBUG: 2024/09/28 12:12:11 Przydzielanie nicka NetWatcher do bota Hajduki
+DEBUG: 2024/09/28 12:12:11 Bot Hajduki otrzymał prośbę o zmianę nicka na CoolBot
+DEBUG: 2024/09/28 12:12:11 Przydzielanie nicka a do bota Niewezbrania
+DEBUG: 2024/09/28 12:12:11 Bot Niewezbrania otrzymał prośbę o zmianę nicka na NickKeeper
+DEBUG: 2024/09/28 12:12:11 Bot Niezawodny otrzymał prośbę o zmianę nicka na IRCGuardian
+DEBUG: 2024/09/28 12:12:12 BotManager: ticker fired
+WARNING: 2024/09/28 12:12:20 Bot Dopasuj nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+WARNING: 2024/09/28 12:12:20 Bot Nieszklonymi nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+INFO: 2024/09/28 12:12:20 Bot Nieszklonymi próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:12:20 Bot Dopasuj próbuje połączyć się z mirc.irc.al:6667
+WARNING: 2024/09/28 12:12:20 Bot Pogrubionemu nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+INFO: 2024/09/28 12:12:20 Bot Pogrubionemu próbuje połączyć się z mirc.irc.al:6667
+WARNING: 2024/09/28 12:12:20 Bot Srebrzonemu nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+WARNING: 2024/09/28 12:12:20 Bot Rokefelerze nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+INFO: 2024/09/28 12:12:20 Bot Srebrzonemu próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:12:20 Bot Rokefelerze próbuje połączyć się z mirc.irc.al:6667
+WARNING: 2024/09/28 12:12:30 Bot Dopasuj nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+ERROR: 2024/09/28 12:12:30 Bot Dopasuj nie mógł się połączyć: bot Dopasuj nie mógł się połączyć po 2 próbach
+WARNING: 2024/09/28 12:12:30 Bot Pogrubionemu nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+ERROR: 2024/09/28 12:12:30 Bot Pogrubionemu nie mógł się połączyć: bot Pogrubionemu nie mógł się połączyć po 2 próbach
+WARNING: 2024/09/28 12:12:30 Bot Nieszklonymi nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+ERROR: 2024/09/28 12:12:30 Bot Nieszklonymi nie mógł się połączyć: bot Nieszklonymi nie mógł się połączyć po 2 próbach
+WARNING: 2024/09/28 12:12:30 Bot Rokefelerze nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+ERROR: 2024/09/28 12:12:30 Bot Rokefelerze nie mógł się połączyć: bot Rokefelerze nie mógł się połączyć po 2 próbach
+WARNING: 2024/09/28 12:12:30 Bot Srebrzonemu nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+ERROR: 2024/09/28 12:12:30 Bot Srebrzonemu nie mógł się połączyć: bot Srebrzonemu nie mógł się połączyć po 2 próbach
+INFO: 2024/09/28 12:12:54 Aplikacja została wyłączona.
+INFO: 2024/09/28 12:13:10 Logger zainicjalizowany z poziomem: debug
+DEBUG: 2024/09/28 12:13:10 Właściciele wczytani: {Owners:[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:13:10 NickManager zainicjalizowany z nickami: [CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z]
+DEBUG: 2024/09/28 12:13:10 Bot Nieetylinowe ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:13:10 Bot Nieetylinowe ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:13:10 BotManager dodał bota Nieetylinowe
+DEBUG: 2024/09/28 12:13:10 Bot Babinca ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:13:10 Bot Babinca ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:13:10 BotManager dodał bota Babinca
+DEBUG: 2024/09/28 12:13:10 Bot Kopcmy ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:13:10 Bot Kopcmy ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:13:10 BotManager dodał bota Kopcmy
+DEBUG: 2024/09/28 12:13:10 Bot Bezprawiom ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:13:10 Bot Bezprawiom ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:13:10 BotManager dodał bota Bezprawiom
+DEBUG: 2024/09/28 12:13:10 Bot Kryptoklidem ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:13:10 Bot Kryptoklidem ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:13:10 BotManager dodał bota Kryptoklidem
+DEBUG: 2024/09/28 12:13:11 Bot Opieraloby ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:13:11 Bot Opieraloby ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:13:11 BotManager dodał bota Opieraloby
+DEBUG: 2024/09/28 12:13:11 Bot Osiewniki ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:13:11 Bot Osiewniki ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:13:11 BotManager dodał bota Osiewniki
+DEBUG: 2024/09/28 12:13:11 Bot Targonskiemu ustawił właścicieli: {[*!kofany@irc.al]}
+DEBUG: 2024/09/28 12:13:11 Bot Targonskiemu ustawił kanały: [#irpg]
+DEBUG: 2024/09/28 12:13:11 BotManager dodał bota Targonskiemu
+DEBUG: 2024/09/28 12:13:11 Konfiguracja wczytana: &{Global:{LogLevel:debug IsonInterval:1 MaxNickLength:14 CommandPrefixes:[! . @] NickAPI:{URL:https://i.got.al/words.php MaxWordLength:12 Timeout:5} Channels:[] ReconnectRetries:2 ReconnectInterval:1} Bots:[{Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e} {Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e} {Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e} {Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e}] Channels:[#irpg]}
+INFO: 2024/09/28 12:13:11 Bot Bezprawiom próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:13:11 Bot Opieraloby próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:13:11 Bot Kopcmy próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:13:11 Bot Kryptoklidem próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:13:11 Bot Babinca próbuje połączyć się z mirc.irc.al:6667
+DEBUG: 2024/09/28 12:13:11 BotManager: monitorNicks started
+INFO: 2024/09/28 12:13:11 Bot Targonskiemu próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:13:11 Bot Osiewniki próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:13:11 Bot Nieetylinowe próbuje połączyć się z mirc.irc.al:6667
+INFO: 2024/09/28 12:13:11 Bot Opieraloby połączony z mirc.irc.al jako Opieraloby
+DEBUG: 2024/09/28 12:13:11 Bot Opieraloby dołącza do kanału #irpg
+INFO: 2024/09/28 12:13:11 Bot Babinca połączony z mirc.irc.al jako Babinca
+DEBUG: 2024/09/28 12:13:11 Bot Babinca dołącza do kanału #irpg
+INFO: 2024/09/28 12:13:11 Bot Babinca pomyślnie połączony
+INFO: 2024/09/28 12:13:11 Bot Nieetylinowe połączony z mirc.irc.al jako Nieetylinowe
+DEBUG: 2024/09/28 12:13:11 Bot Nieetylinowe dołącza do kanału #irpg
+INFO: 2024/09/28 12:13:11 Bot Opieraloby pomyślnie połączony
+INFO: 2024/09/28 12:13:11 Bot Nieetylinowe pomyślnie połączony
+DEBUG: 2024/09/28 12:13:12 BotManager: ticker fired
+DEBUG: 2024/09/28 12:13:12 BotManager: Bot Nieetylinowe wysyła ISON
+DEBUG: 2024/09/28 12:13:12 Bot Nieetylinowe wysyła komendę ISON: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
+DEBUG: 2024/09/28 12:13:12 Bot Nieetylinowe otrzymał odpowiedź ISON: []
+DEBUG: 2024/09/28 12:13:12 NickManager otrzymał odpowiedź ISON: []
+DEBUG: 2024/09/28 12:13:12 NickManager przetwarza dostępne nicki: [CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z]
+DEBUG: 2024/09/28 12:13:12 Nick CoolBot dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick NickKeeper dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick IRCGuardian dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick NetWatcher dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick a dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick b dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick c dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick d dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick e dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick f dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick g dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick h dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick i dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick j dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick k dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick l dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick m dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick n dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick o dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick p dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick q dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick r dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick s dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick t dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick u dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick v dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick w dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick x dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick y dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Nick z dodany do puli dostępnych nicków
+DEBUG: 2024/09/28 12:13:12 Przydzielanie nicka CoolBot do bota Nieetylinowe
+DEBUG: 2024/09/28 12:13:12 Przydzielanie nicka NickKeeper do bota Babinca
+DEBUG: 2024/09/28 12:13:12 Przydzielanie nicka IRCGuardian do bota Opieraloby
+DEBUG: 2024/09/28 12:13:12 Bot Nieetylinowe otrzymał prośbę o zmianę nicka na CoolBot
+DEBUG: 2024/09/28 12:13:12 Bot Opieraloby otrzymał prośbę o zmianę nicka na IRCGuardian
+DEBUG: 2024/09/28 12:13:12 Bot Babinca otrzymał prośbę o zmianę nicka na NickKeeper
+DEBUG: 2024/09/28 12:13:13 BotManager: ticker fired
+WARNING: 2024/09/28 12:13:21 Bot Kryptoklidem nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+INFO: 2024/09/28 12:13:21 Bot Kryptoklidem próbuje połączyć się z mirc.irc.al:6667
+WARNING: 2024/09/28 12:13:21 Bot Bezprawiom nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+INFO: 2024/09/28 12:13:21 Bot Bezprawiom próbuje połączyć się z mirc.irc.al:6667
+WARNING: 2024/09/28 12:13:21 Bot Targonskiemu nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+INFO: 2024/09/28 12:13:21 Bot Targonskiemu próbuje połączyć się z mirc.irc.al:6667
+WARNING: 2024/09/28 12:13:21 Bot Kopcmy nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+INFO: 2024/09/28 12:13:21 Bot Kopcmy próbuje połączyć się z mirc.irc.al:6667
+WARNING: 2024/09/28 12:13:21 Bot Osiewniki nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+INFO: 2024/09/28 12:13:21 Bot Osiewniki próbuje połączyć się z mirc.irc.al:6667
+WARNING: 2024/09/28 12:13:31 Bot Bezprawiom nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+ERROR: 2024/09/28 12:13:31 Bot Bezprawiom nie mógł się połączyć: bot Bezprawiom nie mógł się połączyć po 2 próbach
+WARNING: 2024/09/28 12:13:31 Bot Kryptoklidem nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+ERROR: 2024/09/28 12:13:31 Bot Kryptoklidem nie mógł się połączyć: bot Kryptoklidem nie mógł się połączyć po 2 próbach
+WARNING: 2024/09/28 12:13:31 Bot Kopcmy nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+ERROR: 2024/09/28 12:13:31 Bot Kopcmy nie mógł się połączyć: bot Kopcmy nie mógł się połączyć po 2 próbach
+WARNING: 2024/09/28 12:13:31 Bot Osiewniki nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+ERROR: 2024/09/28 12:13:31 Bot Osiewniki nie mógł się połączyć: bot Osiewniki nie mógł się połączyć po 2 próbach
+WARNING: 2024/09/28 12:13:31 Bot Targonskiemu nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
+ERROR: 2024/09/28 12:13:31 Bot Targonskiemu nie mógł się połączyć: bot Targonskiemu nie mógł się połączyć po 2 próbach
+INFO: 2024/09/28 12:18:32 Aplikacja została wyłączona.
