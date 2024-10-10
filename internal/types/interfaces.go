@@ -8,21 +8,19 @@ type Bot interface {
 	IsConnected() bool
 	SetOwnerList(owners auth.OwnerList)
 	SetChannels(channels []string)
-	SendISON(nicks []string)
+	RequestISON(nicks []string) ([]string, error)
 	Connect() error
 	Quit(message string)
 	Reconnect()
 }
 
 type NickManager interface {
-	ReceiveISONResponse(onlineNicks []string)
-	ReturnNickToPool(nick string)
 	RegisterBot(bot Bot)
+	ReturnNickToPool(nick string)
+	SetBots(bots []Bot)
 	GetNicksToCatch() []string
 }
 
 type BotManager interface {
 	ShouldHandleCommand(bot Bot) bool
-	GetAvailableBots() []Bot
-	AssignBotForNick(nick string) Bot
 }

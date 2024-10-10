@@ -17,11 +17,71 @@ bots:
   - server: mirc.irc.al
     port: 6667
     ssl: false
-    vhost: 192.168.176.35 # example IPv4
+    vhost: 192.168.176.35
   - server: mirc.irc.al
     port: 6667
     ssl: false
-    vhost: 2a02:2454:ffff:0101:1c56:2b73:771e:f9dd # example IPv6 
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
 
 channels:
   - "#irpg"

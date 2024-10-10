@@ -54,14 +54,14 @@ func main() {
 
 	util.Debug("NickManager initialized with nicks: %+v", nm.GetNicksToCatch())
 
-	// Start NickManager's goroutines
-	nm.Start()
-
 	// Create BotManager
 	botManager := bot.NewBotManager(cfg, owners, nm)
 
 	// Start bots
 	botManager.StartBots()
+
+	// Start NickManager's monitoring loop
+	nm.Start()
 
 	util.Debug("Configuration loaded: %+v", cfg)
 

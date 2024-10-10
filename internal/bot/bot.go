@@ -32,6 +32,7 @@ type Bot struct {
 	connected       chan struct{}
 	botManager      types.BotManager
 	gaveUp          bool
+	isonResponse    chan []string
 }
 
 // NewBot creates a new Bot instance
@@ -61,6 +62,7 @@ func NewBot(cfg *config.BotConfig, globalConfig *config.GlobalConfig, nm types.N
 		nickManager:  nm,
 		connected:    make(chan struct{}),
 		botManager:   bm,
+		isonResponse: make(chan []string, 1),
 	}
 
 	nm.RegisterBot(bot)
@@ -174,40 +176,30 @@ func (b *Bot) addCallbacks() {
 func (b *Bot) handleISONResponse(e *irc.Event) {
 	isonResponse := strings.Fields(e.Message())
 	util.Debug("Bot %s received ISON response: %v", b.CurrentNick, isonResponse)
-	b.nickManager.ReceiveISONResponse(isonResponse)
+	// Send the response to the NickManager via the channel
+	select {
+	case b.isonResponse <- isonResponse:
+	default:
+		util.Warning("Bot %s isonResponse channel is full", b.CurrentNick)
+	}
 }
 
-// handleReconnect handles reconnection attempts after disconnection
-func (b *Bot) handleReconnect() {
-	b.isReconnecting = true
-	defer func() { b.isReconnecting = false }()
-
-	maxRetries := b.GlobalConfig.ReconnectRetries
-	retryInterval := time.Duration(b.GlobalConfig.ReconnectInterval) * time.Second
-
-	for attempts := 0; attempts < maxRetries; attempts++ {
-		util.Info("Bot %s is attempting to reconnect (attempt %d/%d)", b.CurrentNick, attempts+1, maxRetries)
-		err := b.connectWithRetry()
-		if err == nil {
-			util.Info("Bot %s reconnected", b.CurrentNick)
-			return
-		}
-		util.Error("Attempt %d failed: %v", attempts+1, err)
-		time.Sleep(retryInterval)
+// RequestISON sends an ISON command and waits for the response
+func (b *Bot) RequestISON(nicks []string) ([]string, error) {
+	if !b.IsConnected() {
+		return nil, fmt.Errorf("bot %s is not connected", b.CurrentNick)
 	}
 
-	util.Error("Bot %s could not reconnect after %d attempts", b.CurrentNick, maxRetries)
-	b.gaveUp = true
-}
+	command := fmt.Sprintf("ISON %s", strings.Join(nicks, " "))
+	util.Debug("Bot %s is sending ISON command: %s", b.CurrentNick, command)
+	b.Connection.SendRaw(command)
 
-// SendISON sends an ISON command with a list of nicks to check
-func (b *Bot) SendISON(nicks []string) {
-	if b.IsConnected() {
-		command := fmt.Sprintf("ISON %s", strings.Join(nicks, " "))
-		util.Debug("Bot %s is sending ISON command: %s", b.CurrentNick, command)
-		b.Connection.SendRaw(command)
-	} else {
-		util.Debug("Bot %s is not connected; cannot send ISON", b.CurrentNick)
+	// Wait for the ISON response or timeout
+	select {
+	case response := <-b.isonResponse:
+		return response, nil
+	case <-time.After(10 * time.Second):
+		return nil, fmt.Errorf("bot %s did not receive ISON response in time", b.CurrentNick)
 	}
 }
 
@@ -251,6 +243,29 @@ func (b *Bot) Reconnect() {
 	if err != nil {
 		util.Error("Failed to reconnect bot %s: %v", b.CurrentNick, err)
 	}
+}
+
+// handleReconnect handles reconnection attempts after disconnection
+func (b *Bot) handleReconnect() {
+	b.isReconnecting = true
+	defer func() { b.isReconnecting = false }()
+
+	maxRetries := b.GlobalConfig.ReconnectRetries
+	retryInterval := time.Duration(b.GlobalConfig.ReconnectInterval) * time.Second
+
+	for attempts := 0; attempts < maxRetries; attempts++ {
+		util.Info("Bot %s is attempting to reconnect (attempt %d/%d)", b.CurrentNick, attempts+1, maxRetries)
+		err := b.connectWithRetry()
+		if err == nil {
+			util.Info("Bot %s reconnected", b.CurrentNick)
+			return
+		}
+		util.Error("Attempt %d failed: %v", attempts+1, err)
+		time.Sleep(retryInterval)
+	}
+
+	util.Error("Bot %s could not reconnect after %d attempts", b.CurrentNick, maxRetries)
+	b.gaveUp = true
 }
 
 // SendMessage sends a message to a specified target (channel or user)

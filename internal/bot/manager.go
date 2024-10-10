@@ -2,7 +2,6 @@ package bot
 
 import (
 	"sync"
-	"time"
 
 	"github.com/kofany/gNb/internal/auth"
 	"github.com/kofany/gNb/internal/config"
@@ -15,27 +14,22 @@ var _ types.BotManager = (*BotManager)(nil)
 
 // BotManager manages multiple IRC bots
 type BotManager struct {
-	bots              []types.Bot
-	owners            auth.OwnerList
-	isonInterval      time.Duration
-	wg                sync.WaitGroup
-	stopChan          chan struct{}
-	nickManager       types.NickManager
-	commandBotIndex   int
-	isonBotIndex      int
-	mutex             sync.Mutex
-	availableBots     []types.Bot
-	availableBotsLock sync.Mutex
+	bots            []types.Bot
+	owners          auth.OwnerList
+	wg              sync.WaitGroup
+	stopChan        chan struct{}
+	nickManager     types.NickManager
+	commandBotIndex int
+	mutex           sync.Mutex
 }
 
 // NewBotManager creates a new BotManager instance
 func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManager) *BotManager {
 	manager := &BotManager{
-		bots:         make([]types.Bot, len(cfg.Bots)),
-		owners:       owners,
-		isonInterval: time.Duration(cfg.Global.IsonInterval) * time.Second,
-		stopChan:     make(chan struct{}),
-		nickManager:  nm,
+		bots:        make([]types.Bot, len(cfg.Bots)),
+		owners:      owners,
+		stopChan:    make(chan struct{}),
+		nickManager: nm,
 	}
 
 	// Creating bots
@@ -47,7 +41,7 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 		util.Debug("BotManager added bot %s", bot.GetCurrentNick())
 	}
 
-	manager.updateAvailableBots()
+	nm.SetBots(manager.bots)
 	return manager
 }
 
@@ -60,48 +54,9 @@ func (bm *BotManager) StartBots() {
 			continue
 		}
 	}
-
-	bm.wg.Add(1)
-	go bm.monitorNicks()
 }
 
-// monitorNicks periodically sends ISON commands via bots in a rotational manner
-func (bm *BotManager) monitorNicks() {
-	defer bm.wg.Done()
-	ticker := time.NewTicker(bm.isonInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-bm.stopChan:
-			util.Info("Stopped monitoring nicks")
-			return
-		case <-ticker.C:
-			bm.mutex.Lock()
-			if len(bm.bots) > 0 {
-				bot := bm.getNextIsonBot()
-				if bot.IsConnected() {
-					util.Debug("BotManager: Bot %s is sending ISON", bot.GetCurrentNick())
-					bot.SendISON(bm.nickManager.GetNicksToCatch())
-				} else {
-					util.Debug("BotManager: Bot %s is not connected; skipping ISON", bot.GetCurrentNick())
-				}
-			} else {
-				util.Debug("BotManager: No available bots to send ISON")
-			}
-			bm.mutex.Unlock()
-		}
-	}
-}
-
-// getNextIsonBot gets the next bot in the queue to send an ISON command
-func (bm *BotManager) getNextIsonBot() types.Bot {
-	bot := bm.bots[bm.isonBotIndex]
-	bm.isonBotIndex = (bm.isonBotIndex + 1) % len(bm.bots)
-	return bot
-}
-
-// Stop safely shuts down all bots and their goroutines
+// Stop safely shuts down all bots
 func (bm *BotManager) Stop() {
 	close(bm.stopChan)
 	bm.wg.Wait()
@@ -128,40 +83,4 @@ func (bm *BotManager) ShouldHandleCommand(bot types.Bot) bool {
 	}
 	util.Debug("BotManager: Bot %s will not handle the command", bot.GetCurrentNick())
 	return false
-}
-
-// UpdateAvailableBots updates the list of bots available to catch nicks
-func (bm *BotManager) updateAvailableBots() {
-	bm.availableBotsLock.Lock()
-	defer bm.availableBotsLock.Unlock()
-
-	bm.availableBots = []types.Bot{}
-	for _, bot := range bm.bots {
-		if bot.IsConnected() && !util.IsTargetNick(bot.GetCurrentNick(), bm.nickManager.GetNicksToCatch()) {
-			bm.availableBots = append(bm.availableBots, bot)
-		}
-	}
-}
-
-// GetAvailableBots returns the list of bots available to catch nicks
-func (bm *BotManager) GetAvailableBots() []types.Bot {
-	bm.availableBotsLock.Lock()
-	defer bm.availableBotsLock.Unlock()
-
-	return bm.availableBots
-}
-
-// AssignBotForNick assigns an available bot to attempt to catch a nick
-func (bm *BotManager) AssignBotForNick(nick string) types.Bot {
-	bm.availableBotsLock.Lock()
-	defer bm.availableBotsLock.Unlock()
-
-	if len(bm.availableBots) == 0 {
-		return nil
-	}
-
-	// Round-robin assignment
-	bot := bm.availableBots[0]
-	bm.availableBots = append(bm.availableBots[1:], bot)
-	return bot
 }

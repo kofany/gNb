@@ -11,16 +11,13 @@ import (
 )
 
 type NickManager struct {
-	nicksToCatch       []string
-	priorityNicks      []string
-	secondaryNicks     []string
-	availableBots      []types.Bot
-	bots               []types.Bot
-	mutex              sync.Mutex
-	botManager         types.BotManager
-	isonResponses      chan []string
-	priorityNickQueue  []string
-	secondaryNickQueue []string
+	nicksToCatch   []string
+	priorityNicks  []string
+	secondaryNicks []string
+	bots           []types.Bot
+	botIndex       int
+	mutex          sync.Mutex
+	isonInterval   time.Duration
 }
 
 type NicksData struct {
@@ -28,9 +25,7 @@ type NicksData struct {
 }
 
 func NewNickManager() *NickManager {
-	return &NickManager{
-		isonResponses: make(chan []string, 10), // Buffer for ISON responses
-	}
+	return &NickManager{}
 }
 
 func (nm *NickManager) LoadNicks(filename string) error {
@@ -63,21 +58,38 @@ func (nm *NickManager) LoadNicks(filename string) error {
 }
 
 func (nm *NickManager) Start() {
-	go nm.processISONResponses()
-	go nm.distributeNicksLoop()
+	go nm.monitorNicks()
 }
 
-func (nm *NickManager) processISONResponses() {
-	for onlineNicks := range nm.isonResponses {
-		nm.handleISONResponse(onlineNicks)
-	}
-}
+func (nm *NickManager) monitorNicks() {
+	for {
+		nm.mutex.Lock()
+		if len(nm.bots) == 0 {
+			nm.mutex.Unlock()
+			time.Sleep(1 * time.Second)
+			continue
+		}
 
-func (nm *NickManager) ReceiveISONResponse(onlineNicks []string) {
-	select {
-	case nm.isonResponses <- onlineNicks:
-	default:
-		util.Debug("ISON response channel full; dropping response")
+		// Get the next bot in the queue to send ISON
+		bot := nm.bots[nm.botIndex]
+		nm.botIndex = (nm.botIndex + 1) % len(nm.bots)
+		nm.mutex.Unlock()
+
+		if bot.IsConnected() {
+			// Request ISON and wait for response
+			onlineNicks, err := bot.RequestISON(nm.nicksToCatch)
+			if err != nil {
+				util.Error("Error requesting ISON from bot %s: %v", bot.GetCurrentNick(), err)
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			nm.handleISONResponse(onlineNicks)
+		} else {
+			util.Debug("Bot %s is not connected; skipping", bot.GetCurrentNick())
+		}
+
+		// Wait before sending the next ISON
+		time.Sleep(time.Duration(nm.isonInterval) * time.Second)
 	}
 }
 
@@ -87,56 +99,49 @@ func (nm *NickManager) handleISONResponse(onlineNicks []string) {
 
 	util.Debug("NickManager received ISON response: %v", onlineNicks)
 
-	// Update the nick queues based on availability
+	// Determine available nicks
+	var availablePriorityNicks []string
+	var availableSecondaryNicks []string
+
 	for _, nick := range nm.priorityNicks {
-		if !util.Contains(onlineNicks, nick) && !util.Contains(nm.priorityNickQueue, nick) {
-			nm.priorityNickQueue = append(nm.priorityNickQueue, nick)
+		if !util.Contains(onlineNicks, nick) {
+			availablePriorityNicks = append(availablePriorityNicks, nick)
 		}
 	}
+
 	for _, nick := range nm.secondaryNicks {
-		if !util.Contains(onlineNicks, nick) && !util.Contains(nm.secondaryNickQueue, nick) {
-			nm.secondaryNickQueue = append(nm.secondaryNickQueue, nick)
+		if !util.Contains(onlineNicks, nick) {
+			availableSecondaryNicks = append(availableSecondaryNicks, nick)
 		}
 	}
-}
 
-func (nm *NickManager) distributeNicksLoop() {
-	for {
-		nm.mutex.Lock()
-		availableBots := nm.getAvailableBots()
-		nm.mutex.Unlock()
+	// Get list of available bots
+	availableBots := nm.getAvailableBots()
+	if len(availableBots) == 0 {
+		util.Debug("No available bots to assign nicks")
+		return
+	}
 
-		if len(availableBots) == 0 {
-			time.Sleep(1 * time.Second)
-			continue
-		}
+	assignedBots := 0
 
-		nm.mutex.Lock()
-		assignedBots := 0
+	// Assign priority nicks first
+	for assignedBots < len(availableBots) && len(availablePriorityNicks) > 0 {
+		nick := availablePriorityNicks[0]
+		availablePriorityNicks = availablePriorityNicks[1:]
+		bot := availableBots[assignedBots]
+		assignedBots++
+		util.Debug("Assigning priority nick %s to bot %s", nick, bot.GetCurrentNick())
+		go bot.AttemptNickChange(nick)
+	}
 
-		// Assign priority nicks first
-		for assignedBots < len(availableBots) && len(nm.priorityNickQueue) > 0 {
-			nick := nm.priorityNickQueue[0]
-			nm.priorityNickQueue = nm.priorityNickQueue[1:]
-			bot := availableBots[assignedBots]
-			assignedBots++
-			util.Debug("Assigning priority nick %s to bot %s", nick, bot.GetCurrentNick())
-			go bot.AttemptNickChange(nick)
-		}
-
-		// Then assign secondary nicks
-		for assignedBots < len(availableBots) && len(nm.secondaryNickQueue) > 0 {
-			nick := nm.secondaryNickQueue[0]
-			nm.secondaryNickQueue = nm.secondaryNickQueue[1:]
-			bot := availableBots[assignedBots]
-			assignedBots++
-			util.Debug("Assigning secondary nick %s to bot %s", nick, bot.GetCurrentNick())
-			go bot.AttemptNickChange(nick)
-		}
-
-		nm.mutex.Unlock()
-
-		time.Sleep(1 * time.Second)
+	// Then assign secondary nicks
+	for assignedBots < len(availableBots) && len(availableSecondaryNicks) > 0 {
+		nick := availableSecondaryNicks[0]
+		availableSecondaryNicks = availableSecondaryNicks[1:]
+		bot := availableBots[assignedBots]
+		assignedBots++
+		util.Debug("Assigning secondary nick %s to bot %s", nick, bot.GetCurrentNick())
+		go bot.AttemptNickChange(nick)
 	}
 }
 
@@ -144,6 +149,12 @@ func (nm *NickManager) RegisterBot(bot types.Bot) {
 	nm.mutex.Lock()
 	defer nm.mutex.Unlock()
 	nm.bots = append(nm.bots, bot)
+}
+
+func (nm *NickManager) SetBots(bots []types.Bot) {
+	nm.mutex.Lock()
+	defer nm.mutex.Unlock()
+	nm.bots = bots
 }
 
 func (nm *NickManager) getAvailableBots() []types.Bot {
@@ -157,14 +168,7 @@ func (nm *NickManager) getAvailableBots() []types.Bot {
 }
 
 func (nm *NickManager) ReturnNickToPool(nick string) {
-	nm.mutex.Lock()
-	defer nm.mutex.Unlock()
-
-	if util.Contains(nm.priorityNicks, nick) && !util.Contains(nm.priorityNickQueue, nick) {
-		nm.priorityNickQueue = append(nm.priorityNickQueue, nick)
-	} else if util.Contains(nm.secondaryNicks, nick) && !util.Contains(nm.secondaryNickQueue, nick) {
-		nm.secondaryNickQueue = append(nm.secondaryNickQueue, nick)
-	}
+	// No action needed since we check availability each time
 }
 
 func (nm *NickManager) GetNicksToCatch() []string {
