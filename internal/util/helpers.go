@@ -20,8 +20,5 @@ func IsTargetNick(nick string, targetNicks []string) bool {
 			return true
 		}
 	}
-	if len(nick) == 1 && nick >= "a" && nick <= "z" {
-		return true
-	}
 	return false
 }

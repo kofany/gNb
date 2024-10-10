@@ -160,7 +160,8 @@ func (bm *BotManager) AssignBotForNick(nick string) types.Bot {
 		return nil
 	}
 
+	// Round-robin assignment
 	bot := bm.availableBots[0]
-	bm.availableBots = bm.availableBots[1:]
+	bm.availableBots = append(bm.availableBots[1:], bot)
 	return bot
 }

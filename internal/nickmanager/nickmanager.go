@@ -11,12 +11,16 @@ import (
 )
 
 type NickManager struct {
-	nicksToCatch   []string
-	availableNicks chan string
-	bots           []types.Bot
-	mutex          sync.Mutex
-	botManager     types.BotManager
-	isonResponses  chan []string
+	nicksToCatch       []string
+	priorityNicks      []string
+	secondaryNicks     []string
+	availableBots      []types.Bot
+	bots               []types.Bot
+	mutex              sync.Mutex
+	botManager         types.BotManager
+	isonResponses      chan []string
+	priorityNickQueue  []string
+	secondaryNickQueue []string
 }
 
 type NicksData struct {
@@ -25,8 +29,7 @@ type NicksData struct {
 
 func NewNickManager() *NickManager {
 	return &NickManager{
-		availableNicks: make(chan string, 100),  // Buffer for 100 nicks
-		isonResponses:  make(chan []string, 10), // Buffer for ISON responses
+		isonResponses: make(chan []string, 10), // Buffer for ISON responses
 	}
 }
 
@@ -44,16 +47,17 @@ func (nm *NickManager) LoadNicks(filename string) error {
 		return err
 	}
 
-	nm.nicksToCatch = nicksData.Nicks
+	nm.priorityNicks = nicksData.Nicks
 
-	// Add single-letter nicks
+	// Add single-letter nicks to secondary nicks
 	letters := "abcdefghijklmnopqrstuvwxyz"
 	for _, c := range letters {
 		nick := string(c)
-		if !util.Contains(nm.nicksToCatch, nick) {
-			nm.nicksToCatch = append(nm.nicksToCatch, nick)
-		}
+		nm.secondaryNicks = append(nm.secondaryNicks, nick)
 	}
+
+	// Combine both lists into nicksToCatch
+	nm.nicksToCatch = append(nm.priorityNicks, nm.secondaryNicks...)
 
 	return nil
 }
@@ -83,53 +87,57 @@ func (nm *NickManager) handleISONResponse(onlineNicks []string) {
 
 	util.Debug("NickManager received ISON response: %v", onlineNicks)
 
-	var availableNicks []string
-	for _, nick := range nm.nicksToCatch {
-		if !util.Contains(onlineNicks, nick) {
-			availableNicks = append(availableNicks, nick)
+	// Update the nick queues based on availability
+	for _, nick := range nm.priorityNicks {
+		if !util.Contains(onlineNicks, nick) && !util.Contains(nm.priorityNickQueue, nick) {
+			nm.priorityNickQueue = append(nm.priorityNickQueue, nick)
 		}
 	}
-
-	if len(availableNicks) > 0 {
-		util.Debug("NickManager processing available nicks: %v", availableNicks)
-		for _, nick := range availableNicks {
-			select {
-			case nm.availableNicks <- nick:
-				util.Debug("Nick %s added to available nicks pool", nick)
-			default:
-				util.Debug("Channel full, skipping nick %s", nick)
-			}
+	for _, nick := range nm.secondaryNicks {
+		if !util.Contains(onlineNicks, nick) && !util.Contains(nm.secondaryNickQueue, nick) {
+			nm.secondaryNickQueue = append(nm.secondaryNickQueue, nick)
 		}
-	} else {
-		util.Debug("NickManager: No available nicks to process")
 	}
 }
 
 func (nm *NickManager) distributeNicksLoop() {
 	for {
-		select {
-		case nick := <-nm.availableNicks:
-			nm.distributeNick(nick)
+		nm.mutex.Lock()
+		availableBots := nm.getAvailableBots()
+		nm.mutex.Unlock()
+
+		if len(availableBots) == 0 {
+			time.Sleep(1 * time.Second)
+			continue
 		}
-	}
-}
 
-func (nm *NickManager) distributeNick(nick string) {
-	nm.mutex.Lock()
-	bot := nm.getAvailableBot()
-	nm.mutex.Unlock()
+		nm.mutex.Lock()
+		assignedBots := 0
 
-	if bot == nil {
-		util.Debug("No available bots to assign nick %s", nick)
-		// Requeue the nick after some time
-		go func() {
-			time.Sleep(5 * time.Second)
-			nm.ReturnNickToPool(nick)
-		}()
-		return
+		// Assign priority nicks first
+		for assignedBots < len(availableBots) && len(nm.priorityNickQueue) > 0 {
+			nick := nm.priorityNickQueue[0]
+			nm.priorityNickQueue = nm.priorityNickQueue[1:]
+			bot := availableBots[assignedBots]
+			assignedBots++
+			util.Debug("Assigning priority nick %s to bot %s", nick, bot.GetCurrentNick())
+			go bot.AttemptNickChange(nick)
+		}
+
+		// Then assign secondary nicks
+		for assignedBots < len(availableBots) && len(nm.secondaryNickQueue) > 0 {
+			nick := nm.secondaryNickQueue[0]
+			nm.secondaryNickQueue = nm.secondaryNickQueue[1:]
+			bot := availableBots[assignedBots]
+			assignedBots++
+			util.Debug("Assigning secondary nick %s to bot %s", nick, bot.GetCurrentNick())
+			go bot.AttemptNickChange(nick)
+		}
+
+		nm.mutex.Unlock()
+
+		time.Sleep(1 * time.Second)
 	}
-	util.Debug("Assigning nick %s to bot %s", nick, bot.GetCurrentNick())
-	go bot.AttemptNickChange(nick)
 }
 
 func (nm *NickManager) RegisterBot(bot types.Bot) {
@@ -138,20 +146,24 @@ func (nm *NickManager) RegisterBot(bot types.Bot) {
 	nm.bots = append(nm.bots, bot)
 }
 
-func (nm *NickManager) getAvailableBot() types.Bot {
+func (nm *NickManager) getAvailableBots() []types.Bot {
+	var availableBots []types.Bot
 	for _, bot := range nm.bots {
 		if bot.IsConnected() && !util.IsTargetNick(bot.GetCurrentNick(), nm.nicksToCatch) {
-			return bot
+			availableBots = append(availableBots, bot)
 		}
 	}
-	return nil
+	return availableBots
 }
 
 func (nm *NickManager) ReturnNickToPool(nick string) {
-	select {
-	case nm.availableNicks <- nick:
-	default:
-		// Channel full, skipping nick
+	nm.mutex.Lock()
+	defer nm.mutex.Unlock()
+
+	if util.Contains(nm.priorityNicks, nick) && !util.Contains(nm.priorityNickQueue, nick) {
+		nm.priorityNickQueue = append(nm.priorityNickQueue, nick)
+	} else if util.Contains(nm.secondaryNicks, nick) && !util.Contains(nm.secondaryNickQueue, nick) {
+		nm.secondaryNickQueue = append(nm.secondaryNickQueue, nick)
 	}
 }
 
