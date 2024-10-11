@@ -4,8 +4,9 @@ import "strings"
 
 // Contains checks if a slice contains a specific string
 func Contains(slice []string, item string) bool {
+	itemLower := strings.ToLower(item)
 	for _, s := range slice {
-		if s == item {
+		if strings.ToLower(s) == itemLower {
 			return true
 		}
 	}

@@ -123,7 +123,7 @@ owner_command_prefixes:
 
 global:
   log_level: debug  # Logging level: debug, info, warning, error
-  ison_interval: 1  # Interval in seconds between ISON requests
+  ison_interval: 2  # Interval in seconds between ISON requests
   nick_api:
     url: 'https://i.got.al/words.php'
     max_word_length: 12
@@ -227,13 +227,14 @@ owner_command_prefixes:
 
 # Plik /Users/kfn/gognb/data/nicks.json
 {
-    "nicks": [
-      "CoolBot",
-      "NickKeeper",
-      "IRCGuardian",
-      "NetWatcher"
-    ]
-  }
+  "nicks": [
+    "CoolBot",
+    "NickKeeper",
+    "IRCGuardian",
+    "NetWatcher",
+    "test335"
+  ]
+}
 # Koniec /Users/kfn/gognb/data/nicks.json
 
 # Plik /Users/kfn/gognb/doall.sh
@@ -252,14 +253,23 @@ OUTPUT_FILE="$PROJECT_DIR/all.txt"
 process_files() {
     local dir_path="$1"
     for file in "$dir_path"/*; do
-        if [ "$file" != "$OUTPUT_FILE" ]; then
-            if [ -f "$file" ]; then
-                echo "# Plik $file" >> "$OUTPUT_FILE"
-                cat "$file" >> "$OUTPUT_FILE"
-                echo -e "\n# Koniec $file\n" >> "$OUTPUT_FILE"
-            elif [ -d "$file" ]; then
-                process_files "$file"
-            fi
+        # Pomiń plik wyjściowy
+        if [ "$file" == "$OUTPUT_FILE" ]; then
+            continue
+        fi
+
+        # Pomiń pliki z rozszerzeniem .log
+        if [[ "$file" == *.log ]]; then
+            echo "Pomijanie pliku log: $file"
+            continue
+        fi
+
+        if [ -f "$file" ]; then
+            echo "# Plik $file" >> "$OUTPUT_FILE"
+            cat "$file" >> "$OUTPUT_FILE"
+            echo -e "\n# Koniec $file\n" >> "$OUTPUT_FILE"
+        elif [ -d "$file" ]; then
+            process_files "$file"
         fi
     done
 }
@@ -267,7 +277,7 @@ process_files() {
 # Przetwarzanie wszystkich plików w katalogu głównym projektu
 process_files "$PROJECT_DIR"
 
-echo "Zawartość wszystkich plików została zapisana do $OUTPUT_FILE"
+echo "Zawartość wszystkich plików (bez plików .log) została zapisana do $OUTPUT_FILE"
 
 # Koniec /Users/kfn/gognb/doall.sh
 
@@ -346,6 +356,10 @@ func IsOwner(event *irc.Event, owners OwnerList) bool {
 		}
 	}
 	return false
+}
+
+func (ol *OwnerList) GetOwners() []string {
+	return ol.Owners
 }
 
 # Koniec /Users/kfn/gognb/internal/auth/owner.go
@@ -706,6 +720,7 @@ func (b *Bot) GetCurrentNick() string {
 package bot
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/kofany/gNb/internal/auth"
@@ -768,6 +783,20 @@ func (b *Bot) HandleCommands(e *irc.Event) {
 		}
 	case "reconnect":
 		b.Reconnect()
+	// New commands for nick management
+	case "addnick":
+		b.handleAddNickCommand(args, sender)
+	case "delnick":
+		b.handleDelNickCommand(args, sender)
+	case "listnicks":
+		b.handleListNicksCommand(sender)
+	// New commands for owner management
+	case "addowner":
+		b.handleAddOwnerCommand(args, sender)
+	case "delowner":
+		b.handleDelOwnerCommand(args, sender)
+	case "listowners":
+		b.handleListOwnersCommand(sender)
 	default:
 		b.SendNotice(sender, "Unknown command")
 	}
@@ -783,12 +812,85 @@ func startsWithAny(s string, prefixes []string) bool {
 	return false
 }
 
+// Command handlers for nick management
+
+func (b *Bot) handleAddNickCommand(args []string, sender string) {
+	if len(args) >= 2 {
+		nick := args[1]
+		err := b.nickManager.AddNick(nick)
+		if err != nil {
+			b.SendNotice(sender, fmt.Sprintf("Error adding nick: %v", err))
+		} else {
+			b.SendNotice(sender, fmt.Sprintf("Nick '%s' has been added.", nick))
+		}
+	} else {
+		b.SendNotice(sender, "Usage: addnick <nick>")
+	}
+}
+
+func (b *Bot) handleDelNickCommand(args []string, sender string) {
+	if len(args) >= 2 {
+		nick := args[1]
+		err := b.nickManager.RemoveNick(nick)
+		if err != nil {
+			b.SendNotice(sender, fmt.Sprintf("Error removing nick: %v", err))
+		} else {
+			b.SendNotice(sender, fmt.Sprintf("Nick '%s' has been removed.", nick))
+		}
+	} else {
+		b.SendNotice(sender, "Usage: delnick <nick>")
+	}
+}
+
+func (b *Bot) handleListNicksCommand(sender string) {
+	nicks := b.nickManager.GetNicks()
+	b.SendNotice(sender, fmt.Sprintf("Current nicks: %s", strings.Join(nicks, ", ")))
+}
+
+// Command handlers for owner management
+
+func (b *Bot) handleAddOwnerCommand(args []string, sender string) {
+	if len(args) >= 2 {
+		ownerMask := args[1]
+		err := b.botManager.AddOwner(ownerMask)
+		if err != nil {
+			b.SendNotice(sender, fmt.Sprintf("Error adding owner: %v", err))
+		} else {
+			b.SendNotice(sender, fmt.Sprintf("Owner '%s' has been added.", ownerMask))
+		}
+	} else {
+		b.SendNotice(sender, "Usage: addowner <mask>")
+	}
+}
+
+func (b *Bot) handleDelOwnerCommand(args []string, sender string) {
+	if len(args) >= 2 {
+		ownerMask := args[1]
+		err := b.botManager.RemoveOwner(ownerMask)
+		if err != nil {
+			b.SendNotice(sender, fmt.Sprintf("Error removing owner: %v", err))
+		} else {
+			b.SendNotice(sender, fmt.Sprintf("Owner '%s' has been removed.", ownerMask))
+		}
+	} else {
+		b.SendNotice(sender, "Usage: delowner <mask>")
+	}
+}
+
+func (b *Bot) handleListOwnersCommand(sender string) {
+	owners := b.botManager.GetOwners()
+	b.SendNotice(sender, fmt.Sprintf("Current owners: %s", strings.Join(owners, ", ")))
+}
+
 # Koniec /Users/kfn/gognb/internal/bot/commands.go
 
 # Plik /Users/kfn/gognb/internal/bot/manager.go
 package bot
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
 	"sync"
 
 	"github.com/kofany/gNb/internal/auth"
@@ -871,6 +973,73 @@ func (bm *BotManager) ShouldHandleCommand(bot types.Bot) bool {
 	}
 	util.Debug("BotManager: Bot %s will not handle the command", bot.GetCurrentNick())
 	return false
+}
+
+func (bm *BotManager) AddOwner(ownerMask string) error {
+	bm.mutex.Lock()
+	defer bm.mutex.Unlock()
+
+	// Sprawdź, czy owner już istnieje
+	for _, owner := range bm.owners.Owners {
+		if owner == ownerMask {
+			return fmt.Errorf("owner '%s' already exists", ownerMask)
+		}
+	}
+
+	bm.owners.Owners = append(bm.owners.Owners, ownerMask)
+
+	// Zapisz do pliku
+	return bm.saveOwnersToFile()
+}
+
+func (bm *BotManager) RemoveOwner(ownerMask string) error {
+	bm.mutex.Lock()
+	defer bm.mutex.Unlock()
+
+	index := -1
+	for i, owner := range bm.owners.Owners {
+		if owner == ownerMask {
+			index = i
+			break
+		}
+	}
+
+	if index == -1 {
+		return fmt.Errorf("owner '%s' not found", ownerMask)
+	}
+
+	bm.owners.Owners = append(bm.owners.Owners[:index], bm.owners.Owners[index+1:]...)
+
+	// Zapisz do pliku
+	return bm.saveOwnersToFile()
+}
+
+func (bm *BotManager) GetOwners() []string {
+	bm.mutex.Lock()
+	defer bm.mutex.Unlock()
+
+	ownersCopy := make([]string, len(bm.owners.Owners))
+	copy(ownersCopy, bm.owners.Owners)
+	return ownersCopy
+}
+
+func (bm *BotManager) saveOwnersToFile() error {
+	jsonData, err := json.MarshalIndent(bm.owners, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile("configs/owners.json", jsonData, 0644)
+	if err != nil {
+		return err
+	}
+
+	// Zaktualizuj listę właścicieli w botach
+	for _, bot := range bm.bots {
+		bot.SetOwnerList(bm.owners)
+	}
+
+	return nil
 }
 
 # Koniec /Users/kfn/gognb/internal/bot/manager.go
@@ -1133,6 +1302,7 @@ package nickmanager
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -1310,6 +1480,83 @@ func (nm *NickManager) GetNicksToCatch() []string {
 	return nicksCopy
 }
 
+func (nm *NickManager) AddNick(nick string) error {
+	nm.mutex.Lock()
+	defer nm.mutex.Unlock()
+
+	// Sprawdź, czy nick już istnieje
+	for _, n := range nm.priorityNicks {
+		if n == nick {
+			return fmt.Errorf("nick '%s' already exists", nick)
+		}
+	}
+
+	// Dodaj nick do listy priorytetowej
+	nm.priorityNicks = append(nm.priorityNicks, nick)
+	nm.nicksToCatch = append(nm.nicksToCatch, nick)
+
+	// Zapisz do pliku
+	return nm.saveNicksToFile()
+}
+
+func (nm *NickManager) RemoveNick(nick string) error {
+	nm.mutex.Lock()
+	defer nm.mutex.Unlock()
+
+	// Usuń nick z listy priorytetowej
+	index := -1
+	for i, n := range nm.priorityNicks {
+		if n == nick {
+			index = i
+			break
+		}
+	}
+
+	if index == -1 {
+		return fmt.Errorf("nick '%s' not found", nick)
+	}
+
+	nm.priorityNicks = append(nm.priorityNicks[:index], nm.priorityNicks[index+1:]...)
+
+	// Usuń nick z listy nicksToCatch
+	index = -1
+	for i, n := range nm.nicksToCatch {
+		if n == nick {
+			index = i
+			break
+		}
+	}
+
+	if index != -1 {
+		nm.nicksToCatch = append(nm.nicksToCatch[:index], nm.nicksToCatch[index+1:]...)
+	}
+
+	// Zapisz do pliku
+	return nm.saveNicksToFile()
+}
+
+func (nm *NickManager) GetNicks() []string {
+	nm.mutex.Lock()
+	defer nm.mutex.Unlock()
+
+	nicksCopy := make([]string, len(nm.priorityNicks))
+	copy(nicksCopy, nm.priorityNicks)
+	return nicksCopy
+}
+
+func (nm *NickManager) saveNicksToFile() error {
+	data := NicksData{
+		Nicks: nm.priorityNicks,
+	}
+
+	jsonData, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile("data/nicks.json", jsonData, 0644)
+}
+
 # Koniec /Users/kfn/gognb/internal/nickmanager/nickmanager.go
 
 # Plik /Users/kfn/gognb/internal/types/interfaces.go
@@ -1334,10 +1581,15 @@ type NickManager interface {
 	ReturnNickToPool(nick string)
 	SetBots(bots []Bot)
 	GetNicksToCatch() []string
+	AddNick(nick string) error
+	RemoveNick(nick string) error
+	GetNicks() []string
 }
-
 type BotManager interface {
 	ShouldHandleCommand(bot Bot) bool
+	AddOwner(ownerMask string) error
+	RemoveOwner(ownerMask string) error
+	GetOwners() []string
 }
 
 # Koniec /Users/kfn/gognb/internal/types/interfaces.go

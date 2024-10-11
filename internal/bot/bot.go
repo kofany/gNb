@@ -139,23 +139,34 @@ func (b *Bot) addCallbacks() {
 
 	// Callback for nick changes
 	b.Connection.AddCallback("NICK", func(e *irc.Event) {
-		if e.Nick == b.CurrentNick {
+		if e.Nick == b.Connection.GetNick() {
+			oldNick := b.CurrentNick
 			b.CurrentNick = e.Message()
-			util.Info("Bot %s changed nick to %s", e.Nick, b.CurrentNick)
+			util.Info("Bot %s changed nick to %s", oldNick, b.CurrentNick)
 		}
 	})
 
 	// Callback for ISON response
 	b.Connection.AddCallback("303", b.handleISONResponse)
 
-	// Handle error replies for nick changes
-	b.Connection.AddCallback("433", func(e *irc.Event) {
-		if e.Arguments[0] == b.CurrentNick {
-			util.Warning("Bot %s attempted to change nick to %s, but it's already in use", b.CurrentNick, e.Arguments[1])
-			// Return nick to pool
-			b.nickManager.ReturnNickToPool(e.Arguments[1])
-		}
-	})
+	// List of nick-related error codes
+	nickErrorCodes := []string{"431", "432", "433", "436", "437", "484"}
+
+	for _, code := range nickErrorCodes {
+		codeCopy := code // Capture the current value of code
+		b.Connection.AddCallback(codeCopy, func(e *irc.Event) {
+			util.Warning("Bot %s encountered error %s: %s", b.CurrentNick, codeCopy, e.Message())
+
+			// If applicable, return the problematic nick to the pool
+			if len(e.Arguments) > 1 {
+				nickInQuestion := e.Arguments[1]
+				b.nickManager.ReturnNickToPool(nickInQuestion)
+			}
+
+			// Reset the nick to the current nick to prevent automatic change
+			b.Connection.Nick(b.CurrentNick)
+		})
+	}
 
 	// Callback for private and public messages
 	b.Connection.AddCallback("PRIVMSG", b.handlePrivMsg)
