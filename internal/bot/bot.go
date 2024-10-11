@@ -91,6 +91,9 @@ func (b *Bot) connectWithRetry() error {
 		b.Connection.UseTLS = b.Config.SSL
 		b.Connection.RealName = b.Realname
 
+		// Zastąp domyślne callbacki dla błędów nicka
+		b.replaceNickErrorCallbacks()
+
 		// Initialize connected channel
 		b.connected = make(chan struct{})
 
@@ -362,4 +365,32 @@ func (b *Bot) SetChannels(channels []string) {
 // GetCurrentNick returns the bot's current nick
 func (b *Bot) GetCurrentNick() string {
 	return b.CurrentNick
+}
+
+func (b *Bot) replaceNickErrorCallbacks() {
+	// Zastąp domyślny callback dla błędu 433 (ERR_NICKNAMEINUSE)
+	b.Connection.ReplaceCallback("433", 0, func(e *irc.Event) {
+		util.Warning("Bot %s encountered error 433 (Nickname is already in use): %s", b.CurrentNick, e.Message())
+
+		if len(e.Arguments) > 1 {
+			nickInQuestion := e.Arguments[1]
+			b.nickManager.MarkNickAsTemporarilyUnavailable(nickInQuestion)
+		}
+
+		// Ustaw nick na obecny, aby zapobiec automatycznej zmianie
+		b.Connection.Nick(b.CurrentNick)
+	})
+
+	// Zastąp domyślny callback dla błędu 437 (ERR_UNAVAILRESOURCE)
+	b.Connection.ReplaceCallback("437", 0, func(e *irc.Event) {
+		util.Warning("Bot %s encountered error 437 (Nick/channel is temporarily unavailable): %s", b.CurrentNick, e.Message())
+
+		if len(e.Arguments) > 1 {
+			nickInQuestion := e.Arguments[1]
+			b.nickManager.MarkNickAsTemporarilyUnavailable(nickInQuestion)
+		}
+
+		// Ustaw nick na obecny, aby zapobiec automatycznej zmianie
+		b.Connection.Nick(b.CurrentNick)
+	})
 }
