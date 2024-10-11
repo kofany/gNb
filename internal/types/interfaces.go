@@ -22,6 +22,7 @@ type NickManager interface {
 	AddNick(nick string) error
 	RemoveNick(nick string) error
 	GetNicks() []string
+	MarkNickAsTemporarilyUnavailable(nick string) // Dodaj tę linię
 }
 type BotManager interface {
 	ShouldHandleCommand(bot Bot) bool

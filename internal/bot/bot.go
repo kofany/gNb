@@ -134,7 +134,13 @@ func (b *Bot) addCallbacks() {
 		for _, channel := range b.channels {
 			b.JoinChannel(channel)
 		}
-		close(b.connected) // Signal that connection has been established
+		// Signal that connection has been established
+		select {
+		case <-b.connected:
+			// Kanał już zamknięty, nic nie robimy
+		default:
+			close(b.connected)
+		}
 	})
 
 	// Callback for nick changes
@@ -153,17 +159,17 @@ func (b *Bot) addCallbacks() {
 	nickErrorCodes := []string{"431", "432", "433", "436", "437", "484"}
 
 	for _, code := range nickErrorCodes {
-		codeCopy := code // Capture the current value of code
+		codeCopy := code
 		b.Connection.AddCallback(codeCopy, func(e *irc.Event) {
 			util.Warning("Bot %s encountered error %s: %s", b.CurrentNick, codeCopy, e.Message())
 
-			// If applicable, return the problematic nick to the pool
+			// Jeśli dotyczy zmiany nicka, dodaj nick do tempUnavailableNicks
 			if len(e.Arguments) > 1 {
 				nickInQuestion := e.Arguments[1]
-				b.nickManager.ReturnNickToPool(nickInQuestion)
+				b.nickManager.MarkNickAsTemporarilyUnavailable(nickInQuestion)
 			}
 
-			// Reset the nick to the current nick to prevent automatic change
+			// Reset nicka do obecnego, aby zapobiec automatycznej zmianie
 			b.Connection.Nick(b.CurrentNick)
 		})
 	}

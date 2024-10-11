@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,13 +13,14 @@ import (
 )
 
 type NickManager struct {
-	nicksToCatch   []string
-	priorityNicks  []string
-	secondaryNicks []string
-	bots           []types.Bot
-	botIndex       int
-	mutex          sync.Mutex
-	isonInterval   time.Duration
+	nicksToCatch         []string
+	priorityNicks        []string
+	secondaryNicks       []string
+	bots                 []types.Bot
+	botIndex             int
+	mutex                sync.Mutex
+	isonInterval         time.Duration
+	tempUnavailableNicks map[string]time.Time // Nowa mapa
 }
 
 type NicksData struct {
@@ -26,7 +28,9 @@ type NicksData struct {
 }
 
 func NewNickManager() *NickManager {
-	return &NickManager{}
+	return &NickManager{
+		tempUnavailableNicks: make(map[string]time.Time),
+	}
 }
 
 func (nm *NickManager) LoadNicks(filename string) error {
@@ -100,9 +104,11 @@ func (nm *NickManager) handleISONResponse(onlineNicks []string) {
 
 	util.Debug("NickManager received ISON response: %v", onlineNicks)
 
-	// Determine available nicks
-	var availablePriorityNicks []string
-	var availableSecondaryNicks []string
+	currentTime := time.Now()
+	nm.cleanupTempUnavailableNicks(currentTime)
+
+	availablePriorityNicks := nm.filterAvailableNicks(nm.priorityNicks, onlineNicks)
+	availableSecondaryNicks := nm.filterAvailableNicks(nm.secondaryNicks, onlineNicks)
 
 	for _, nick := range nm.priorityNicks {
 		if !util.Contains(onlineNicks, nick) {
@@ -255,4 +261,30 @@ func (nm *NickManager) saveNicksToFile() error {
 	}
 
 	return os.WriteFile("data/nicks.json", jsonData, 0644)
+}
+
+func (nm *NickManager) cleanupTempUnavailableNicks(currentTime time.Time) {
+	for nick, unblockTime := range nm.tempUnavailableNicks {
+		if currentTime.After(unblockTime) {
+			delete(nm.tempUnavailableNicks, nick)
+		}
+	}
+}
+
+func (nm *NickManager) filterAvailableNicks(nicks []string, onlineNicks []string) []string {
+	var available []string
+	for _, nick := range nicks {
+		lowerNick := strings.ToLower(nick)
+		if !util.Contains(onlineNicks, nick) && nm.tempUnavailableNicks[lowerNick].IsZero() {
+			available = append(available, nick)
+		}
+	}
+	return available
+}
+
+func (nm *NickManager) MarkNickAsTemporarilyUnavailable(nick string) {
+	nm.mutex.Lock()
+	defer nm.mutex.Unlock()
+
+	nm.tempUnavailableNicks[strings.ToLower(nick)] = time.Now().Add(5 * time.Minute)
 }
