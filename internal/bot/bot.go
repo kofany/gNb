@@ -94,7 +94,7 @@ func (b *Bot) connectWithRetry() error {
 		// Initialize connected channel
 		b.connected = make(chan struct{})
 
-		// Add basic callbacks
+		// Add callbacks
 		b.addCallbacks()
 
 		util.Info("Bot %s is attempting to connect to %s", b.CurrentNick, b.Config.ServerAddress())
@@ -105,10 +105,6 @@ func (b *Bot) connectWithRetry() error {
 			continue
 		}
 
-		// Zastąp domyślne callbacki po połączeniu
-		b.replaceNickErrorCallbacks()
-
-		// Uruchom pętlę eventów
 		go b.Connection.Loop()
 
 		// Wait for connection confirmation or timeout
@@ -166,15 +162,11 @@ func (b *Bot) addCallbacks() {
 		codeCopy := code
 		b.Connection.AddCallback(codeCopy, func(e *irc.Event) {
 			util.Warning("Bot %s encountered error %s: %s", b.CurrentNick, codeCopy, e.Message())
-
 			// Jeśli dotyczy zmiany nicka, dodaj nick do tempUnavailableNicks
 			if len(e.Arguments) > 1 {
 				nickInQuestion := e.Arguments[1]
 				b.nickManager.MarkNickAsTemporarilyUnavailable(nickInQuestion)
 			}
-
-			// Reset nicka do obecnego, aby zapobiec automatycznej zmianie
-			b.Connection.Nick(b.CurrentNick)
 		})
 	}
 
@@ -366,32 +358,4 @@ func (b *Bot) SetChannels(channels []string) {
 // GetCurrentNick returns the bot's current nick
 func (b *Bot) GetCurrentNick() string {
 	return b.CurrentNick
-}
-
-func (b *Bot) replaceNickErrorCallbacks() {
-	// Zastąp domyślny callback dla błędu 433 (ERR_NICKNAMEINUSE)
-	b.Connection.ReplaceCallback("433", 0, func(e *irc.Event) {
-		util.Warning("Bot %s encountered error 433 (Nickname is already in use): %s", b.CurrentNick, e.Message())
-
-		if len(e.Arguments) > 1 {
-			nickInQuestion := e.Arguments[1]
-			b.nickManager.MarkNickAsTemporarilyUnavailable(nickInQuestion)
-		}
-
-		// Ustaw nick na obecny, aby zapobiec automatycznej zmianie
-		b.Connection.Nick(b.CurrentNick)
-	})
-
-	// Zastąp domyślny callback dla błędu 437 (ERR_UNAVAILRESOURCE)
-	b.Connection.ReplaceCallback("437", 0, func(e *irc.Event) {
-		util.Warning("Bot %s encountered error 437 (Nick/channel is temporarily unavailable): %s", b.CurrentNick, e.Message())
-
-		if len(e.Arguments) > 1 {
-			nickInQuestion := e.Arguments[1]
-			b.nickManager.MarkNickAsTemporarilyUnavailable(nickInQuestion)
-		}
-
-		// Ustaw nick na obecny, aby zapobiec automatycznej zmianie
-		b.Connection.Nick(b.CurrentNick)
-	})
 }
