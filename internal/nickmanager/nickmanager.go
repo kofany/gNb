@@ -110,18 +110,6 @@ func (nm *NickManager) handleISONResponse(onlineNicks []string) {
 	availablePriorityNicks := nm.filterAvailableNicks(nm.priorityNicks, onlineNicks)
 	availableSecondaryNicks := nm.filterAvailableNicks(nm.secondaryNicks, onlineNicks)
 
-	for _, nick := range nm.priorityNicks {
-		if !util.Contains(onlineNicks, nick) {
-			availablePriorityNicks = append(availablePriorityNicks, nick)
-		}
-	}
-
-	for _, nick := range nm.secondaryNicks {
-		if !util.Contains(onlineNicks, nick) {
-			availableSecondaryNicks = append(availableSecondaryNicks, nick)
-		}
-	}
-
 	// Get list of available bots
 	availableBots := nm.getAvailableBots()
 	if len(availableBots) == 0 {

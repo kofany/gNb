@@ -501,28 +501,45 @@ func (b *Bot) addCallbacks() {
 		for _, channel := range b.channels {
 			b.JoinChannel(channel)
 		}
-		close(b.connected) // Signal that connection has been established
+		// Signal that connection has been established
+		select {
+		case <-b.connected:
+			// Kanał już zamknięty, nic nie robimy
+		default:
+			close(b.connected)
+		}
 	})
 
 	// Callback for nick changes
 	b.Connection.AddCallback("NICK", func(e *irc.Event) {
-		if e.Nick == b.CurrentNick {
+		if e.Nick == b.Connection.GetNick() {
+			oldNick := b.CurrentNick
 			b.CurrentNick = e.Message()
-			util.Info("Bot %s changed nick to %s", e.Nick, b.CurrentNick)
+			util.Info("Bot %s changed nick to %s", oldNick, b.CurrentNick)
 		}
 	})
 
 	// Callback for ISON response
 	b.Connection.AddCallback("303", b.handleISONResponse)
 
-	// Handle error replies for nick changes
-	b.Connection.AddCallback("433", func(e *irc.Event) {
-		if e.Arguments[0] == b.CurrentNick {
-			util.Warning("Bot %s attempted to change nick to %s, but it's already in use", b.CurrentNick, e.Arguments[1])
-			// Return nick to pool
-			b.nickManager.ReturnNickToPool(e.Arguments[1])
-		}
-	})
+	// List of nick-related error codes
+	nickErrorCodes := []string{"431", "432", "433", "436", "437", "484"}
+
+	for _, code := range nickErrorCodes {
+		codeCopy := code
+		b.Connection.AddCallback(codeCopy, func(e *irc.Event) {
+			util.Warning("Bot %s encountered error %s: %s", b.CurrentNick, codeCopy, e.Message())
+
+			// Jeśli dotyczy zmiany nicka, dodaj nick do tempUnavailableNicks
+			if len(e.Arguments) > 1 {
+				nickInQuestion := e.Arguments[1]
+				b.nickManager.MarkNickAsTemporarilyUnavailable(nickInQuestion)
+			}
+
+			// Reset nicka do obecnego, aby zapobiec automatycznej zmianie
+			b.Connection.Nick(b.CurrentNick)
+		})
+	}
 
 	// Callback for private and public messages
 	b.Connection.AddCallback("PRIVMSG", b.handlePrivMsg)
@@ -1304,6 +1321,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -1312,13 +1330,14 @@ import (
 )
 
 type NickManager struct {
-	nicksToCatch   []string
-	priorityNicks  []string
-	secondaryNicks []string
-	bots           []types.Bot
-	botIndex       int
-	mutex          sync.Mutex
-	isonInterval   time.Duration
+	nicksToCatch         []string
+	priorityNicks        []string
+	secondaryNicks       []string
+	bots                 []types.Bot
+	botIndex             int
+	mutex                sync.Mutex
+	isonInterval         time.Duration
+	tempUnavailableNicks map[string]time.Time // Nowa mapa
 }
 
 type NicksData struct {
@@ -1326,7 +1345,9 @@ type NicksData struct {
 }
 
 func NewNickManager() *NickManager {
-	return &NickManager{}
+	return &NickManager{
+		tempUnavailableNicks: make(map[string]time.Time),
+	}
 }
 
 func (nm *NickManager) LoadNicks(filename string) error {
@@ -1400,9 +1421,11 @@ func (nm *NickManager) handleISONResponse(onlineNicks []string) {
 
 	util.Debug("NickManager received ISON response: %v", onlineNicks)
 
-	// Determine available nicks
-	var availablePriorityNicks []string
-	var availableSecondaryNicks []string
+	currentTime := time.Now()
+	nm.cleanupTempUnavailableNicks(currentTime)
+
+	availablePriorityNicks := nm.filterAvailableNicks(nm.priorityNicks, onlineNicks)
+	availableSecondaryNicks := nm.filterAvailableNicks(nm.secondaryNicks, onlineNicks)
 
 	for _, nick := range nm.priorityNicks {
 		if !util.Contains(onlineNicks, nick) {
@@ -1557,6 +1580,35 @@ func (nm *NickManager) saveNicksToFile() error {
 	return os.WriteFile("data/nicks.json", jsonData, 0644)
 }
 
+func (nm *NickManager) cleanupTempUnavailableNicks(currentTime time.Time) {
+	for nick, unblockTime := range nm.tempUnavailableNicks {
+		if currentTime.After(unblockTime) {
+			delete(nm.tempUnavailableNicks, nick)
+		}
+	}
+}
+
+func (nm *NickManager) filterAvailableNicks(nicks []string, onlineNicks []string) []string {
+	var available []string
+	for _, nick := range nicks {
+		lowerNick := strings.ToLower(nick)
+		if !util.ContainsIgnoreCase(onlineNicks, nick) {
+			// Sprawdź, czy nick nie jest tymczasowo niedostępny
+			if _, exists := nm.tempUnavailableNicks[lowerNick]; !exists {
+				available = append(available, nick)
+			}
+		}
+	}
+	return available
+}
+
+func (nm *NickManager) MarkNickAsTemporarilyUnavailable(nick string) {
+	nm.mutex.Lock()
+	defer nm.mutex.Unlock()
+
+	nm.tempUnavailableNicks[strings.ToLower(nick)] = time.Now().Add(5 * time.Minute)
+}
+
 # Koniec /Users/kfn/gognb/internal/nickmanager/nickmanager.go
 
 # Plik /Users/kfn/gognb/internal/types/interfaces.go
@@ -1584,6 +1636,7 @@ type NickManager interface {
 	AddNick(nick string) error
 	RemoveNick(nick string) error
 	GetNicks() []string
+	MarkNickAsTemporarilyUnavailable(nick string) // Dodaj tę linię
 }
 type BotManager interface {
 	ShouldHandleCommand(bot Bot) bool
@@ -1601,8 +1654,9 @@ import "strings"
 
 // Contains checks if a slice contains a specific string
 func Contains(slice []string, item string) bool {
+	itemLower := strings.ToLower(item)
 	for _, s := range slice {
-		if s == item {
+		if strings.ToLower(s) == itemLower {
 			return true
 		}
 	}
@@ -1614,6 +1668,16 @@ func IsTargetNick(nick string, targetNicks []string) bool {
 	nick = strings.ToLower(nick)
 	for _, target := range targetNicks {
 		if strings.ToLower(target) == nick {
+			return true
+		}
+	}
+	return false
+}
+
+func ContainsIgnoreCase(slice []string, item string) bool {
+	itemLower := strings.ToLower(item)
+	for _, s := range slice {
+		if strings.ToLower(s) == itemLower {
 			return true
 		}
 	}
