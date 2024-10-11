@@ -1,6 +1,9 @@
 package bot
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
 	"sync"
 
 	"github.com/kofany/gNb/internal/auth"
@@ -83,4 +86,71 @@ func (bm *BotManager) ShouldHandleCommand(bot types.Bot) bool {
 	}
 	util.Debug("BotManager: Bot %s will not handle the command", bot.GetCurrentNick())
 	return false
+}
+
+func (bm *BotManager) AddOwner(ownerMask string) error {
+	bm.mutex.Lock()
+	defer bm.mutex.Unlock()
+
+	// Sprawdź, czy owner już istnieje
+	for _, owner := range bm.owners.Owners {
+		if owner == ownerMask {
+			return fmt.Errorf("owner '%s' already exists", ownerMask)
+		}
+	}
+
+	bm.owners.Owners = append(bm.owners.Owners, ownerMask)
+
+	// Zapisz do pliku
+	return bm.saveOwnersToFile()
+}
+
+func (bm *BotManager) RemoveOwner(ownerMask string) error {
+	bm.mutex.Lock()
+	defer bm.mutex.Unlock()
+
+	index := -1
+	for i, owner := range bm.owners.Owners {
+		if owner == ownerMask {
+			index = i
+			break
+		}
+	}
+
+	if index == -1 {
+		return fmt.Errorf("owner '%s' not found", ownerMask)
+	}
+
+	bm.owners.Owners = append(bm.owners.Owners[:index], bm.owners.Owners[index+1:]...)
+
+	// Zapisz do pliku
+	return bm.saveOwnersToFile()
+}
+
+func (bm *BotManager) GetOwners() []string {
+	bm.mutex.Lock()
+	defer bm.mutex.Unlock()
+
+	ownersCopy := make([]string, len(bm.owners.Owners))
+	copy(ownersCopy, bm.owners.Owners)
+	return ownersCopy
+}
+
+func (bm *BotManager) saveOwnersToFile() error {
+	jsonData, err := json.MarshalIndent(bm.owners, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile("configs/owners.json", jsonData, 0644)
+	if err != nil {
+		return err
+	}
+
+	// Zaktualizuj listę właścicieli w botach
+	for _, bot := range bm.bots {
+		bot.SetOwnerList(bm.owners)
+	}
+
+	return nil
 }

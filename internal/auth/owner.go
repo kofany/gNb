@@ -38,3 +38,7 @@ func IsOwner(event *irc.Event, owners OwnerList) bool {
 	}
 	return false
 }
+
+func (ol *OwnerList) GetOwners() []string {
+	return ol.Owners
+}

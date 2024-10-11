@@ -1,741 +1,3 @@
-# Plik /Users/kfn/gognb/bot.log
-INFO: 2024/09/28 12:00:49 Logger zainicjalizowany z poziomem: debug
-DEBUG: 2024/09/28 12:00:49 Właściciele wczytani: {Owners:[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:00:49 NickManager zainicjalizowany z nickami: [CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z]
-DEBUG: 2024/09/28 12:00:49 Bot Electioneers ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:00:49 Bot Electioneers ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:00:49 BotManager dodał bota Electioneers
-DEBUG: 2024/09/28 12:00:49 Bot Opisales ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:00:49 Bot Opisales ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:00:49 BotManager dodał bota Opisales
-DEBUG: 2024/09/28 12:00:49 Bot Magdziami ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:00:49 Bot Magdziami ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:00:49 BotManager dodał bota Magdziami
-DEBUG: 2024/09/28 12:00:49 Bot Ufetowalem ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:00:49 Bot Ufetowalem ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:00:49 BotManager dodał bota Ufetowalem
-DEBUG: 2024/09/28 12:00:50 Bot Akrylamidzie ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:00:50 Bot Akrylamidzie ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:00:50 BotManager dodał bota Akrylamidzie
-DEBUG: 2024/09/28 12:00:50 Bot Podlegasz ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:00:50 Bot Podlegasz ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:00:50 BotManager dodał bota Podlegasz
-DEBUG: 2024/09/28 12:00:50 Bot Kminowcami ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:00:50 Bot Kminowcami ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:00:50 BotManager dodał bota Kminowcami
-DEBUG: 2024/09/28 12:00:50 Bot Plewiarek ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:00:50 Bot Plewiarek ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:00:50 BotManager dodał bota Plewiarek
-DEBUG: 2024/09/28 12:00:50 Konfiguracja wczytana: &{Global:{LogLevel:debug IsonInterval:1 MaxNickLength:14 CommandPrefixes:[! . @] NickAPI:{URL:https://i.got.al/words.php MaxWordLength:12 Timeout:5} Channels:[] ReconnectRetries:2 ReconnectInterval:1} Bots:[{Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e} {Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e} {Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e} {Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e}] Channels:[#irpg]}
-INFO: 2024/09/28 12:00:50 Bot Electioneers próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:00:50 Bot Akrylamidzie próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:00:50 Bot Opisales próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:00:50 Bot Magdziami próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:00:50 Bot Kminowcami próbuje połączyć się z mirc.irc.al:6667
-DEBUG: 2024/09/28 12:00:50 BotManager: monitorNicks started
-INFO: 2024/09/28 12:00:50 Bot Podlegasz próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:00:50 Bot Plewiarek próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:00:50 Bot jest uruchomiony. Naciśnij Ctrl+C, aby zakończyć.
-INFO: 2024/09/28 12:00:50 Bot Ufetowalem próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:00:50 Bot Magdziami połączony z mirc.irc.al jako Magdziami
-DEBUG: 2024/09/28 12:00:50 Bot Magdziami dołącza do kanału #irpg
-INFO: 2024/09/28 12:00:50 Bot Magdziami pomyślnie połączony
-INFO: 2024/09/28 12:00:50 Bot Plewiarek połączony z mirc.irc.al jako Plewiarek
-DEBUG: 2024/09/28 12:00:50 Bot Plewiarek dołącza do kanału #irpg
-INFO: 2024/09/28 12:00:50 Bot Ufetowalem połączony z mirc.irc.al jako Ufetowalem
-DEBUG: 2024/09/28 12:00:50 Bot Ufetowalem dołącza do kanału #irpg
-INFO: 2024/09/28 12:00:50 Bot Ufetowalem pomyślnie połączony
-INFO: 2024/09/28 12:00:50 Bot Plewiarek pomyślnie połączony
-DEBUG: 2024/09/28 12:00:51 BotManager: ticker fired
-DEBUG: 2024/09/28 12:00:51 BotManager: Bot Magdziami wysyła ISON
-DEBUG: 2024/09/28 12:00:51 Bot Magdziami wysyła komendę ISON: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/09/28 12:00:51 Bot Magdziami otrzymał odpowiedź ISON: []
-DEBUG: 2024/09/28 12:00:51 NickManager otrzymał odpowiedź ISON: []
-DEBUG: 2024/09/28 12:00:51 NickManager przetwarza dostępne nicki: [CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z]
-DEBUG: 2024/09/28 12:00:51 Nick CoolBot dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick NickKeeper dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick IRCGuardian dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick NetWatcher dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick a dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick b dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick c dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick d dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick e dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick f dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick g dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick h dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick i dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick j dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick k dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick l dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick m dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick n dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick o dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick p dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick q dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick r dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick s dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick t dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick u dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick v dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick w dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick x dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick y dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Nick z dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:00:51 Przydzielanie nicka CoolBot do bota Magdziami
-DEBUG: 2024/09/28 12:00:51 Przydzielanie nicka NickKeeper do bota Ufetowalem
-DEBUG: 2024/09/28 12:00:51 Przydzielanie nicka IRCGuardian do bota Plewiarek
-DEBUG: 2024/09/28 12:00:51 Bot Plewiarek otrzymał prośbę o zmianę nicka na IRCGuardian
-DEBUG: 2024/09/28 12:00:51 Bot Magdziami otrzymał prośbę o zmianę nicka na CoolBot
-DEBUG: 2024/09/28 12:00:51 Bot Ufetowalem otrzymał prośbę o zmianę nicka na NickKeeper
-DEBUG: 2024/09/28 12:00:52 BotManager: ticker fired
-WARNING: 2024/09/28 12:01:00 Bot Akrylamidzie nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-WARNING: 2024/09/28 12:01:00 Bot Kminowcami nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-INFO: 2024/09/28 12:01:00 Bot Akrylamidzie próbuje połączyć się z mirc.irc.al:6667
-WARNING: 2024/09/28 12:01:00 Bot Electioneers nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-INFO: 2024/09/28 12:01:00 Bot Kminowcami próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:01:00 Bot Electioneers próbuje połączyć się z mirc.irc.al:6667
-WARNING: 2024/09/28 12:01:00 Bot Opisales nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-WARNING: 2024/09/28 12:01:00 Bot Podlegasz nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-INFO: 2024/09/28 12:01:00 Bot Opisales próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:01:00 Bot Podlegasz próbuje połączyć się z mirc.irc.al:6667
-WARNING: 2024/09/28 12:01:10 Bot Electioneers nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-ERROR: 2024/09/28 12:01:10 Bot Electioneers nie mógł się połączyć: bot Electioneers nie mógł się połączyć po 2 próbach
-WARNING: 2024/09/28 12:01:10 Bot Akrylamidzie nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-WARNING: 2024/09/28 12:01:10 Bot Kminowcami nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-ERROR: 2024/09/28 12:01:10 Bot Kminowcami nie mógł się połączyć: bot Kminowcami nie mógł się połączyć po 2 próbach
-ERROR: 2024/09/28 12:01:10 Bot Akrylamidzie nie mógł się połączyć: bot Akrylamidzie nie mógł się połączyć po 2 próbach
-WARNING: 2024/09/28 12:01:10 Bot Podlegasz nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-ERROR: 2024/09/28 12:01:10 Bot Podlegasz nie mógł się połączyć: bot Podlegasz nie mógł się połączyć po 2 próbach
-WARNING: 2024/09/28 12:01:10 Bot Opisales nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-ERROR: 2024/09/28 12:01:10 Bot Opisales nie mógł się połączyć: bot Opisales nie mógł się połączyć po 2 próbach
-INFO: 2024/09/28 12:12:09 Logger zainicjalizowany z poziomem: debug
-DEBUG: 2024/09/28 12:12:09 Właściciele wczytani: {Owners:[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:12:09 NickManager zainicjalizowany z nickami: [CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z]
-DEBUG: 2024/09/28 12:12:09 Bot Nieszklonymi ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:12:09 Bot Nieszklonymi ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:12:09 BotManager dodał bota Nieszklonymi
-DEBUG: 2024/09/28 12:12:09 Bot Rokefelerze ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:12:09 Bot Rokefelerze ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:12:09 BotManager dodał bota Rokefelerze
-DEBUG: 2024/09/28 12:12:09 Bot Hajduki ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:12:09 Bot Hajduki ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:12:09 BotManager dodał bota Hajduki
-DEBUG: 2024/09/28 12:12:09 Bot Niewezbrania ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:12:09 Bot Niewezbrania ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:12:09 BotManager dodał bota Niewezbrania
-DEBUG: 2024/09/28 12:12:10 Bot Pogrubionemu ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:12:10 Bot Pogrubionemu ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:12:10 BotManager dodał bota Pogrubionemu
-DEBUG: 2024/09/28 12:12:10 Bot Niezawodny ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:12:10 Bot Niezawodny ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:12:10 BotManager dodał bota Niezawodny
-DEBUG: 2024/09/28 12:12:10 Bot Dopasuj ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:12:10 Bot Dopasuj ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:12:10 BotManager dodał bota Dopasuj
-DEBUG: 2024/09/28 12:12:10 Bot Srebrzonemu ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:12:10 Bot Srebrzonemu ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:12:10 BotManager dodał bota Srebrzonemu
-DEBUG: 2024/09/28 12:12:10 Konfiguracja wczytana: &{Global:{LogLevel:debug IsonInterval:1 MaxNickLength:14 CommandPrefixes:[! . @] NickAPI:{URL:https://i.got.al/words.php MaxWordLength:12 Timeout:5} Channels:[] ReconnectRetries:2 ReconnectInterval:1} Bots:[{Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e} {Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e} {Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e} {Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e}] Channels:[#irpg]}
-INFO: 2024/09/28 12:12:10 Bot Nieszklonymi próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:12:10 Bot Niezawodny próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:12:10 Bot Pogrubionemu próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:12:10 Bot Srebrzonemu próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:12:10 Bot Niewezbrania próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:12:10 Bot Rokefelerze próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:12:10 Bot Dopasuj próbuje połączyć się z mirc.irc.al:6667
-DEBUG: 2024/09/28 12:12:10 BotManager: monitorNicks started
-INFO: 2024/09/28 12:12:10 Bot Hajduki próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:12:10 Bot Niewezbrania połączony z mirc.irc.al jako Niewezbrania
-DEBUG: 2024/09/28 12:12:10 Bot Niewezbrania dołącza do kanału #irpg
-INFO: 2024/09/28 12:12:10 Bot Niewezbrania pomyślnie połączony
-INFO: 2024/09/28 12:12:10 Bot Niezawodny połączony z mirc.irc.al jako Niezawodny
-DEBUG: 2024/09/28 12:12:10 Bot Niezawodny dołącza do kanału #irpg
-INFO: 2024/09/28 12:12:10 Bot Niezawodny pomyślnie połączony
-INFO: 2024/09/28 12:12:10 Bot Hajduki połączony z mirc.irc.al jako Hajduki
-DEBUG: 2024/09/28 12:12:10 Bot Hajduki dołącza do kanału #irpg
-INFO: 2024/09/28 12:12:10 Bot Hajduki pomyślnie połączony
-DEBUG: 2024/09/28 12:12:11 BotManager: ticker fired
-DEBUG: 2024/09/28 12:12:11 BotManager: Bot Hajduki wysyła ISON
-DEBUG: 2024/09/28 12:12:11 Bot Hajduki wysyła komendę ISON: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/09/28 12:12:11 Bot Hajduki otrzymał odpowiedź ISON: []
-DEBUG: 2024/09/28 12:12:11 NickManager otrzymał odpowiedź ISON: []
-DEBUG: 2024/09/28 12:12:11 NickManager przetwarza dostępne nicki: [CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z]
-DEBUG: 2024/09/28 12:12:11 Nick CoolBot dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick NickKeeper dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick IRCGuardian dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick NetWatcher dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick a dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick b dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick c dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick d dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick e dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick f dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick g dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick h dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick i dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick j dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick k dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick l dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick m dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick n dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick o dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick p dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick q dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick r dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick s dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick t dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick u dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick v dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick w dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick x dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick y dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Nick z dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:12:11 Przydzielanie nicka CoolBot do bota Hajduki
-DEBUG: 2024/09/28 12:12:11 Przydzielanie nicka NickKeeper do bota Niewezbrania
-DEBUG: 2024/09/28 12:12:11 Przydzielanie nicka IRCGuardian do bota Niezawodny
-DEBUG: 2024/09/28 12:12:11 Przydzielanie nicka NetWatcher do bota Hajduki
-DEBUG: 2024/09/28 12:12:11 Bot Hajduki otrzymał prośbę o zmianę nicka na CoolBot
-DEBUG: 2024/09/28 12:12:11 Przydzielanie nicka a do bota Niewezbrania
-DEBUG: 2024/09/28 12:12:11 Bot Niewezbrania otrzymał prośbę o zmianę nicka na NickKeeper
-DEBUG: 2024/09/28 12:12:11 Bot Niezawodny otrzymał prośbę o zmianę nicka na IRCGuardian
-DEBUG: 2024/09/28 12:12:12 BotManager: ticker fired
-WARNING: 2024/09/28 12:12:20 Bot Dopasuj nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-WARNING: 2024/09/28 12:12:20 Bot Nieszklonymi nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-INFO: 2024/09/28 12:12:20 Bot Nieszklonymi próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:12:20 Bot Dopasuj próbuje połączyć się z mirc.irc.al:6667
-WARNING: 2024/09/28 12:12:20 Bot Pogrubionemu nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-INFO: 2024/09/28 12:12:20 Bot Pogrubionemu próbuje połączyć się z mirc.irc.al:6667
-WARNING: 2024/09/28 12:12:20 Bot Srebrzonemu nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-WARNING: 2024/09/28 12:12:20 Bot Rokefelerze nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-INFO: 2024/09/28 12:12:20 Bot Srebrzonemu próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:12:20 Bot Rokefelerze próbuje połączyć się z mirc.irc.al:6667
-WARNING: 2024/09/28 12:12:30 Bot Dopasuj nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-ERROR: 2024/09/28 12:12:30 Bot Dopasuj nie mógł się połączyć: bot Dopasuj nie mógł się połączyć po 2 próbach
-WARNING: 2024/09/28 12:12:30 Bot Pogrubionemu nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-ERROR: 2024/09/28 12:12:30 Bot Pogrubionemu nie mógł się połączyć: bot Pogrubionemu nie mógł się połączyć po 2 próbach
-WARNING: 2024/09/28 12:12:30 Bot Nieszklonymi nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-ERROR: 2024/09/28 12:12:30 Bot Nieszklonymi nie mógł się połączyć: bot Nieszklonymi nie mógł się połączyć po 2 próbach
-WARNING: 2024/09/28 12:12:30 Bot Rokefelerze nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-ERROR: 2024/09/28 12:12:30 Bot Rokefelerze nie mógł się połączyć: bot Rokefelerze nie mógł się połączyć po 2 próbach
-WARNING: 2024/09/28 12:12:30 Bot Srebrzonemu nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-ERROR: 2024/09/28 12:12:30 Bot Srebrzonemu nie mógł się połączyć: bot Srebrzonemu nie mógł się połączyć po 2 próbach
-INFO: 2024/09/28 12:12:54 Aplikacja została wyłączona.
-INFO: 2024/09/28 12:13:10 Logger zainicjalizowany z poziomem: debug
-DEBUG: 2024/09/28 12:13:10 Właściciele wczytani: {Owners:[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:13:10 NickManager zainicjalizowany z nickami: [CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z]
-DEBUG: 2024/09/28 12:13:10 Bot Nieetylinowe ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:13:10 Bot Nieetylinowe ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:13:10 BotManager dodał bota Nieetylinowe
-DEBUG: 2024/09/28 12:13:10 Bot Babinca ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:13:10 Bot Babinca ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:13:10 BotManager dodał bota Babinca
-DEBUG: 2024/09/28 12:13:10 Bot Kopcmy ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:13:10 Bot Kopcmy ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:13:10 BotManager dodał bota Kopcmy
-DEBUG: 2024/09/28 12:13:10 Bot Bezprawiom ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:13:10 Bot Bezprawiom ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:13:10 BotManager dodał bota Bezprawiom
-DEBUG: 2024/09/28 12:13:10 Bot Kryptoklidem ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:13:10 Bot Kryptoklidem ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:13:10 BotManager dodał bota Kryptoklidem
-DEBUG: 2024/09/28 12:13:11 Bot Opieraloby ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:13:11 Bot Opieraloby ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:13:11 BotManager dodał bota Opieraloby
-DEBUG: 2024/09/28 12:13:11 Bot Osiewniki ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:13:11 Bot Osiewniki ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:13:11 BotManager dodał bota Osiewniki
-DEBUG: 2024/09/28 12:13:11 Bot Targonskiemu ustawił właścicieli: {[*!kofany@irc.al]}
-DEBUG: 2024/09/28 12:13:11 Bot Targonskiemu ustawił kanały: [#irpg]
-DEBUG: 2024/09/28 12:13:11 BotManager dodał bota Targonskiemu
-DEBUG: 2024/09/28 12:13:11 Konfiguracja wczytana: &{Global:{LogLevel:debug IsonInterval:1 MaxNickLength:14 CommandPrefixes:[! . @] NickAPI:{URL:https://i.got.al/words.php MaxWordLength:12 Timeout:5} Channels:[] ReconnectRetries:2 ReconnectInterval:1} Bots:[{Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e} {Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e} {Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e} {Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e}] Channels:[#irpg]}
-INFO: 2024/09/28 12:13:11 Bot Bezprawiom próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:13:11 Bot Opieraloby próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:13:11 Bot Kopcmy próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:13:11 Bot Kryptoklidem próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:13:11 Bot Babinca próbuje połączyć się z mirc.irc.al:6667
-DEBUG: 2024/09/28 12:13:11 BotManager: monitorNicks started
-INFO: 2024/09/28 12:13:11 Bot Targonskiemu próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:13:11 Bot Osiewniki próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:13:11 Bot Nieetylinowe próbuje połączyć się z mirc.irc.al:6667
-INFO: 2024/09/28 12:13:11 Bot Opieraloby połączony z mirc.irc.al jako Opieraloby
-DEBUG: 2024/09/28 12:13:11 Bot Opieraloby dołącza do kanału #irpg
-INFO: 2024/09/28 12:13:11 Bot Babinca połączony z mirc.irc.al jako Babinca
-DEBUG: 2024/09/28 12:13:11 Bot Babinca dołącza do kanału #irpg
-INFO: 2024/09/28 12:13:11 Bot Babinca pomyślnie połączony
-INFO: 2024/09/28 12:13:11 Bot Nieetylinowe połączony z mirc.irc.al jako Nieetylinowe
-DEBUG: 2024/09/28 12:13:11 Bot Nieetylinowe dołącza do kanału #irpg
-INFO: 2024/09/28 12:13:11 Bot Opieraloby pomyślnie połączony
-INFO: 2024/09/28 12:13:11 Bot Nieetylinowe pomyślnie połączony
-DEBUG: 2024/09/28 12:13:12 BotManager: ticker fired
-DEBUG: 2024/09/28 12:13:12 BotManager: Bot Nieetylinowe wysyła ISON
-DEBUG: 2024/09/28 12:13:12 Bot Nieetylinowe wysyła komendę ISON: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/09/28 12:13:12 Bot Nieetylinowe otrzymał odpowiedź ISON: []
-DEBUG: 2024/09/28 12:13:12 NickManager otrzymał odpowiedź ISON: []
-DEBUG: 2024/09/28 12:13:12 NickManager przetwarza dostępne nicki: [CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z]
-DEBUG: 2024/09/28 12:13:12 Nick CoolBot dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick NickKeeper dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick IRCGuardian dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick NetWatcher dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick a dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick b dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick c dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick d dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick e dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick f dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick g dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick h dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick i dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick j dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick k dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick l dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick m dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick n dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick o dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick p dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick q dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick r dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick s dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick t dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick u dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick v dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick w dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick x dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick y dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Nick z dodany do puli dostępnych nicków
-DEBUG: 2024/09/28 12:13:12 Przydzielanie nicka CoolBot do bota Nieetylinowe
-DEBUG: 2024/09/28 12:13:12 Przydzielanie nicka NickKeeper do bota Babinca
-DEBUG: 2024/09/28 12:13:12 Przydzielanie nicka IRCGuardian do bota Opieraloby
-DEBUG: 2024/09/28 12:13:12 Bot Nieetylinowe otrzymał prośbę o zmianę nicka na CoolBot
-DEBUG: 2024/09/28 12:13:12 Bot Opieraloby otrzymał prośbę o zmianę nicka na IRCGuardian
-DEBUG: 2024/09/28 12:13:12 Bot Babinca otrzymał prośbę o zmianę nicka na NickKeeper
-DEBUG: 2024/09/28 12:13:13 BotManager: ticker fired
-WARNING: 2024/09/28 12:13:21 Bot Kryptoklidem nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-INFO: 2024/09/28 12:13:21 Bot Kryptoklidem próbuje połączyć się z mirc.irc.al:6667
-WARNING: 2024/09/28 12:13:21 Bot Bezprawiom nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-INFO: 2024/09/28 12:13:21 Bot Bezprawiom próbuje połączyć się z mirc.irc.al:6667
-WARNING: 2024/09/28 12:13:21 Bot Targonskiemu nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-INFO: 2024/09/28 12:13:21 Bot Targonskiemu próbuje połączyć się z mirc.irc.al:6667
-WARNING: 2024/09/28 12:13:21 Bot Kopcmy nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-INFO: 2024/09/28 12:13:21 Bot Kopcmy próbuje połączyć się z mirc.irc.al:6667
-WARNING: 2024/09/28 12:13:21 Bot Osiewniki nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-INFO: 2024/09/28 12:13:21 Bot Osiewniki próbuje połączyć się z mirc.irc.al:6667
-WARNING: 2024/09/28 12:13:31 Bot Bezprawiom nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-ERROR: 2024/09/28 12:13:31 Bot Bezprawiom nie mógł się połączyć: bot Bezprawiom nie mógł się połączyć po 2 próbach
-WARNING: 2024/09/28 12:13:31 Bot Kryptoklidem nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-ERROR: 2024/09/28 12:13:31 Bot Kryptoklidem nie mógł się połączyć: bot Kryptoklidem nie mógł się połączyć po 2 próbach
-WARNING: 2024/09/28 12:13:31 Bot Kopcmy nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-ERROR: 2024/09/28 12:13:31 Bot Kopcmy nie mógł się połączyć: bot Kopcmy nie mógł się połączyć po 2 próbach
-WARNING: 2024/09/28 12:13:31 Bot Osiewniki nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-ERROR: 2024/09/28 12:13:31 Bot Osiewniki nie mógł się połączyć: bot Osiewniki nie mógł się połączyć po 2 próbach
-WARNING: 2024/09/28 12:13:31 Bot Targonskiemu nie otrzymał potwierdzenia połączenia w ciągu 10 sekund
-ERROR: 2024/09/28 12:13:31 Bot Targonskiemu nie mógł się połączyć: bot Targonskiemu nie mógł się połączyć po 2 próbach
-INFO: 2024/09/28 12:18:32 Aplikacja została wyłączona.
-INFO: 2024/10/10 09:26:54 Logger initialized with level: debug
-DEBUG: 2024/10/10 09:26:54 Owners loaded: {Owners:[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:26:54 NickManager initialized with nicks: [CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z]
-DEBUG: 2024/10/10 09:26:55 Bot Swieniewiczu set owners: {[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:26:55 Bot Swieniewiczu set channels: [#irpg]
-DEBUG: 2024/10/10 09:26:55 BotManager added bot Swieniewiczu
-DEBUG: 2024/10/10 09:26:55 Bot Wdalego set owners: {[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:26:55 Bot Wdalego set channels: [#irpg]
-DEBUG: 2024/10/10 09:26:55 BotManager added bot Wdalego
-INFO: 2024/10/10 09:26:55 Bot Swieniewiczu is attempting to connect to mirc.irc.al:6667
-ERROR: 2024/10/10 09:26:55 Attempt 1: Failed to connect bot Swieniewiczu: dial tcp 192.168.176.33:0->51.195.116.119:6667: bind: can't assign requested address
-INFO: 2024/10/10 09:26:57 Bot Swieniewiczu is attempting to connect to mirc.irc.al:6667
-ERROR: 2024/10/10 09:26:57 Attempt 2: Failed to connect bot Swieniewiczu: dial tcp 192.168.176.33:0->51.195.116.119:6667: bind: can't assign requested address
-INFO: 2024/10/10 09:26:59 Bot Swieniewiczu is attempting to connect to mirc.irc.al:6667
-ERROR: 2024/10/10 09:26:59 Attempt 3: Failed to connect bot Swieniewiczu: dial tcp 192.168.176.33:0->51.195.116.119:6667: bind: can't assign requested address
-ERROR: 2024/10/10 09:27:01 Failed to connect bot: bot Swieniewiczu could not connect after 3 attempts
-INFO: 2024/10/10 09:27:01 Bot Wdalego is attempting to connect to mirc.irc.al:6667
-ERROR: 2024/10/10 09:27:01 Attempt 1: Failed to connect bot Wdalego: dial tcp [2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e]:0->[2001:41d0:701:1100::61ee]:6667: bind: can't assign requested address
-INFO: 2024/10/10 09:27:03 Bot Wdalego is attempting to connect to mirc.irc.al:6667
-ERROR: 2024/10/10 09:27:03 Attempt 2: Failed to connect bot Wdalego: dial tcp [2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e]:0->[2001:41d0:701:1100::61ee]:6667: bind: can't assign requested address
-INFO: 2024/10/10 09:27:05 Bot Wdalego is attempting to connect to mirc.irc.al:6667
-ERROR: 2024/10/10 09:27:05 Attempt 3: Failed to connect bot Wdalego: dial tcp [2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e]:0->[2001:41d0:701:1100::61ee]:6667: bind: can't assign requested address
-ERROR: 2024/10/10 09:27:07 Failed to connect bot: bot Wdalego could not connect after 3 attempts
-DEBUG: 2024/10/10 09:27:07 Configuration loaded: &{Global:{LogLevel:debug IsonInterval:1 MaxNickLength:14 CommandPrefixes:[! . @] NickAPI:{URL:https://i.got.al/words.php MaxWordLength:12 Timeout:5} Channels:[] ReconnectRetries:3 ReconnectInterval:2} Bots:[{Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.33} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:8c2:9b0c:ec8b:eb2e}] Channels:[#irpg]}
-INFO: 2024/10/10 09:27:07 Bot is running. Press Ctrl+C to exit.
-DEBUG: 2024/10/10 09:27:08 BotManager: Bot Swieniewiczu is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:09 BotManager: Bot Wdalego is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:10 BotManager: Bot Swieniewiczu is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:11 BotManager: Bot Wdalego is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:12 BotManager: Bot Swieniewiczu is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:13 BotManager: Bot Wdalego is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:14 BotManager: Bot Swieniewiczu is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:15 BotManager: Bot Wdalego is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:16 BotManager: Bot Swieniewiczu is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:17 BotManager: Bot Wdalego is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:18 BotManager: Bot Swieniewiczu is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:19 BotManager: Bot Wdalego is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:20 BotManager: Bot Swieniewiczu is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:21 BotManager: Bot Wdalego is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:22 BotManager: Bot Swieniewiczu is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:23 BotManager: Bot Wdalego is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:24 BotManager: Bot Swieniewiczu is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:25 BotManager: Bot Wdalego is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:26 BotManager: Bot Swieniewiczu is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:27 BotManager: Bot Wdalego is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:28 BotManager: Bot Swieniewiczu is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:29 BotManager: Bot Wdalego is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:30 BotManager: Bot Swieniewiczu is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:31 BotManager: Bot Wdalego is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:32 BotManager: Bot Swieniewiczu is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:33 BotManager: Bot Wdalego is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:34 BotManager: Bot Swieniewiczu is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:35 BotManager: Bot Wdalego is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:36 BotManager: Bot Swieniewiczu is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:37 BotManager: Bot Wdalego is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:38 BotManager: Bot Swieniewiczu is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:39 BotManager: Bot Wdalego is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:40 BotManager: Bot Swieniewiczu is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:41 BotManager: Bot Wdalego is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:42 BotManager: Bot Swieniewiczu is not connected; skipping ISON
-DEBUG: 2024/10/10 09:27:43 BotManager: Bot Wdalego is not connected; skipping ISON
-INFO: 2024/10/10 09:27:43 Stopped monitoring nicks
-INFO: 2024/10/10 09:27:43 All bots have been stopped.
-INFO: 2024/10/10 09:27:43 Application has been shut down.
-INFO: 2024/10/10 09:29:09 Logger initialized with level: debug
-DEBUG: 2024/10/10 09:29:09 Owners loaded: {Owners:[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:29:09 NickManager initialized with nicks: [CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z]
-DEBUG: 2024/10/10 09:29:10 Bot Przeharowal set owners: {[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:29:10 Bot Przeharowal set channels: [#irpg]
-DEBUG: 2024/10/10 09:29:10 BotManager added bot Przeharowal
-DEBUG: 2024/10/10 09:29:10 Bot Uperlmy set owners: {[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:29:10 Bot Uperlmy set channels: [#irpg]
-DEBUG: 2024/10/10 09:29:10 BotManager added bot Uperlmy
-INFO: 2024/10/10 09:29:10 Bot Przeharowal is attempting to connect to mirc.irc.al:6667
-INFO: 2024/10/10 09:29:10 Bot Przeharowal connected to mirc.irc.al as Przeharowal
-DEBUG: 2024/10/10 09:29:10 Bot Przeharowal is joining channel #irpg
-INFO: 2024/10/10 09:29:10 Bot Przeharowal successfully connected
-INFO: 2024/10/10 09:29:10 Bot Uperlmy is attempting to connect to mirc.irc.al:6667
-INFO: 2024/10/10 09:29:11 Bot Uperlmy connected to mirc.irc.al as Uperlmy
-DEBUG: 2024/10/10 09:29:11 Bot Uperlmy is joining channel #irpg
-INFO: 2024/10/10 09:29:11 Bot Uperlmy successfully connected
-DEBUG: 2024/10/10 09:29:11 Configuration loaded: &{Global:{LogLevel:debug IsonInterval:1 MaxNickLength:14 CommandPrefixes:[! . @] NickAPI:{URL:https://i.got.al/words.php MaxWordLength:12 Timeout:5} Channels:[] ReconnectRetries:3 ReconnectInterval:2} Bots:[{Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.35} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:1c56:2b73:771e:f9dd}] Channels:[#irpg]}
-INFO: 2024/10/10 09:29:11 Bot is running. Press Ctrl+C to exit.
-DEBUG: 2024/10/10 09:29:12 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:12 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:13 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:13 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:14 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:14 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:15 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:15 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:16 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:16 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:17 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:17 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:18 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:18 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:19 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:19 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:20 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:20 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:21 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:21 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:22 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:22 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:23 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:23 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:24 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:24 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:25 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:25 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:26 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:26 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:27 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:27 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:28 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:28 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:29 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:29 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:30 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:30 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:31 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:31 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:32 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:32 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:33 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:33 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:34 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:34 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:35 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:35 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:36 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:36 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:37 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:37 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:38 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:38 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:39 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:39 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:40 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:40 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:41 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:41 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:42 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:42 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:43 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:43 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:44 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:44 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:45 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:45 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:46 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:46 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:47 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:47 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:48 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:48 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:49 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:49 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:50 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:50 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:51 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:51 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:52 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:52 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:53 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:53 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:54 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:54 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:55 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:55 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:56 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:56 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:57 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:57 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:58 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:29:58 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:29:59 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:29:59 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:30:00 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:30:00 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:30:01 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:30:01 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:30:02 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:30:02 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:30:03 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:30:03 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:30:04 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:30:04 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:30:05 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:30:05 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:30:06 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:30:06 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:30:07 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:30:07 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:30:08 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:30:08 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:30:09 BotManager: Bot Uperlmy is sending ISON
-DEBUG: 2024/10/10 09:30:09 Bot Uperlmy is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:30:10 BotManager: Bot Przeharowal is sending ISON
-DEBUG: 2024/10/10 09:30:10 Bot Przeharowal is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-INFO: 2024/10/10 09:30:11 Stopped monitoring nicks
-INFO: 2024/10/10 09:30:11 Bot Przeharowal is disconnecting: Shutting down
-INFO: 2024/10/10 09:30:11 Bot Uperlmy is disconnecting: Shutting down
-INFO: 2024/10/10 09:30:11 All bots have been stopped.
-INFO: 2024/10/10 09:30:11 Application has been shut down.
-INFO: 2024/10/10 09:36:22 Logger initialized with level: debug
-DEBUG: 2024/10/10 09:36:22 Owners loaded: {Owners:[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:36:22 NickManager initialized with nicks: [CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z]
-DEBUG: 2024/10/10 09:36:22 Bot Wysiorbujace set owners: {[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:36:22 Bot Wysiorbujace set channels: [#irpg]
-DEBUG: 2024/10/10 09:36:22 BotManager added bot Wysiorbujace
-DEBUG: 2024/10/10 09:36:22 Bot Chwil set owners: {[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:36:22 Bot Chwil set channels: [#irpg]
-DEBUG: 2024/10/10 09:36:22 BotManager added bot Chwil
-DEBUG: 2024/10/10 09:36:22 Bot Nieklosowany set owners: {[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:36:22 Bot Nieklosowany set channels: [#irpg]
-DEBUG: 2024/10/10 09:36:22 BotManager added bot Nieklosowany
-DEBUG: 2024/10/10 09:36:22 Bot Oszolomie set owners: {[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:36:22 Bot Oszolomie set channels: [#irpg]
-DEBUG: 2024/10/10 09:36:22 BotManager added bot Oszolomie
-INFO: 2024/10/10 09:36:22 Bot Wysiorbujace is attempting to connect to mirc.irc.al:6667
-INFO: 2024/10/10 09:36:23 Bot Wysiorbujace connected to mirc.irc.al as Wysiorbujace
-DEBUG: 2024/10/10 09:36:23 Bot Wysiorbujace is joining channel #irpg
-INFO: 2024/10/10 09:36:23 Bot Wysiorbujace successfully connected
-INFO: 2024/10/10 09:36:23 Bot Chwil is attempting to connect to mirc.irc.al:6667
-INFO: 2024/10/10 09:36:23 Bot Chwil connected to mirc.irc.al as Chwil
-DEBUG: 2024/10/10 09:36:23 Bot Chwil is joining channel #irpg
-INFO: 2024/10/10 09:36:23 Bot Chwil successfully connected
-INFO: 2024/10/10 09:36:23 Bot Nieklosowany is attempting to connect to mirc.irc.al:6667
-INFO: 2024/10/10 09:36:25 Bot Nieklosowany connected to mirc.irc.al as Nieklosowany
-DEBUG: 2024/10/10 09:36:25 Bot Nieklosowany is joining channel #irpg
-INFO: 2024/10/10 09:36:25 Bot Nieklosowany successfully connected
-INFO: 2024/10/10 09:36:25 Bot Oszolomie is attempting to connect to mirc.irc.al:6667
-INFO: 2024/10/10 09:36:25 Bot Oszolomie connected to mirc.irc.al as Oszolomie
-DEBUG: 2024/10/10 09:36:25 Bot Oszolomie is joining channel #irpg
-INFO: 2024/10/10 09:36:25 Bot Oszolomie successfully connected
-DEBUG: 2024/10/10 09:36:25 Configuration loaded: &{Global:{LogLevel:debug IsonInterval:1 MaxNickLength:14 CommandPrefixes:[! . @] NickAPI:{URL:https://i.got.al/words.php MaxWordLength:12 Timeout:5} Channels:[] ReconnectRetries:3 ReconnectInterval:2} Bots:[{Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.35} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:1c56:2b73:771e:f9dd} {Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.35} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:1c56:2b73:771e:f9dd}] Channels:[#irpg]}
-INFO: 2024/10/10 09:36:25 Bot is running. Press Ctrl+C to exit.
-DEBUG: 2024/10/10 09:36:26 BotManager: Bot Wysiorbujace is sending ISON
-DEBUG: 2024/10/10 09:36:26 Bot Wysiorbujace is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:36:26 Bot Wysiorbujace received ISON response: []
-DEBUG: 2024/10/10 09:36:26 NickManager received ISON response: []
-DEBUG: 2024/10/10 09:36:26 NickManager processing available nicks: [CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z]
-DEBUG: 2024/10/10 09:36:26 Nick CoolBot added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick NickKeeper added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick IRCGuardian added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick NetWatcher added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick a added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick b added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick c added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick d added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick e added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick f added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick g added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick h added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick i added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick j added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick k added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick l added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick m added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick n added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick o added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick p added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick q added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick r added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick s added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick t added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick u added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick v added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick w added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick x added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick y added to available nicks pool
-DEBUG: 2024/10/10 09:36:26 Nick z added to available nicks pool
-DEBUG: 2024/10/10 09:36:27 BotManager: Bot Chwil is sending ISON
-INFO: 2024/10/10 09:45:34 Logger initialized with level: debug
-DEBUG: 2024/10/10 09:45:34 Owners loaded: {Owners:[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:45:34 NickManager initialized with nicks: [CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z]
-DEBUG: 2024/10/10 09:45:35 Bot Nieociezalej set owners: {[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:45:35 Bot Nieociezalej set channels: [#irpg]
-DEBUG: 2024/10/10 09:45:35 BotManager added bot Nieociezalej
-DEBUG: 2024/10/10 09:45:35 Bot Budowniczych set owners: {[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:45:35 Bot Budowniczych set channels: [#irpg]
-DEBUG: 2024/10/10 09:45:35 BotManager added bot Budowniczych
-DEBUG: 2024/10/10 09:45:35 Bot Nonylionowi set owners: {[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:45:35 Bot Nonylionowi set channels: [#irpg]
-DEBUG: 2024/10/10 09:45:35 BotManager added bot Nonylionowi
-DEBUG: 2024/10/10 09:45:35 Bot Glukanow set owners: {[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:45:35 Bot Glukanow set channels: [#irpg]
-DEBUG: 2024/10/10 09:45:35 BotManager added bot Glukanow
-INFO: 2024/10/10 09:45:35 Bot Nieociezalej is attempting to connect to mirc.irc.al:6667
-INFO: 2024/10/10 09:45:35 Bot Nieociezalej connected to mirc.irc.al as Nieociezalej
-DEBUG: 2024/10/10 09:45:35 Bot Nieociezalej is joining channel #irpg
-INFO: 2024/10/10 09:45:35 Bot Nieociezalej successfully connected
-INFO: 2024/10/10 09:45:35 Bot Budowniczych is attempting to connect to mirc.irc.al:6667
-INFO: 2024/10/10 09:45:36 Bot Budowniczych connected to mirc.irc.al as Budowniczych
-DEBUG: 2024/10/10 09:45:36 Bot Budowniczych is joining channel #irpg
-INFO: 2024/10/10 09:45:36 Bot Budowniczych successfully connected
-INFO: 2024/10/10 09:45:36 Bot Nonylionowi is attempting to connect to mirc.irc.al:6667
-INFO: 2024/10/10 09:46:31 Logger initialized with level: debug
-DEBUG: 2024/10/10 09:46:31 Owners loaded: {Owners:[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:46:31 NickManager initialized with nicks: [CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z]
-DEBUG: 2024/10/10 09:46:31 Bot Soltystw set owners: {[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:46:31 Bot Soltystw set channels: [#irpg]
-DEBUG: 2024/10/10 09:46:31 BotManager added bot Soltystw
-DEBUG: 2024/10/10 09:46:31 Bot Lotrujacymi set owners: {[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:46:31 Bot Lotrujacymi set channels: [#irpg]
-DEBUG: 2024/10/10 09:46:31 BotManager added bot Lotrujacymi
-INFO: 2024/10/10 09:46:31 Bot Soltystw is attempting to connect to mirc.irc.al:6667
-INFO: 2024/10/10 09:46:32 Bot Soltystw connected to mirc.irc.al as Soltystw
-DEBUG: 2024/10/10 09:46:32 Bot Soltystw is joining channel #irpg
-INFO: 2024/10/10 09:46:32 Bot Soltystw successfully connected
-INFO: 2024/10/10 09:46:32 Bot Lotrujacymi is attempting to connect to mirc.irc.al:6667
-INFO: 2024/10/10 09:46:32 Bot Lotrujacymi connected to mirc.irc.al as Lotrujacymi
-DEBUG: 2024/10/10 09:46:32 Bot Lotrujacymi is joining channel #irpg
-INFO: 2024/10/10 09:46:32 Bot Lotrujacymi successfully connected
-DEBUG: 2024/10/10 09:46:32 Configuration loaded: &{Global:{LogLevel:debug IsonInterval:1 MaxNickLength:14 CommandPrefixes:[! . @] NickAPI:{URL:https://i.got.al/words.php MaxWordLength:12 Timeout:5} Channels:[] ReconnectRetries:3 ReconnectInterval:2} Bots:[{Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.35} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:1c56:2b73:771e:f9dd}] Channels:[#irpg]}
-INFO: 2024/10/10 09:46:32 Bot is running. Press Ctrl+C to exit.
-DEBUG: 2024/10/10 09:46:33 BotManager: Bot Soltystw is sending ISON
-DEBUG: 2024/10/10 09:46:33 Bot Soltystw is sending ISON command: ISON CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z
-DEBUG: 2024/10/10 09:46:33 Bot Soltystw received ISON response: []
-DEBUG: 2024/10/10 09:46:33 NickManager received ISON response: []
-DEBUG: 2024/10/10 09:46:33 NickManager processing available nicks: [CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z]
-DEBUG: 2024/10/10 09:46:33 Nick CoolBot added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick NickKeeper added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick IRCGuardian added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick NetWatcher added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick a added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick b added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick c added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick d added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick e added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick f added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick g added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick h added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick i added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick j added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick k added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick l added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick m added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick n added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick o added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick p added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick q added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick r added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick s added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick t added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick u added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick v added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick w added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick x added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick y added to available nicks pool
-DEBUG: 2024/10/10 09:46:33 Nick z added to available nicks pool
-DEBUG: 2024/10/10 09:46:34 BotManager: Bot Lotrujacymi is sending ISON
-INFO: 2024/10/10 09:51:53 Logger initialized with level: debug
-DEBUG: 2024/10/10 09:51:53 Owners loaded: {Owners:[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:51:53 NickManager initialized with nicks: [CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z]
-DEBUG: 2024/10/10 09:51:53 Bot Dzialkowicz set owners: {[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:51:53 Bot Dzialkowicz set channels: [#irpg]
-DEBUG: 2024/10/10 09:51:53 BotManager added bot Dzialkowicz
-DEBUG: 2024/10/10 09:51:54 Bot Pozbijanemu set owners: {[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:51:54 Bot Pozbijanemu set channels: [#irpg]
-DEBUG: 2024/10/10 09:51:54 BotManager added bot Pozbijanemu
-INFO: 2024/10/10 09:51:54 Bot Dzialkowicz is attempting to connect to mirc.irc.al:6667
-INFO: 2024/10/10 09:51:54 Bot Dzialkowicz connected to mirc.irc.al as Dzialkowicz
-DEBUG: 2024/10/10 09:51:54 Bot Dzialkowicz is joining channel #irpg
-INFO: 2024/10/10 09:51:54 Bot Dzialkowicz successfully connected
-INFO: 2024/10/10 09:51:54 Bot Pozbijanemu is attempting to connect to mirc.irc.al:6667
-INFO: 2024/10/10 09:51:54 Bot Pozbijanemu connected to mirc.irc.al as Pozbijanemu
-DEBUG: 2024/10/10 09:51:54 Bot Pozbijanemu is joining channel #irpg
-INFO: 2024/10/10 09:51:54 Bot Pozbijanemu successfully connected
-DEBUG: 2024/10/10 09:51:54 Configuration loaded: &{Global:{LogLevel:debug IsonInterval:1 MaxNickLength:14 CommandPrefixes:[! . @] NickAPI:{URL:https://i.got.al/words.php MaxWordLength:12 Timeout:5} Channels:[] ReconnectRetries:3 ReconnectInterval:2} Bots:[{Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.35} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:1c56:2b73:771e:f9dd}] Channels:[#irpg]}
-INFO: 2024/10/10 09:51:54 Bot is running. Press Ctrl+C to exit.
-INFO: 2024/10/10 09:51:54 Stopped monitoring nicks
-INFO: 2024/10/10 09:51:54 Bot Dzialkowicz is disconnecting: Shutting down
-INFO: 2024/10/10 09:51:54 Bot Pozbijanemu is disconnecting: Shutting down
-INFO: 2024/10/10 09:51:54 All bots have been stopped.
-INFO: 2024/10/10 09:51:54 Application has been shut down.
-INFO: 2024/10/10 09:52:09 Logger initialized with level: debug
-DEBUG: 2024/10/10 09:52:09 Owners loaded: {Owners:[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:52:09 NickManager initialized with nicks: [CoolBot NickKeeper IRCGuardian NetWatcher a b c d e f g h i j k l m n o p q r s t u v w x y z]
-DEBUG: 2024/10/10 09:52:09 Bot Wetback set owners: {[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:52:09 Bot Wetback set channels: [#irpg]
-DEBUG: 2024/10/10 09:52:09 BotManager added bot Wetback
-DEBUG: 2024/10/10 09:52:09 Bot Redukowalem set owners: {[*!kofany@irc.al]}
-DEBUG: 2024/10/10 09:52:09 Bot Redukowalem set channels: [#irpg]
-DEBUG: 2024/10/10 09:52:09 BotManager added bot Redukowalem
-INFO: 2024/10/10 09:52:09 Bot Wetback is attempting to connect to mirc.irc.al:6667
-INFO: 2024/10/10 09:52:10 Bot Wetback connected to mirc.irc.al as Wetback
-DEBUG: 2024/10/10 09:52:10 Bot Wetback is joining channel #irpg
-INFO: 2024/10/10 09:52:10 Bot Wetback successfully connected
-INFO: 2024/10/10 09:52:10 Bot Redukowalem is attempting to connect to mirc.irc.al:6667
-INFO: 2024/10/10 09:52:10 Bot Redukowalem connected to mirc.irc.al as Redukowalem
-DEBUG: 2024/10/10 09:52:10 Bot Redukowalem is joining channel #irpg
-INFO: 2024/10/10 09:52:10 Bot Redukowalem successfully connected
-DEBUG: 2024/10/10 09:52:10 Configuration loaded: &{Global:{LogLevel:debug IsonInterval:1 MaxNickLength:14 CommandPrefixes:[! . @] NickAPI:{URL:https://i.got.al/words.php MaxWordLength:12 Timeout:5} Channels:[] ReconnectRetries:3 ReconnectInterval:2} Bots:[{Server:mirc.irc.al Port:6667 SSL:false Vhost:192.168.176.35} {Server:mirc.irc.al Port:6667 SSL:false Vhost:2a02:2454:8545:4900:1c56:2b73:771e:f9dd}] Channels:[#irpg]}
-INFO: 2024/10/10 09:52:10 Bot is running. Press Ctrl+C to exit.
-INFO: 2024/10/10 09:52:10 Stopped monitoring nicks
-INFO: 2024/10/10 09:52:10 Bot Wetback is disconnecting: Shutting down
-INFO: 2024/10/10 09:52:10 Bot Redukowalem is disconnecting: Shutting down
-INFO: 2024/10/10 09:52:10 All bots have been stopped.
-INFO: 2024/10/10 09:52:10 Application has been shut down.
-
-# Koniec /Users/kfn/gognb/bot.log
-
 # Plik /Users/kfn/gognb/cmd/main.go
 package main
 
@@ -799,6 +61,9 @@ func main() {
 	// Start bots
 	botManager.StartBots()
 
+	// Start NickManager's monitoring loop
+	nm.Start()
+
 	util.Debug("Configuration loaded: %+v", cfg)
 
 	// Handle system signals for clean shutdown
@@ -817,7 +82,45 @@ func main() {
 
 # Koniec /Users/kfn/gognb/cmd/main.go
 
+# Plik /Users/kfn/gognb/configs/config.example.yaml
+global:
+  log_level: debug  # Logging level: debug, info, warning, error
+  ison_interval: 1  # Interval in seconds between ISON requests
+  nick_api:
+    url: 'https://i.got.al/words.php'
+    max_word_length: 12
+    timeout: 5  # Timeout for API requests in seconds
+  max_nick_length: 14
+  owner_command_prefixes:
+    - "!"
+    - "."
+    - "@"
+  reconnect_retries: 3
+  reconnect_interval: 2
+
+bots:
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 192.168.176.35 # example IPv4
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:ffff:0101:1c56:2b73:771e:f9dd # example IPv6 
+
+channels:
+  - "#irpg"
+
+owner_command_prefixes:
+  - "!"
+  - "."
+  - "@"
+  
+# Koniec /Users/kfn/gognb/configs/config.example.yaml
+
 # Plik /Users/kfn/gognb/configs/config.yaml
+
+
 global:
   log_level: debug  # Logging level: debug, info, warning, error
   ison_interval: 1  # Interval in seconds between ISON requests
@@ -842,8 +145,66 @@ bots:
     port: 6667
     ssl: false
     vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
-
-  # Add more bot configurations as needed
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
 
 channels:
   - "#irpg"
@@ -852,6 +213,7 @@ owner_command_prefixes:
   - "!"
   - "."
   - "@"
+
 
 # Koniec /Users/kfn/gognb/configs/config.yaml
 
@@ -1023,6 +385,7 @@ type Bot struct {
 	connected       chan struct{}
 	botManager      types.BotManager
 	gaveUp          bool
+	isonResponse    chan []string
 }
 
 // NewBot creates a new Bot instance
@@ -1052,6 +415,7 @@ func NewBot(cfg *config.BotConfig, globalConfig *config.GlobalConfig, nm types.N
 		nickManager:  nm,
 		connected:    make(chan struct{}),
 		botManager:   bm,
+		isonResponse: make(chan []string, 1),
 	}
 
 	nm.RegisterBot(bot)
@@ -1137,6 +501,15 @@ func (b *Bot) addCallbacks() {
 	// Callback for ISON response
 	b.Connection.AddCallback("303", b.handleISONResponse)
 
+	// Handle error replies for nick changes
+	b.Connection.AddCallback("433", func(e *irc.Event) {
+		if e.Arguments[0] == b.CurrentNick {
+			util.Warning("Bot %s attempted to change nick to %s, but it's already in use", b.CurrentNick, e.Arguments[1])
+			// Return nick to pool
+			b.nickManager.ReturnNickToPool(e.Arguments[1])
+		}
+	})
+
 	// Callback for private and public messages
 	b.Connection.AddCallback("PRIVMSG", b.handlePrivMsg)
 
@@ -1156,40 +529,30 @@ func (b *Bot) addCallbacks() {
 func (b *Bot) handleISONResponse(e *irc.Event) {
 	isonResponse := strings.Fields(e.Message())
 	util.Debug("Bot %s received ISON response: %v", b.CurrentNick, isonResponse)
-	b.nickManager.HandleISONResponse(isonResponse)
+	// Send the response to the NickManager via the channel
+	select {
+	case b.isonResponse <- isonResponse:
+	default:
+		util.Warning("Bot %s isonResponse channel is full", b.CurrentNick)
+	}
 }
 
-// handleReconnect handles reconnection attempts after disconnection
-func (b *Bot) handleReconnect() {
-	b.isReconnecting = true
-	defer func() { b.isReconnecting = false }()
-
-	maxRetries := b.GlobalConfig.ReconnectRetries
-	retryInterval := time.Duration(b.GlobalConfig.ReconnectInterval) * time.Second
-
-	for attempts := 0; attempts < maxRetries; attempts++ {
-		util.Info("Bot %s is attempting to reconnect (attempt %d/%d)", b.CurrentNick, attempts+1, maxRetries)
-		err := b.connectWithRetry()
-		if err == nil {
-			util.Info("Bot %s reconnected", b.CurrentNick)
-			return
-		}
-		util.Error("Attempt %d failed: %v", attempts+1, err)
-		time.Sleep(retryInterval)
+// RequestISON sends an ISON command and waits for the response
+func (b *Bot) RequestISON(nicks []string) ([]string, error) {
+	if !b.IsConnected() {
+		return nil, fmt.Errorf("bot %s is not connected", b.CurrentNick)
 	}
 
-	util.Error("Bot %s could not reconnect after %d attempts", b.CurrentNick, maxRetries)
-	b.gaveUp = true
-}
+	command := fmt.Sprintf("ISON %s", strings.Join(nicks, " "))
+	util.Debug("Bot %s is sending ISON command: %s", b.CurrentNick, command)
+	b.Connection.SendRaw(command)
 
-// SendISON sends an ISON command with a list of nicks to check
-func (b *Bot) SendISON(nicks []string) {
-	if b.IsConnected() {
-		command := fmt.Sprintf("ISON %s", strings.Join(nicks, " "))
-		util.Debug("Bot %s is sending ISON command: %s", b.CurrentNick, command)
-		b.Connection.SendRaw(command)
-	} else {
-		util.Debug("Bot %s is not connected; cannot send ISON", b.CurrentNick)
+	// Wait for the ISON response or timeout
+	select {
+	case response := <-b.isonResponse:
+		return response, nil
+	case <-time.After(10 * time.Second):
+		return nil, fmt.Errorf("bot %s did not receive ISON response in time", b.CurrentNick)
 	}
 }
 
@@ -1233,6 +596,29 @@ func (b *Bot) Reconnect() {
 	if err != nil {
 		util.Error("Failed to reconnect bot %s: %v", b.CurrentNick, err)
 	}
+}
+
+// handleReconnect handles reconnection attempts after disconnection
+func (b *Bot) handleReconnect() {
+	b.isReconnecting = true
+	defer func() { b.isReconnecting = false }()
+
+	maxRetries := b.GlobalConfig.ReconnectRetries
+	retryInterval := time.Duration(b.GlobalConfig.ReconnectInterval) * time.Second
+
+	for attempts := 0; attempts < maxRetries; attempts++ {
+		util.Info("Bot %s is attempting to reconnect (attempt %d/%d)", b.CurrentNick, attempts+1, maxRetries)
+		err := b.connectWithRetry()
+		if err == nil {
+			util.Info("Bot %s reconnected", b.CurrentNick)
+			return
+		}
+		util.Error("Attempt %d failed: %v", attempts+1, err)
+		time.Sleep(retryInterval)
+	}
+
+	util.Error("Bot %s could not reconnect after %d attempts", b.CurrentNick, maxRetries)
+	b.gaveUp = true
 }
 
 // SendMessage sends a message to a specified target (channel or user)
@@ -1279,7 +665,7 @@ func (b *Bot) AttemptNickChange(nick string) {
 
 // shouldChangeNick determines if the bot should change its nick
 func (b *Bot) shouldChangeNick(nick string) bool {
-	// Check if current nick is already a single-letter or target nick
+	// Check if current nick is already a target nick
 	if util.IsTargetNick(b.CurrentNick, b.nickManager.GetNicksToCatch()) {
 		return false
 	}
@@ -1288,6 +674,46 @@ func (b *Bot) shouldChangeNick(nick string) bool {
 
 // handlePrivMsg handles private and public messages and owner commands
 func (b *Bot) handlePrivMsg(e *irc.Event) {
+	// Delegate command handling to HandleCommands in commands.go
+	b.HandleCommands(e)
+}
+
+// shouldHandleCommand determines if this bot should handle the command
+func (b *Bot) shouldHandleCommand() bool {
+	return b.botManager.ShouldHandleCommand(b)
+}
+
+// SetOwnerList sets the list of owners for the bot
+func (b *Bot) SetOwnerList(owners auth.OwnerList) {
+	b.owners = owners
+	util.Debug("Bot %s set owners: %v", b.CurrentNick, owners)
+}
+
+// SetChannels sets the list of channels for the bot to join
+func (b *Bot) SetChannels(channels []string) {
+	b.channels = channels
+	util.Debug("Bot %s set channels: %v", b.CurrentNick, channels)
+}
+
+// GetCurrentNick returns the bot's current nick
+func (b *Bot) GetCurrentNick() string {
+	return b.CurrentNick
+}
+
+# Koniec /Users/kfn/gognb/internal/bot/bot.go
+
+# Plik /Users/kfn/gognb/internal/bot/commands.go
+package bot
+
+import (
+	"strings"
+
+	"github.com/kofany/gNb/internal/auth"
+	irc "github.com/kofany/go-ircevent"
+)
+
+// HandleCommands processes owner commands received by the bot.
+func (b *Bot) HandleCommands(e *irc.Event) {
 	message := e.Message()
 	sender := e.Nick
 
@@ -1323,16 +749,22 @@ func (b *Bot) handlePrivMsg(e *irc.Event) {
 			targetChannel := args[1]
 			msg := strings.Join(args[2:], " ")
 			b.SendMessage(targetChannel, msg)
+		} else {
+			b.SendNotice(sender, "Usage: say <channel> <message>")
 		}
 	case "join":
 		if len(args) >= 2 {
 			channel := args[1]
 			b.JoinChannel(channel)
+		} else {
+			b.SendNotice(sender, "Usage: join <channel>")
 		}
 	case "part":
 		if len(args) >= 2 {
 			channel := args[1]
 			b.PartChannel(channel)
+		} else {
+			b.SendNotice(sender, "Usage: part <channel>")
 		}
 	case "reconnect":
 		b.Reconnect()
@@ -1341,29 +773,7 @@ func (b *Bot) handlePrivMsg(e *irc.Event) {
 	}
 }
 
-// shouldHandleCommand determines if this bot should handle the command
-func (b *Bot) shouldHandleCommand() bool {
-	return b.botManager.ShouldHandleCommand(b)
-}
-
-// SetOwnerList sets the list of owners for the bot
-func (b *Bot) SetOwnerList(owners auth.OwnerList) {
-	b.owners = owners
-	util.Debug("Bot %s set owners: %v", b.CurrentNick, owners)
-}
-
-// SetChannels sets the list of channels for the bot to join
-func (b *Bot) SetChannels(channels []string) {
-	b.channels = channels
-	util.Debug("Bot %s set channels: %v", b.CurrentNick, channels)
-}
-
-// GetCurrentNick returns the bot's current nick
-func (b *Bot) GetCurrentNick() string {
-	return b.CurrentNick
-}
-
-// Function to check if the string starts with any of the provided prefixes
+// Helper function to check if the string starts with any of the provided prefixes
 func startsWithAny(s string, prefixes []string) bool {
 	for _, prefix := range prefixes {
 		if strings.HasPrefix(s, prefix) {
@@ -1373,14 +783,13 @@ func startsWithAny(s string, prefixes []string) bool {
 	return false
 }
 
-# Koniec /Users/kfn/gognb/internal/bot/bot.go
+# Koniec /Users/kfn/gognb/internal/bot/commands.go
 
 # Plik /Users/kfn/gognb/internal/bot/manager.go
 package bot
 
 import (
 	"sync"
-	"time"
 
 	"github.com/kofany/gNb/internal/auth"
 	"github.com/kofany/gNb/internal/config"
@@ -1393,27 +802,22 @@ var _ types.BotManager = (*BotManager)(nil)
 
 // BotManager manages multiple IRC bots
 type BotManager struct {
-	bots              []types.Bot
-	owners            auth.OwnerList
-	isonInterval      time.Duration
-	wg                sync.WaitGroup
-	stopChan          chan struct{}
-	nickManager       types.NickManager
-	commandBotIndex   int
-	isonBotIndex      int
-	mutex             sync.Mutex
-	availableBots     []types.Bot
-	availableBotsLock sync.Mutex
+	bots            []types.Bot
+	owners          auth.OwnerList
+	wg              sync.WaitGroup
+	stopChan        chan struct{}
+	nickManager     types.NickManager
+	commandBotIndex int
+	mutex           sync.Mutex
 }
 
 // NewBotManager creates a new BotManager instance
 func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManager) *BotManager {
 	manager := &BotManager{
-		bots:         make([]types.Bot, len(cfg.Bots)),
-		owners:       owners,
-		isonInterval: time.Duration(cfg.Global.IsonInterval) * time.Second,
-		stopChan:     make(chan struct{}),
-		nickManager:  nm,
+		bots:        make([]types.Bot, len(cfg.Bots)),
+		owners:      owners,
+		stopChan:    make(chan struct{}),
+		nickManager: nm,
 	}
 
 	// Creating bots
@@ -1425,7 +829,7 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 		util.Debug("BotManager added bot %s", bot.GetCurrentNick())
 	}
 
-	manager.updateAvailableBots()
+	nm.SetBots(manager.bots)
 	return manager
 }
 
@@ -1438,48 +842,9 @@ func (bm *BotManager) StartBots() {
 			continue
 		}
 	}
-
-	bm.wg.Add(1)
-	go bm.monitorNicks()
 }
 
-// monitorNicks periodically sends ISON commands via bots in a rotational manner
-func (bm *BotManager) monitorNicks() {
-	defer bm.wg.Done()
-	ticker := time.NewTicker(bm.isonInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-bm.stopChan:
-			util.Info("Stopped monitoring nicks")
-			return
-		case <-ticker.C:
-			bm.mutex.Lock()
-			if len(bm.bots) > 0 {
-				bot := bm.getNextIsonBot()
-				if bot.IsConnected() {
-					util.Debug("BotManager: Bot %s is sending ISON", bot.GetCurrentNick())
-					bot.SendISON(bm.nickManager.GetNicksToCatch())
-				} else {
-					util.Debug("BotManager: Bot %s is not connected; skipping ISON", bot.GetCurrentNick())
-				}
-			} else {
-				util.Debug("BotManager: No available bots to send ISON")
-			}
-			bm.mutex.Unlock()
-		}
-	}
-}
-
-// getNextIsonBot gets the next bot in the queue to send an ISON command
-func (bm *BotManager) getNextIsonBot() types.Bot {
-	bot := bm.bots[bm.isonBotIndex]
-	bm.isonBotIndex = (bm.isonBotIndex + 1) % len(bm.bots)
-	return bot
-}
-
-// Stop safely shuts down all bots and their goroutines
+// Stop safely shuts down all bots
 func (bm *BotManager) Stop() {
 	close(bm.stopChan)
 	bm.wg.Wait()
@@ -1506,41 +871,6 @@ func (bm *BotManager) ShouldHandleCommand(bot types.Bot) bool {
 	}
 	util.Debug("BotManager: Bot %s will not handle the command", bot.GetCurrentNick())
 	return false
-}
-
-// UpdateAvailableBots updates the list of bots available to catch nicks
-func (bm *BotManager) updateAvailableBots() {
-	bm.availableBotsLock.Lock()
-	defer bm.availableBotsLock.Unlock()
-
-	bm.availableBots = []types.Bot{}
-	for _, bot := range bm.bots {
-		if bot.IsConnected() && !util.IsTargetNick(bot.GetCurrentNick(), bm.nickManager.GetNicksToCatch()) {
-			bm.availableBots = append(bm.availableBots, bot)
-		}
-	}
-}
-
-// GetAvailableBots returns the list of bots available to catch nicks
-func (bm *BotManager) GetAvailableBots() []types.Bot {
-	bm.availableBotsLock.Lock()
-	defer bm.availableBotsLock.Unlock()
-
-	return bm.availableBots
-}
-
-// AssignBotForNick assigns an available bot to attempt to catch a nick
-func (bm *BotManager) AssignBotForNick(nick string) types.Bot {
-	bm.availableBotsLock.Lock()
-	defer bm.availableBotsLock.Unlock()
-
-	if len(bm.availableBots) == 0 {
-		return nil
-	}
-
-	bot := bm.availableBots[0]
-	bm.availableBots = bm.availableBots[1:]
-	return bot
 }
 
 # Koniec /Users/kfn/gognb/internal/bot/manager.go
@@ -1805,6 +1135,7 @@ import (
 	"encoding/json"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/kofany/gNb/internal/types"
 	"github.com/kofany/gNb/internal/util"
@@ -1812,10 +1143,12 @@ import (
 
 type NickManager struct {
 	nicksToCatch   []string
-	availableNicks chan string
+	priorityNicks  []string
+	secondaryNicks []string
 	bots           []types.Bot
+	botIndex       int
 	mutex          sync.Mutex
-	botManager     types.BotManager
+	isonInterval   time.Duration
 }
 
 type NicksData struct {
@@ -1823,9 +1156,7 @@ type NicksData struct {
 }
 
 func NewNickManager() *NickManager {
-	return &NickManager{
-		availableNicks: make(chan string, 100), // Buffer for 100 nicks
-	}
+	return &NickManager{}
 }
 
 func (nm *NickManager) LoadNicks(filename string) error {
@@ -1842,18 +1173,107 @@ func (nm *NickManager) LoadNicks(filename string) error {
 		return err
 	}
 
-	nm.nicksToCatch = nicksData.Nicks
+	nm.priorityNicks = nicksData.Nicks
 
-	// Add single-letter nicks
+	// Add single-letter nicks to secondary nicks
 	letters := "abcdefghijklmnopqrstuvwxyz"
 	for _, c := range letters {
 		nick := string(c)
-		if !util.Contains(nm.nicksToCatch, nick) {
-			nm.nicksToCatch = append(nm.nicksToCatch, nick)
+		nm.secondaryNicks = append(nm.secondaryNicks, nick)
+	}
+
+	// Combine both lists into nicksToCatch
+	nm.nicksToCatch = append(nm.priorityNicks, nm.secondaryNicks...)
+
+	return nil
+}
+
+func (nm *NickManager) Start() {
+	go nm.monitorNicks()
+}
+
+func (nm *NickManager) monitorNicks() {
+	for {
+		nm.mutex.Lock()
+		if len(nm.bots) == 0 {
+			nm.mutex.Unlock()
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		// Get the next bot in the queue to send ISON
+		bot := nm.bots[nm.botIndex]
+		nm.botIndex = (nm.botIndex + 1) % len(nm.bots)
+		nm.mutex.Unlock()
+
+		if bot.IsConnected() {
+			// Request ISON and wait for response
+			onlineNicks, err := bot.RequestISON(nm.nicksToCatch)
+			if err != nil {
+				util.Error("Error requesting ISON from bot %s: %v", bot.GetCurrentNick(), err)
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			nm.handleISONResponse(onlineNicks)
+		} else {
+			util.Debug("Bot %s is not connected; skipping", bot.GetCurrentNick())
+		}
+
+		// Wait before sending the next ISON
+		time.Sleep(time.Duration(nm.isonInterval) * time.Second)
+	}
+}
+
+func (nm *NickManager) handleISONResponse(onlineNicks []string) {
+	nm.mutex.Lock()
+	defer nm.mutex.Unlock()
+
+	util.Debug("NickManager received ISON response: %v", onlineNicks)
+
+	// Determine available nicks
+	var availablePriorityNicks []string
+	var availableSecondaryNicks []string
+
+	for _, nick := range nm.priorityNicks {
+		if !util.Contains(onlineNicks, nick) {
+			availablePriorityNicks = append(availablePriorityNicks, nick)
 		}
 	}
 
-	return nil
+	for _, nick := range nm.secondaryNicks {
+		if !util.Contains(onlineNicks, nick) {
+			availableSecondaryNicks = append(availableSecondaryNicks, nick)
+		}
+	}
+
+	// Get list of available bots
+	availableBots := nm.getAvailableBots()
+	if len(availableBots) == 0 {
+		util.Debug("No available bots to assign nicks")
+		return
+	}
+
+	assignedBots := 0
+
+	// Assign priority nicks first
+	for assignedBots < len(availableBots) && len(availablePriorityNicks) > 0 {
+		nick := availablePriorityNicks[0]
+		availablePriorityNicks = availablePriorityNicks[1:]
+		bot := availableBots[assignedBots]
+		assignedBots++
+		util.Debug("Assigning priority nick %s to bot %s", nick, bot.GetCurrentNick())
+		go bot.AttemptNickChange(nick)
+	}
+
+	// Then assign secondary nicks
+	for assignedBots < len(availableBots) && len(availableSecondaryNicks) > 0 {
+		nick := availableSecondaryNicks[0]
+		availableSecondaryNicks = availableSecondaryNicks[1:]
+		bot := availableBots[assignedBots]
+		assignedBots++
+		util.Debug("Assigning secondary nick %s to bot %s", nick, bot.GetCurrentNick())
+		go bot.AttemptNickChange(nick)
+	}
 }
 
 func (nm *NickManager) RegisterBot(bot types.Bot) {
@@ -1862,71 +1282,24 @@ func (nm *NickManager) RegisterBot(bot types.Bot) {
 	nm.bots = append(nm.bots, bot)
 }
 
-func (nm *NickManager) HandleISONResponse(onlineNicks []string) {
+func (nm *NickManager) SetBots(bots []types.Bot) {
 	nm.mutex.Lock()
 	defer nm.mutex.Unlock()
-
-	util.Debug("NickManager received ISON response: %v", onlineNicks)
-
-	var availableNicks []string
-	for _, nick := range nm.nicksToCatch {
-		if !util.Contains(onlineNicks, nick) {
-			availableNicks = append(availableNicks, nick)
-		}
-	}
-
-	if len(availableNicks) > 0 {
-		util.Debug("NickManager processing available nicks: %v", availableNicks)
-		for _, nick := range availableNicks {
-			select {
-			case nm.availableNicks <- nick:
-				util.Debug("Nick %s added to available nicks pool", nick)
-			default:
-				util.Debug("Channel full, skipping nick %s", nick)
-			}
-		}
-		nm.distributeNicks()
-	} else {
-		util.Debug("NickManager: No available nicks to process")
-	}
+	nm.bots = bots
 }
 
-func (nm *NickManager) distributeNicks() {
-	for {
-		select {
-		case nick := <-nm.availableNicks:
-			// Get an available bot to attempt nick change
-			nm.mutex.Lock()
-			bot := nm.getAvailableBot()
-			nm.mutex.Unlock()
-
-			if bot == nil {
-				util.Debug("No available bots to assign nick %s", nick)
-				return
-			}
-			util.Debug("Assigning nick %s to bot %s", nick, bot.GetCurrentNick())
-			go bot.AttemptNickChange(nick)
-		default:
-			return
-		}
-	}
-}
-
-func (nm *NickManager) getAvailableBot() types.Bot {
+func (nm *NickManager) getAvailableBots() []types.Bot {
+	var availableBots []types.Bot
 	for _, bot := range nm.bots {
 		if bot.IsConnected() && !util.IsTargetNick(bot.GetCurrentNick(), nm.nicksToCatch) {
-			return bot
+			availableBots = append(availableBots, bot)
 		}
 	}
-	return nil
+	return availableBots
 }
 
 func (nm *NickManager) ReturnNickToPool(nick string) {
-	select {
-	case nm.availableNicks <- nick:
-	default:
-		// Channel full, skipping nick
-	}
+	// No action needed since we check availability each time
 }
 
 func (nm *NickManager) GetNicksToCatch() []string {
@@ -1950,23 +1323,21 @@ type Bot interface {
 	IsConnected() bool
 	SetOwnerList(owners auth.OwnerList)
 	SetChannels(channels []string)
-	SendISON(nicks []string)
+	RequestISON(nicks []string) ([]string, error)
 	Connect() error
 	Quit(message string)
 	Reconnect()
 }
 
 type NickManager interface {
-	HandleISONResponse(onlineNicks []string)
-	ReturnNickToPool(nick string)
 	RegisterBot(bot Bot)
+	ReturnNickToPool(nick string)
+	SetBots(bots []Bot)
 	GetNicksToCatch() []string
 }
 
 type BotManager interface {
 	ShouldHandleCommand(bot Bot) bool
-	GetAvailableBots() []Bot
-	AssignBotForNick(nick string) Bot
 }
 
 # Koniec /Users/kfn/gognb/internal/types/interfaces.go
@@ -1993,9 +1364,6 @@ func IsTargetNick(nick string, targetNicks []string) bool {
 		if strings.ToLower(target) == nick {
 			return true
 		}
-	}
-	if len(nick) == 1 && nick >= "a" && nick <= "z" {
-		return true
 	}
 	return false
 }
@@ -2386,4 +1754,47 @@ func GenerateFallbackNick() string {
 # Plik /Users/kfn/gognb/scripts/run.sh
 
 # Koniec /Users/kfn/gognb/scripts/run.sh
+
+# Plik /Users/kfn/gognb/setup_git_ignore.sh
+#!/bin/bash
+
+# Sprawdź, czy jesteś w repozytorium git
+if [ ! -d ".git" ]; then
+  echo "To nie jest repozytorium git."
+  exit 1
+fi
+
+# Upewnij się, że plik config.yaml istnieje
+if [ ! -f "configs/config.yaml" ]; then
+  echo "Plik configs/config.yaml nie istnieje."
+  exit 1
+fi
+
+# Dodaj plik config.yaml do repozytorium (jeśli nie jest już śledzony)
+git add configs/config.yaml
+git commit -m "Add config.yaml to repository" || echo "config.yaml już śledzony"
+
+# Zmień nazwę pliku na config.example.yaml
+git mv configs/config.yaml configs/config.example.yaml
+git commit -m "Rename config.yaml to config.example.yaml"
+
+# Dodaj plik config.yaml, bot.log oraz skrypt do .gitignore
+echo "configs/config.yaml" >> .gitignore
+echo "bot.log" >> .gitignore
+echo "setup_git_ignore.sh" >> .gitignore  # Dodajemy skrypt do .gitignore
+
+# Dodaj zmiany do .gitignore
+git add .gitignore
+git commit -m "Add config.yaml, bot.log, and setup script to .gitignore"
+
+# Usuń plik config.yaml z kontroli wersji (bez usuwania lokalnie)
+git rm --cached configs/config.yaml
+git commit -m "Stop tracking config.yaml"
+
+# Wypchnij zmiany na GitHub
+git push
+
+echo "Proces zakończony pomyślnie!"
+
+# Koniec /Users/kfn/gognb/setup_git_ignore.sh
 

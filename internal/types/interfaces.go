@@ -19,8 +19,13 @@ type NickManager interface {
 	ReturnNickToPool(nick string)
 	SetBots(bots []Bot)
 	GetNicksToCatch() []string
+	AddNick(nick string) error
+	RemoveNick(nick string) error
+	GetNicks() []string
 }
-
 type BotManager interface {
 	ShouldHandleCommand(bot Bot) bool
+	AddOwner(ownerMask string) error
+	RemoveOwner(ownerMask string) error
+	GetOwners() []string
 }

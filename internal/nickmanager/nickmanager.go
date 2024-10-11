@@ -2,6 +2,7 @@ package nickmanager
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -177,4 +178,81 @@ func (nm *NickManager) GetNicksToCatch() []string {
 	nicksCopy := make([]string, len(nm.nicksToCatch))
 	copy(nicksCopy, nm.nicksToCatch)
 	return nicksCopy
+}
+
+func (nm *NickManager) AddNick(nick string) error {
+	nm.mutex.Lock()
+	defer nm.mutex.Unlock()
+
+	// Sprawdź, czy nick już istnieje
+	for _, n := range nm.priorityNicks {
+		if n == nick {
+			return fmt.Errorf("nick '%s' already exists", nick)
+		}
+	}
+
+	// Dodaj nick do listy priorytetowej
+	nm.priorityNicks = append(nm.priorityNicks, nick)
+	nm.nicksToCatch = append(nm.nicksToCatch, nick)
+
+	// Zapisz do pliku
+	return nm.saveNicksToFile()
+}
+
+func (nm *NickManager) RemoveNick(nick string) error {
+	nm.mutex.Lock()
+	defer nm.mutex.Unlock()
+
+	// Usuń nick z listy priorytetowej
+	index := -1
+	for i, n := range nm.priorityNicks {
+		if n == nick {
+			index = i
+			break
+		}
+	}
+
+	if index == -1 {
+		return fmt.Errorf("nick '%s' not found", nick)
+	}
+
+	nm.priorityNicks = append(nm.priorityNicks[:index], nm.priorityNicks[index+1:]...)
+
+	// Usuń nick z listy nicksToCatch
+	index = -1
+	for i, n := range nm.nicksToCatch {
+		if n == nick {
+			index = i
+			break
+		}
+	}
+
+	if index != -1 {
+		nm.nicksToCatch = append(nm.nicksToCatch[:index], nm.nicksToCatch[index+1:]...)
+	}
+
+	// Zapisz do pliku
+	return nm.saveNicksToFile()
+}
+
+func (nm *NickManager) GetNicks() []string {
+	nm.mutex.Lock()
+	defer nm.mutex.Unlock()
+
+	nicksCopy := make([]string, len(nm.priorityNicks))
+	copy(nicksCopy, nm.priorityNicks)
+	return nicksCopy
+}
+
+func (nm *NickManager) saveNicksToFile() error {
+	data := NicksData{
+		Nicks: nm.priorityNicks,
+	}
+
+	jsonData, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile("data/nicks.json", jsonData, 0644)
 }
