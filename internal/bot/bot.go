@@ -91,13 +91,10 @@ func (b *Bot) connectWithRetry() error {
 		b.Connection.UseTLS = b.Config.SSL
 		b.Connection.RealName = b.Realname
 
-		// Zastąp domyślne callbacki dla błędów nicka
-		b.replaceNickErrorCallbacks()
-
 		// Initialize connected channel
 		b.connected = make(chan struct{})
 
-		// Add callbacks
+		// Add basic callbacks
 		b.addCallbacks()
 
 		util.Info("Bot %s is attempting to connect to %s", b.CurrentNick, b.Config.ServerAddress())
@@ -108,6 +105,10 @@ func (b *Bot) connectWithRetry() error {
 			continue
 		}
 
+		// Zastąp domyślne callbacki po połączeniu
+		b.replaceNickErrorCallbacks()
+
+		// Uruchom pętlę eventów
 		go b.Connection.Loop()
 
 		// Wait for connection confirmation or timeout
