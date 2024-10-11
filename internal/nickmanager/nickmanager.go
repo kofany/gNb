@@ -275,8 +275,11 @@ func (nm *NickManager) filterAvailableNicks(nicks []string, onlineNicks []string
 	var available []string
 	for _, nick := range nicks {
 		lowerNick := strings.ToLower(nick)
-		if !util.Contains(onlineNicks, nick) && nm.tempUnavailableNicks[lowerNick].IsZero() {
-			available = append(available, nick)
+		if !util.ContainsIgnoreCase(onlineNicks, nick) {
+			// Sprawdź, czy nick nie jest tymczasowo niedostępny
+			if _, exists := nm.tempUnavailableNicks[lowerNick]; !exists {
+				available = append(available, nick)
+			}
 		}
 	}
 	return available

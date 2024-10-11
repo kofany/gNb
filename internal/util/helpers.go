@@ -23,3 +23,13 @@ func IsTargetNick(nick string, targetNicks []string) bool {
 	}
 	return false
 }
+
+func ContainsIgnoreCase(slice []string, item string) bool {
+	itemLower := strings.ToLower(item)
+	for _, s := range slice {
+		if strings.ToLower(s) == itemLower {
+			return true
+		}
+	}
+	return false
+}
