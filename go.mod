@@ -3,7 +3,7 @@ module github.com/kofany/gNb
 go 1.23.1
 
 require (
-	github.com/kofany/go-ircevent v0.1.1
+	github.com/kofany/go-ircevent v0.1.2
 	gopkg.in/yaml.v2 v2.4.0
 )
 
