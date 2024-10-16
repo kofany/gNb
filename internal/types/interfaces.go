@@ -26,6 +26,7 @@ type Bot interface {
 	GetBotManager() BotManager
 	SetNickManager(manager NickManager)
 	GetNickManager() NickManager
+	GetServerName() string
 }
 
 type NickManager interface {
@@ -38,6 +39,7 @@ type NickManager interface {
 	GetNicks() []string
 	MarkNickAsTemporarilyUnavailable(nick string)
 	NotifyNickChange(oldNick, newNick string)
+	MarkServerNoLetters(serverName string)
 	Start()
 }
 

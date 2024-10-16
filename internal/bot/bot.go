@@ -30,6 +30,7 @@ type Bot struct {
 	botManager      types.BotManager
 	gaveUp          bool
 	isonResponse    chan []string
+	ServerName      string // Nazwa serwera otrzymana po połączeniu
 }
 
 // GetBotManager returns the BotManager for this bot
@@ -141,14 +142,14 @@ func (b *Bot) connectWithRetry() error {
 	return fmt.Errorf("bot %s could not connect after %d attempts", b.CurrentNick, maxRetries)
 }
 
-// addCallbacks adds necessary callbacks to the IRC connection
 func (b *Bot) addCallbacks() {
 	// Callback for successful connection
 	b.Connection.AddCallback("001", func(e *irc.Event) {
 		b.isConnected = true
-		b.gaveUp = false // Reset flag upon successful connection
+		b.ServerName = e.Source // To będzie pełna nazwa serwera
+		b.gaveUp = false        // Reset flag upon successful connection
 		b.lastConnectTime = time.Now()
-		util.Info("Bot %s connected to %s as %s", b.CurrentNick, b.Config.Server, b.CurrentNick)
+		util.Info("Bot %s connected to %s as %s", b.CurrentNick, b.ServerName, b.CurrentNick)
 		// Join channels
 		for _, channel := range b.channels {
 			b.JoinChannel(channel)
@@ -179,15 +180,20 @@ func (b *Bot) addCallbacks() {
 
 	// List of nick-related error codes
 	nickErrorCodes := []string{"431", "432", "433", "436", "437", "484"}
-
 	for _, code := range nickErrorCodes {
 		codeCopy := code
 		b.Connection.AddCallback(codeCopy, func(e *irc.Event) {
 			util.Warning("Bot %s encountered error %s: %s", b.CurrentNick, codeCopy, e.Message())
-			// Jeśli dotyczy zmiany nicka, dodaj nick do tempUnavailableNicks
 			if len(e.Arguments) > 1 {
 				nickInQuestion := e.Arguments[1]
-				b.nickManager.MarkNickAsTemporarilyUnavailable(nickInQuestion)
+				if codeCopy == "432" && len(nickInQuestion) == 1 {
+					// Jeśli otrzymaliśmy błąd 432 dla jednoliterowego nicka
+					util.Warning("Server %s does not accept single-letter nick %s. Marking it.", b.ServerName, nickInQuestion)
+					b.nickManager.MarkServerNoLetters(b.ServerName)
+				} else {
+					// Dla innych przypadków, oznacz nick jako tymczasowo niedostępny
+					b.nickManager.MarkNickAsTemporarilyUnavailable(nickInQuestion)
+				}
 			}
 		})
 	}
@@ -200,14 +206,18 @@ func (b *Bot) addCallbacks() {
 
 	// Callback for disconnection
 	b.Connection.AddCallback("DISCONNECTED", func(e *irc.Event) {
-		util.Warning("Bot %s disconnected from server", b.CurrentNick)
+		util.Warning("Bot %s disconnected from server %s", b.CurrentNick, b.ServerName)
 		b.isConnected = false
 		if !b.isReconnecting && !b.gaveUp {
 			go b.handleReconnect()
 		} else if b.gaveUp {
-			util.Info("Bot %s has given up on reconnecting", b.CurrentNick)
+			util.Info("Bot %s has given up on reconnecting to %s", b.CurrentNick, b.ServerName)
 		}
 	})
+}
+
+func (b *Bot) GetServerName() string {
+	return b.ServerName
 }
 
 // handleISONResponse handles the ISON responses and forwards them to the NickManager

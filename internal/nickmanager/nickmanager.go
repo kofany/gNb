@@ -18,9 +18,10 @@ type NickManager struct {
 	secondaryNicks       []string
 	bots                 []types.Bot
 	botIndex             int
-	mutex                sync.Mutex
 	isonInterval         time.Duration
-	tempUnavailableNicks map[string]time.Time // Nowa mapa
+	tempUnavailableNicks map[string]time.Time // Mapa do blokowania nicków
+	NoLettersServers     map[string]bool      // Mapa serwerów, które nie akceptują jednoliterowych nicków
+	mutex                sync.Mutex
 }
 
 type NicksData struct {
@@ -30,6 +31,7 @@ type NicksData struct {
 func NewNickManager() *NickManager {
 	return &NickManager{
 		tempUnavailableNicks: make(map[string]time.Time),
+		NoLettersServers:     make(map[string]bool),
 	}
 }
 
@@ -124,8 +126,15 @@ func (nm *NickManager) handleISONResponse(onlineNicks []string) {
 		nick := availablePriorityNicks[0]
 		availablePriorityNicks = availablePriorityNicks[1:]
 		bot := availableBots[assignedBots]
+
+		// Skip single-letter nicks for servers that don't accept them
+		if len(nick) == 1 && nm.NoLettersServers[bot.GetServerName()] {
+			util.Debug("Skipping single-letter nick %s for server %s", nick, bot.GetServerName())
+			continue
+		}
+
 		assignedBots++
-		util.Debug("Assigning priority nick %s to bot %s", nick, bot.GetCurrentNick())
+		util.Debug("Assigning priority nick %s to bot %s on server %s", nick, bot.GetCurrentNick(), bot.GetServerName())
 		go bot.AttemptNickChange(nick)
 	}
 
@@ -134,8 +143,15 @@ func (nm *NickManager) handleISONResponse(onlineNicks []string) {
 		nick := availableSecondaryNicks[0]
 		availableSecondaryNicks = availableSecondaryNicks[1:]
 		bot := availableBots[assignedBots]
+
+		// Skip single-letter nicks for servers that don't accept them
+		if len(nick) == 1 && nm.NoLettersServers[bot.GetServerName()] {
+			util.Debug("Skipping single-letter nick %s for server %s", nick, bot.GetServerName())
+			continue
+		}
+
 		assignedBots++
-		util.Debug("Assigning secondary nick %s to bot %s", nick, bot.GetCurrentNick())
+		util.Debug("Assigning secondary nick %s to bot %s on server %s", nick, bot.GetCurrentNick(), bot.GetServerName())
 		go bot.AttemptNickChange(nick)
 	}
 }
@@ -309,4 +325,10 @@ func (nm *NickManager) NotifyNickChange(oldNick, newNick string) {
 
 	// Nie oznaczamy nowego nicka jako tymczasowo niedostępnego,
 	// ponieważ jest to losowy nick, a nie z puli do łapania
+}
+
+func (nm *NickManager) MarkServerNoLetters(serverName string) {
+	nm.mutex.Lock()
+	defer nm.mutex.Unlock()
+	nm.NoLettersServers[serverName] = true
 }
