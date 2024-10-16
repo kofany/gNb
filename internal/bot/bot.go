@@ -12,9 +12,6 @@ import (
 	irc "github.com/kofany/go-ircevent"
 )
 
-// Ensure Bot implements types.Bot
-var _ types.Bot = (*Bot)(nil)
-
 // Bot represents a single IRC bot
 type Bot struct {
 	Config          *config.BotConfig
@@ -33,6 +30,26 @@ type Bot struct {
 	botManager      types.BotManager
 	gaveUp          bool
 	isonResponse    chan []string
+}
+
+// GetBotManager returns the BotManager for this bot
+func (b *Bot) GetBotManager() types.BotManager {
+	return b.botManager
+}
+
+// GetNickManager returns the NickManager for this bot
+func (b *Bot) GetNickManager() types.NickManager {
+	return b.nickManager
+}
+
+// SetBotManager sets the BotManager for this bot
+func (b *Bot) SetBotManager(manager types.BotManager) {
+	b.botManager = manager
+}
+
+// SetNickManager sets the NickManager for this bot
+func (b *Bot) SetNickManager(manager types.NickManager) {
+	b.nickManager = manager
 }
 
 // NewBot creates a new Bot instance
@@ -291,16 +308,6 @@ func (b *Bot) SendMessage(target, message string) {
 	}
 }
 
-// SendNotice sends a notice to a specified target (channel or user)
-func (b *Bot) SendNotice(target, message string) {
-	if b.IsConnected() {
-		util.Debug("Bot %s is sending notice to %s: %s", b.CurrentNick, target, message)
-		b.Connection.Notice(target, message)
-	} else {
-		util.Debug("Bot %s is not connected; cannot send notice to %s", b.CurrentNick, target)
-	}
-}
-
 // Quit disconnects the bot from the IRC server
 func (b *Bot) Quit(message string) {
 	if b.IsConnected() {
@@ -334,13 +341,7 @@ func (b *Bot) shouldChangeNick(nick string) bool {
 
 // handlePrivMsg handles private and public messages and owner commands
 func (b *Bot) handlePrivMsg(e *irc.Event) {
-	// Delegate command handling to HandleCommands in commands.go
 	b.HandleCommands(e)
-}
-
-// shouldHandleCommand determines if this bot should handle the command
-func (b *Bot) shouldHandleCommand() bool {
-	return b.botManager.ShouldHandleCommand(b)
 }
 
 // SetOwnerList sets the list of owners for the bot

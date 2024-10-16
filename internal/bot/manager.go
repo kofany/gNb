@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/kofany/gNb/internal/auth"
 	"github.com/kofany/gNb/internal/config"
@@ -17,22 +18,26 @@ var _ types.BotManager = (*BotManager)(nil)
 
 // BotManager manages multiple IRC bots
 type BotManager struct {
-	bots            []types.Bot
-	owners          auth.OwnerList
-	wg              sync.WaitGroup
-	stopChan        chan struct{}
-	nickManager     types.NickManager
-	commandBotIndex int
-	mutex           sync.Mutex
+	bots                []types.Bot
+	owners              auth.OwnerList
+	wg                  sync.WaitGroup
+	stopChan            chan struct{}
+	nickManager         types.NickManager
+	commandBotIndex     int
+	mutex               sync.Mutex
+	lastMassCommand     map[string]time.Time
+	massCommandCooldown time.Duration
 }
 
 // NewBotManager creates a new BotManager instance
 func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManager) *BotManager {
 	manager := &BotManager{
-		bots:        make([]types.Bot, len(cfg.Bots)),
-		owners:      owners,
-		stopChan:    make(chan struct{}),
-		nickManager: nm,
+		bots:                make([]types.Bot, len(cfg.Bots)),
+		owners:              owners,
+		stopChan:            make(chan struct{}),
+		nickManager:         nm,
+		lastMassCommand:     make(map[string]time.Time),
+		massCommandCooldown: time.Duration(cfg.Global.MassCommandCooldown) * time.Second,
 	}
 
 	// Creating bots
@@ -40,6 +45,8 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 		bot := NewBot(&botCfg, &cfg.Global, nm, manager)
 		bot.SetOwnerList(manager.owners)
 		bot.SetChannels(cfg.Channels)
+		bot.SetBotManager(manager)
+		bot.SetNickManager(nm)
 		manager.bots[i] = bot
 		util.Debug("BotManager added bot %s", bot.GetCurrentNick())
 	}
@@ -88,11 +95,27 @@ func (bm *BotManager) ShouldHandleCommand(bot types.Bot) bool {
 	return false
 }
 
+// CanExecuteMassCommand checks if a mass command can be executed
+func (bm *BotManager) CanExecuteMassCommand(cmdName string) bool {
+	bm.mutex.Lock()
+	defer bm.mutex.Unlock()
+
+	lastExecution, exists := bm.lastMassCommand[cmdName]
+	if !exists || time.Since(lastExecution) > bm.massCommandCooldown {
+		bm.lastMassCommand[cmdName] = time.Now()
+		util.Debug("BotManager: Mass command %s can be executed", cmdName)
+		return true
+	}
+
+	util.Debug("BotManager: Mass command %s is on cooldown", cmdName)
+	return false
+}
+
 func (bm *BotManager) AddOwner(ownerMask string) error {
 	bm.mutex.Lock()
 	defer bm.mutex.Unlock()
 
-	// Sprawdź, czy owner już istnieje
+	// Check if owner already exists
 	for _, owner := range bm.owners.Owners {
 		if owner == ownerMask {
 			return fmt.Errorf("owner '%s' already exists", ownerMask)
@@ -101,7 +124,7 @@ func (bm *BotManager) AddOwner(ownerMask string) error {
 
 	bm.owners.Owners = append(bm.owners.Owners, ownerMask)
 
-	// Zapisz do pliku
+	// Save to file
 	return bm.saveOwnersToFile()
 }
 
@@ -123,7 +146,7 @@ func (bm *BotManager) RemoveOwner(ownerMask string) error {
 
 	bm.owners.Owners = append(bm.owners.Owners[:index], bm.owners.Owners[index+1:]...)
 
-	// Zapisz do pliku
+	// Save to file
 	return bm.saveOwnersToFile()
 }
 
@@ -147,10 +170,39 @@ func (bm *BotManager) saveOwnersToFile() error {
 		return err
 	}
 
-	// Zaktualizuj listę właścicieli w botach
+	// Update owner list in bots
 	for _, bot := range bm.bots {
 		bot.SetOwnerList(bm.owners)
 	}
 
 	return nil
+}
+
+// GetBots returns a copy of the bot slice
+func (bm *BotManager) GetBots() []types.Bot {
+	bm.mutex.Lock()
+	defer bm.mutex.Unlock()
+
+	botsCopy := make([]types.Bot, len(bm.bots))
+	copy(botsCopy, bm.bots)
+	return botsCopy
+}
+
+// GetNickManager returns the NickManager
+func (bm *BotManager) GetNickManager() types.NickManager {
+	return bm.nickManager
+}
+
+// SetMassCommandCooldown sets the cooldown duration for mass commands
+func (bm *BotManager) SetMassCommandCooldown(duration time.Duration) {
+	bm.mutex.Lock()
+	defer bm.mutex.Unlock()
+	bm.massCommandCooldown = duration
+}
+
+// GetMassCommandCooldown returns the current cooldown duration for mass commands
+func (bm *BotManager) GetMassCommandCooldown() time.Duration {
+	bm.mutex.Lock()
+	defer bm.mutex.Unlock()
+	return bm.massCommandCooldown
 }

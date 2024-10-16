@@ -14,14 +14,15 @@ type Config struct {
 }
 
 type GlobalConfig struct {
-	LogLevel          string   `yaml:"log_level"`
-	IsonInterval      int      `yaml:"ison_interval"`
-	MaxNickLength     int      `yaml:"max_nick_length"`
-	CommandPrefixes   []string `yaml:"owner_command_prefixes"`
-	NickAPI           NickAPI  `yaml:"nick_api"`
-	Channels          []string `yaml:"channels"`
-	ReconnectRetries  int      `yaml:"reconnect_retries"`
-	ReconnectInterval int      `yaml:"reconnect_interval"`
+	LogLevel            string   `yaml:"log_level"`
+	IsonInterval        int      `yaml:"ison_interval"`
+	MaxNickLength       int      `yaml:"max_nick_length"`
+	CommandPrefixes     []string `yaml:"owner_command_prefixes"`
+	NickAPI             NickAPI  `yaml:"nick_api"`
+	Channels            []string `yaml:"channels"`
+	ReconnectRetries    int      `yaml:"reconnect_retries"`
+	ReconnectInterval   int      `yaml:"reconnect_interval"`
+	MassCommandCooldown int      `yaml:"mass_command_cooldown"`
 }
 
 type NickAPI struct {

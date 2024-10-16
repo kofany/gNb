@@ -12,7 +12,8 @@ global:
     - "@"
   reconnect_retries: 3
   reconnect_interval: 2
-
+  mass_command_cooldown: 5
+  
 bots:
   - server: mirc.irc.al
     port: 6667
