@@ -163,7 +163,19 @@ func (nm *NickManager) getAvailableBots() []types.Bot {
 }
 
 func (nm *NickManager) ReturnNickToPool(nick string) {
-	// No action needed since we check availability each time
+	nm.mutex.Lock()
+	defer nm.mutex.Unlock()
+
+	// Sprawdź, czy nick jest w pliku nicks.json lub jest pojedynczą literą
+	if util.IsTargetNick(nick, nm.priorityNicks) || (len(nick) == 1 && nick >= "a" && nick <= "z") {
+		delete(nm.tempUnavailableNicks, strings.ToLower(nick))
+
+		// Natychmiast spróbuj przydzielić ten nick innemu botowi
+		availableBots := nm.getAvailableBots()
+		if len(availableBots) > 0 {
+			go availableBots[0].AttemptNickChange(nick)
+		}
+	}
 }
 
 func (nm *NickManager) GetNicksToCatch() []string {
@@ -277,5 +289,24 @@ func (nm *NickManager) MarkNickAsTemporarilyUnavailable(nick string) {
 	nm.mutex.Lock()
 	defer nm.mutex.Unlock()
 
-	nm.tempUnavailableNicks[strings.ToLower(nick)] = time.Now().Add(5 * time.Minute)
+	nm.tempUnavailableNicks[strings.ToLower(nick)] = time.Now().Add(1 * time.Minute)
+}
+
+func (nm *NickManager) NotifyNickChange(oldNick, newNick string) {
+	nm.mutex.Lock()
+	defer nm.mutex.Unlock()
+
+	if util.IsTargetNick(oldNick, nm.nicksToCatch) {
+		// Oznacz stary nick jako dostępny
+		delete(nm.tempUnavailableNicks, strings.ToLower(oldNick))
+
+		// Natychmiast spróbuj przydzielić ten nick innemu botowi
+		availableBots := nm.getAvailableBots()
+		if len(availableBots) > 0 {
+			go availableBots[0].AttemptNickChange(oldNick)
+		}
+	}
+
+	// Nie oznaczamy nowego nicka jako tymczasowo niedostępnego,
+	// ponieważ jest to losowy nick, a nie z puli do łapania
 }

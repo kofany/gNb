@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/kofany/gNb/internal/auth"
+	"github.com/kofany/gNb/internal/types"
 	irc "github.com/kofany/go-ircevent"
 )
 
@@ -28,7 +29,7 @@ func init() {
 		"say":        {Type: SingleCommand, Handler: handleSayCommand},
 		"join":       {Type: MassCommand, Handler: handleJoinCommand},
 		"part":       {Type: MassCommand, Handler: handlePartCommand},
-		"reconnect":  {Type: SingleCommand, Handler: handleReconnectCommand},
+		"reconnect":  {Type: MassCommand, Handler: handleReconnectCommand},
 		"addnick":    {Type: SingleCommand, Handler: handleAddNickCommand},
 		"delnick":    {Type: SingleCommand, Handler: handleDelNickCommand},
 		"listnicks":  {Type: SingleCommand, Handler: handleListNicksCommand},
@@ -177,8 +178,17 @@ func handleReconnectCommand(b *Bot, e *irc.Event, args []string) {
 	target := e.Arguments[0]
 	isChannelMsg := strings.HasPrefix(target, "#")
 
-	b.sendReply(isChannelMsg, target, sender, "Reconnecting...")
-	b.Reconnect()
+	if isChannelMsg {
+		b.sendReply(isChannelMsg, target, sender, "All bots are reconnecting with new nicks...")
+		for _, bot := range b.GetBotManager().GetBots() {
+			go func(bot types.Bot) {
+				bot.Reconnect()
+			}(bot)
+		}
+	} else {
+		b.sendReply(isChannelMsg, target, sender, "Reconnecting with a new nick...")
+		b.Reconnect()
+	}
 }
 
 func handleAddNickCommand(b *Bot, e *irc.Event, args []string) {

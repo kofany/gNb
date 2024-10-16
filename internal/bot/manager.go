@@ -27,10 +27,29 @@ type BotManager struct {
 	mutex               sync.Mutex
 	lastMassCommand     map[string]time.Time
 	massCommandCooldown time.Duration
+	wordPool            []string
+	wordPoolMutex       sync.Mutex
 }
 
 // NewBotManager creates a new BotManager instance
 func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManager) *BotManager {
+	requiredWords := len(cfg.Bots)*3 + 10 // 3 słowa na bota (nick, ident, realname) + 10 zapasowych
+
+	wordPool, err := util.GetWordsFromAPI(
+		cfg.Global.NickAPI.URL,
+		cfg.Global.NickAPI.MaxWordLength,
+		cfg.Global.NickAPI.Timeout,
+		requiredWords,
+	)
+
+	if err != nil {
+		util.Error("Failed to get words from API: %v", err)
+		wordPool = make([]string, requiredWords)
+		for i := range wordPool {
+			wordPool[i] = util.GenerateFallbackNick()
+		}
+	}
+
 	manager := &BotManager{
 		bots:                make([]types.Bot, len(cfg.Bots)),
 		owners:              owners,
@@ -38,9 +57,11 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 		nickManager:         nm,
 		lastMassCommand:     make(map[string]time.Time),
 		massCommandCooldown: time.Duration(cfg.Global.MassCommandCooldown) * time.Second,
+		wordPool:            wordPool,
+		wordPoolMutex:       sync.Mutex{},
 	}
 
-	// Creating bots
+	// Tworzenie botów
 	for i, botCfg := range cfg.Bots {
 		bot := NewBot(&botCfg, &cfg.Global, nm, manager)
 		bot.SetOwnerList(manager.owners)

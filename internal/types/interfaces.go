@@ -37,6 +37,7 @@ type NickManager interface {
 	RemoveNick(nick string) error
 	GetNicks() []string
 	MarkNickAsTemporarilyUnavailable(nick string)
+	NotifyNickChange(oldNick, newNick string)
 	Start()
 }
 

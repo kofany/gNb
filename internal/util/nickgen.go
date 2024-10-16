@@ -14,6 +14,38 @@ type APIResponse struct {
 	Words []string `json:"words"`
 }
 
+func GetWordsFromAPI(apiURL string, maxWordLength, timeout, count int) ([]string, error) {
+	client := &http.Client{
+		Timeout: time.Duration(timeout) * time.Second,
+	}
+
+	url := fmt.Sprintf("%s?count=%d&length=%d", apiURL, count, maxWordLength)
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching words from API: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading API response: %v", err)
+	}
+
+	var response struct {
+		Words []string `json:"words"`
+	}
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing API response: %v", err)
+	}
+
+	if len(response.Words) < count {
+		return nil, fmt.Errorf("API returned fewer words than requested")
+	}
+
+	return response.Words[:count], nil
+}
+
 func GenerateRandomNick(apiURL string, maxWordLength int, timeoutSeconds int) (string, error) {
 	client := http.Client{
 		Timeout: time.Duration(timeoutSeconds) * time.Second,

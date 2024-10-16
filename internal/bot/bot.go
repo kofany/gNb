@@ -52,22 +52,24 @@ func (b *Bot) SetNickManager(manager types.NickManager) {
 	b.nickManager = manager
 }
 
+func (bm *BotManager) getWordFromPool() string {
+	bm.wordPoolMutex.Lock()
+	defer bm.wordPoolMutex.Unlock()
+
+	if len(bm.wordPool) == 0 {
+		return util.GenerateFallbackNick()
+	}
+
+	word := bm.wordPool[0]
+	bm.wordPool = bm.wordPool[1:]
+	return word
+}
+
 // NewBot creates a new Bot instance
-func NewBot(cfg *config.BotConfig, globalConfig *config.GlobalConfig, nm types.NickManager, bm types.BotManager) *Bot {
-	nick, err := util.GenerateRandomNick(globalConfig.NickAPI.URL, globalConfig.NickAPI.MaxWordLength, globalConfig.NickAPI.Timeout)
-	if err != nil {
-		nick = util.GenerateFallbackNick()
-	}
-
-	ident, err := util.GenerateRandomNick(globalConfig.NickAPI.URL, globalConfig.NickAPI.MaxWordLength, globalConfig.NickAPI.Timeout)
-	if err != nil {
-		ident = "botuser"
-	}
-
-	realname, err := util.GenerateRandomNick(globalConfig.NickAPI.URL, globalConfig.NickAPI.MaxWordLength, globalConfig.NickAPI.Timeout)
-	if err != nil {
-		realname = "Nick Catcher Bot"
-	}
+func NewBot(cfg *config.BotConfig, globalConfig *config.GlobalConfig, nm types.NickManager, bm *BotManager) *Bot {
+	nick := bm.getWordFromPool()
+	ident := bm.getWordFromPool()
+	realname := bm.getWordFromPool()
 
 	bot := &Bot{
 		Config:       cfg,
@@ -166,6 +168,9 @@ func (b *Bot) addCallbacks() {
 			oldNick := b.CurrentNick
 			b.CurrentNick = e.Message()
 			util.Info("Bot %s changed nick to %s", oldNick, b.CurrentNick)
+			if b.nickManager != nil {
+				b.nickManager.NotifyNickChange(oldNick, b.CurrentNick)
+			}
 		}
 	})
 
@@ -189,6 +194,9 @@ func (b *Bot) addCallbacks() {
 
 	// Callback for private and public messages
 	b.Connection.AddCallback("PRIVMSG", b.handlePrivMsg)
+
+	// Callback for invite handling
+	b.Connection.AddCallback("INVITE", b.handleInvite)
 
 	// Callback for disconnection
 	b.Connection.AddCallback("DISCONNECTED", func(e *irc.Event) {
@@ -214,6 +222,19 @@ func (b *Bot) handleISONResponse(e *irc.Event) {
 	}
 }
 
+func (b *Bot) handleInvite(e *irc.Event) {
+	inviter := e.Nick
+	channel := e.Arguments[1]
+
+	// Sprawdź, czy zapraszający jest właścicielem
+	if auth.IsOwner(e, b.owners) {
+		util.Info("Bot %s received INVITE to %s from owner %s", b.CurrentNick, channel, inviter)
+		b.JoinChannel(channel)
+	} else {
+		util.Debug("Bot %s ignored INVITE to %s from non-owner %s", b.CurrentNick, channel, inviter)
+	}
+}
+
 // RequestISON sends an ISON command and waits for the response
 func (b *Bot) RequestISON(nicks []string) ([]string, error) {
 	if !b.IsConnected() {
@@ -236,8 +257,27 @@ func (b *Bot) RequestISON(nicks []string) ([]string, error) {
 // ChangeNick attempts to change the bot's nick to a new one
 func (b *Bot) ChangeNick(newNick string) {
 	if b.IsConnected() {
-		util.Info("Bot %s is attempting to change nick to %s", b.CurrentNick, newNick)
+		oldNick := b.CurrentNick
+		util.Info("Bot %s is attempting to change nick to %s", oldNick, newNick)
 		b.Connection.Nick(newNick)
+
+		// Dodajemy opóźnienie, aby dać serwerowi czas na przetworzenie zmiany nicka
+		time.Sleep(1 * time.Second)
+
+		// Sprawdzamy, czy zmiana nicka się powiodła
+		if b.Connection.GetNick() == newNick {
+			util.Info("Bot successfully changed nick from %s to %s", oldNick, newNick)
+			b.CurrentNick = newNick
+
+			// Powiadamiamy NickManager o zmianie nicka
+			if b.nickManager != nil {
+				b.nickManager.NotifyNickChange(oldNick, newNick)
+			} else {
+				util.Warning("NickManager is not set for bot %s", oldNick)
+			}
+		} else {
+			util.Warning("Failed to change nick for bot %s from %s to %s", oldNick, oldNick, newNick)
+		}
 	} else {
 		util.Debug("Bot %s is not connected; cannot change nick", b.CurrentNick)
 	}
@@ -263,15 +303,52 @@ func (b *Bot) PartChannel(channel string) {
 	}
 }
 
-// Reconnect disconnects and reconnects the bot to the IRC server
 func (b *Bot) Reconnect() {
 	if b.IsConnected() {
+		oldNick := b.CurrentNick
+
+		// Generuj nowy, losowy nick
+		newNick, err := util.GenerateRandomNick(b.GlobalConfig.NickAPI.URL, b.GlobalConfig.NickAPI.MaxWordLength, b.GlobalConfig.NickAPI.Timeout)
+		if err != nil {
+			newNick = util.GenerateFallbackNick()
+		}
+
+		// Rozłącz bota
 		b.Quit("Reconnecting")
-	}
-	time.Sleep(5 * time.Second)
-	err := b.Connect()
-	if err != nil {
-		util.Error("Failed to reconnect bot %s: %v", b.CurrentNick, err)
+
+		// Zwróć stary nick do puli, jeśli był to nick do złapania
+		if b.nickManager != nil {
+			b.nickManager.ReturnNickToPool(oldNick)
+		}
+
+		// Aktualizuj informacje o bocie
+		b.CurrentNick = newNick
+
+		// Poczekaj chwilę przed ponownym połączeniem
+		time.Sleep(5 * time.Second)
+
+		// Połącz ponownie z nowym nickiem
+		b.Connection = irc.IRC(newNick, b.Username, b.Config.Vhost)
+		b.Connection.VerboseCallbackHandler = false
+		b.Connection.Debug = false
+		b.Connection.UseTLS = b.Config.SSL
+		b.Connection.RealName = b.Realname
+
+		err = b.Connect()
+		if err != nil {
+			util.Error("Failed to reconnect bot %s (new nick: %s): %v", oldNick, newNick, err)
+			// W przypadku błędu, przywróć stary nick
+			b.CurrentNick = oldNick
+		} else {
+			util.Info("Bot %s successfully reconnected with new nick: %s", oldNick, newNick)
+
+			// Powiadom NickManager o zmianie nicka
+			if b.nickManager != nil {
+				b.nickManager.NotifyNickChange(oldNick, newNick)
+			}
+		}
+	} else {
+		util.Debug("Bot %s is not connected; cannot reconnect", b.CurrentNick)
 	}
 }
 
