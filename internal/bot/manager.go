@@ -78,12 +78,28 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 
 // StartBots starts all bots and connects them to their servers
 func (bm *BotManager) StartBots() {
-	for _, bot := range bm.bots {
-		err := bot.Connect()
-		if err != nil {
-			util.Error("Failed to connect bot: %v", err)
-			continue
+	groupSize := 5
+	totalBots := len(bm.bots)
+	for i := 0; i < totalBots; i += groupSize {
+		var wg sync.WaitGroup
+		end := i + groupSize
+		if end > totalBots {
+			end = totalBots
 		}
+		group := bm.bots[i:end]
+		for _, bot := range group {
+			wg.Add(1)
+			go func(b types.Bot) {
+				defer wg.Done()
+				err := b.Connect()
+				if err != nil {
+					util.Error("Failed to connect bot: %v", err)
+				}
+			}(bot)
+		}
+		wg.Wait()
+		// Opcjonalne opóźnienie między grupami
+		// time.Sleep(2 * time.Second)
 	}
 }
 
