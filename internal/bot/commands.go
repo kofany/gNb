@@ -134,9 +134,8 @@ func handleSayCommand(b *Bot, e *irc.Event, args []string) {
 		targetChannel := args[0]
 		msg := strings.Join(args[1:], " ")
 		b.SendMessage(targetChannel, msg)
-		b.sendReply(isChannelMsg, target, sender, "Message sent")
 	} else {
-		b.sendReply(isChannelMsg, target, sender, "Usage: say <channel> <message>")
+		b.sendReply(isChannelMsg, target, sender, "Usage: say <channel/nick> <message>")
 	}
 }
 
@@ -152,7 +151,6 @@ func handleJoinCommand(b *Bot, e *irc.Event, args []string) {
 			for _, bot := range b.botManager.GetBots() {
 				bot.JoinChannel(channel)
 			}
-			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("All bots are joining channel %s", channel))
 		} else {
 			// Jeśli komenda została wydana prywatnie, tylko ten bot powinien ją wykonać
 			b.JoinChannel(channel)
@@ -175,7 +173,6 @@ func handlePartCommand(b *Bot, e *irc.Event, args []string) {
 			for _, bot := range b.botManager.GetBots() {
 				bot.PartChannel(channel)
 			}
-			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("All bots are leaving channel %s", channel))
 		} else {
 			// Jeśli komenda została wydana prywatnie, tylko ten bot powinien ją wykonać
 			b.PartChannel(channel)
