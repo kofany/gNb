@@ -3,9 +3,11 @@ package bot
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kofany/gNb/internal/auth"
 	"github.com/kofany/gNb/internal/types"
+	"github.com/kofany/gNb/internal/util"
 	irc "github.com/kofany/go-ircevent"
 )
 
@@ -35,12 +37,15 @@ func init() {
 		"listnicks":  {Type: SingleCommand, Handler: handleListNicksCommand},
 		"addowner":   {Type: SingleCommand, Handler: handleAddOwnerCommand},
 		"delowner":   {Type: SingleCommand, Handler: handleDelOwnerCommand},
+		"bnc":        {Type: SingleCommand, Handler: handleBNCCommand},
 		"listowners": {Type: SingleCommand, Handler: handleListOwnersCommand},
 	}
 }
 
 // HandleCommands processes owner commands received by the bot.
 func (b *Bot) HandleCommands(e *irc.Event) {
+	util.Debug("Received command for bot %s: %s", b.GetCurrentNick(), e.Message())
+
 	message := e.Message()
 	sender := e.Nick
 	target := e.Arguments[0]
@@ -53,13 +58,13 @@ func (b *Bot) HandleCommands(e *irc.Event) {
 
 	// Check if sender is an owner
 	if !auth.IsOwner(e, b.owners) {
+		util.Debug("Command rejected: sender %s is not an owner", sender)
 		return
 	}
 
 	// Parse the command
 	commandLine := strings.TrimLeft(message, strings.Join(b.GlobalConfig.CommandPrefixes, ""))
 	args := strings.Fields(commandLine)
-
 	if len(args) == 0 {
 		return
 	}
@@ -71,14 +76,22 @@ func (b *Bot) HandleCommands(e *irc.Event) {
 		return
 	}
 
+	util.Debug("Command %s recognized for bot %s", cmdName, b.GetCurrentNick())
+
 	switch cmd.Type {
 	case SingleCommand:
-		if b.botManager.ShouldHandleCommand(b) {
+		if cmdName == "bnc" || b.botManager.ShouldHandleCommand(b, cmdName) {
+			util.Debug("Executing command %s for bot %s", cmdName, b.GetCurrentNick())
 			cmd.Handler(b, e, args[1:])
+		} else {
+			util.Debug("Command %s not handled by bot %s", cmdName, b.GetCurrentNick())
 		}
 	case MassCommand:
 		if b.botManager.CanExecuteMassCommand(cmdName) {
+			util.Debug("Executing mass command %s for bot %s", cmdName, b.GetCurrentNick())
 			cmd.Handler(b, e, args[1:])
+		} else {
+			util.Debug("Mass command %s not executed due to cooldown", cmdName)
 		}
 	}
 }
@@ -279,4 +292,39 @@ func handleListOwnersCommand(b *Bot, e *irc.Event, args []string) {
 
 	owners := b.botManager.GetOwners()
 	b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Current owners: %s", strings.Join(owners, ", ")))
+}
+
+// BNC
+func handleBNCCommand(b *Bot, e *irc.Event, args []string) {
+	sender := e.Nick
+	target := e.Arguments[0]
+	isChannelMsg := strings.HasPrefix(target, "#")
+
+	if len(args) < 1 {
+		b.sendReply(isChannelMsg, target, sender, "Usage: !bnc <start|stop>")
+		return
+	}
+
+	switch args[0] {
+	case "start":
+		port, password, err := b.StartBNC()
+		if err != nil {
+			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Failed to start BNC: %v", err))
+		} else {
+			// Wysyłanie pierwszej wiadomości
+			b.sendReply(false, sender, sender, "BNC started successfully. Use the following command to connect:")
+
+			// Tworzenie linii SSH do skopiowania, używając vhosta z konfiguracji
+			sshCommand := fmt.Sprintf("ssh -p %d %s@%s %s", port, b.GetCurrentNick(), b.Config.Vhost, password)
+
+			// Wysyłanie drugiej wiadomości z linią SSH
+			time.Sleep(1 * time.Second) // Krótkie opóźnienie między wiadomościami
+			b.sendReply(false, sender, sender, fmt.Sprintf("%s", sshCommand))
+		}
+	case "stop":
+		b.StopBNC()
+		b.sendReply(isChannelMsg, target, sender, "BNC stopped")
+	default:
+		b.sendReply(isChannelMsg, target, sender, "Invalid BNC command. Use 'start' or 'stop'")
+	}
 }

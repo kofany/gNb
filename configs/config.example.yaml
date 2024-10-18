@@ -1,5 +1,5 @@
-global:
-  log_level: debug  # Logging level: debug, info, warning, error
+global: # Please do not play with global values if you are not sure what you are doing
+  log_level: warning  # Logging level: debug, info, warning, error
   ison_interval: 1  # Interval in seconds between ISON requests
   nick_api:
     url: 'https://i.got.al/words.php'
@@ -15,7 +15,7 @@ global:
   mass_command_cooldown: 5
   
 bots:
-  - server: mirc.irc.al
+  - server: mirc.irc.al #example server 
     port: 6667
     ssl: false
     vhost: 192.168.176.35 # example IPv4
@@ -25,7 +25,7 @@ bots:
     vhost: 2a02:2454:ffff:0101:1c56:2b73:771e:f9dd # example IPv6 
 
 channels:
-  - "#irpg"
+  - "#irc.al" #example channel
 
 owner_command_prefixes:
   - "!"

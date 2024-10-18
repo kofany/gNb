@@ -98,21 +98,31 @@ func (bm *BotManager) Stop() {
 }
 
 // ShouldHandleCommand determines if a given bot should handle a command
-func (bm *BotManager) ShouldHandleCommand(bot types.Bot) bool {
+func (bm *BotManager) ShouldHandleCommand(bot types.Bot, cmdName string) bool {
 	bm.mutex.Lock()
 	defer bm.mutex.Unlock()
 
+	util.Debug("ShouldHandleCommand called for bot %s, command: %s", bot.GetCurrentNick(), cmdName)
+
+	// Zawsze pozwól na obsługę komendy !bnc przez bota, który ją otrzymał
+	if cmdName == "bnc" {
+		util.Debug("BNC command will be handled by bot %s", bot.GetCurrentNick())
+		return true
+	}
+
 	if len(bm.bots) == 0 {
+		util.Debug("No bots available to handle command")
 		return false
 	}
 
 	if bm.bots[bm.commandBotIndex] == bot {
+		util.Debug("Bot %s selected to handle command", bot.GetCurrentNick())
 		// Move index to next bot
 		bm.commandBotIndex = (bm.commandBotIndex + 1) % len(bm.bots)
-		util.Debug("BotManager: Bot %s will handle the command", bot.GetCurrentNick())
 		return true
 	}
-	util.Debug("BotManager: Bot %s will not handle the command", bot.GetCurrentNick())
+
+	util.Debug("Bot %s not selected to handle command", bot.GetCurrentNick())
 	return false
 }
 

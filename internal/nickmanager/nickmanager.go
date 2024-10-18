@@ -96,7 +96,7 @@ func (nm *NickManager) monitorNicks() {
 		}
 
 		// Wait before sending the next ISON
-		time.Sleep(time.Duration(nm.isonInterval) * time.Second)
+		time.Sleep(1 * time.Second)
 	}
 }
 

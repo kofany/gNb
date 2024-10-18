@@ -36,7 +36,8 @@ func NewClient(server string, port int, nick, username, realname, vhost string, 
 
 // Connect establishes a connection to the IRC server
 func (c *Client) Connect() error {
-	c.Connection = irc.IRC(c.Nick, c.Username, c.Vhost)
+	c.Connection = irc.IRC(c.Nick, c.Username)
+	c.Connection.SetLocalIP(c.Vhost)
 	c.Connection.VerboseCallbackHandler = false
 	c.Connection.Debug = false
 	c.Connection.UseTLS = c.SSL

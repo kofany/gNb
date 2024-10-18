@@ -27,6 +27,9 @@ type Bot interface {
 	SetNickManager(manager NickManager)
 	GetNickManager() NickManager
 	GetServerName() string
+	StartBNC() (int, string, error)
+	StopBNC()
+	SendRaw(message string)
 }
 
 type NickManager interface {
@@ -46,7 +49,7 @@ type NickManager interface {
 type BotManager interface {
 	StartBots()
 	Stop()
-	ShouldHandleCommand(bot Bot) bool
+	ShouldHandleCommand(bot Bot, cmdName string) bool
 	CanExecuteMassCommand(cmdName string) bool
 	AddOwner(ownerMask string) error
 	RemoveOwner(ownerMask string) error

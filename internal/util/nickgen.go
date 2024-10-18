@@ -1,6 +1,7 @@
 package util
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,69 +18,58 @@ type APIResponse struct {
 func GetWordsFromAPI(apiURL string, maxWordLength, timeout, count int) ([]string, error) {
 	client := &http.Client{
 		Timeout: time.Duration(timeout) * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
 	}
 
 	url := fmt.Sprintf("%s?count=%d&length=%d", apiURL, count, maxWordLength)
 	resp, err := client.Get(url)
 	if err != nil {
-		return nil, fmt.Errorf("error fetching words from API: %v", err)
+		return generateFallbackWords(count), nil
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("error reading API response: %v", err)
+		return generateFallbackWords(count), nil
 	}
 
-	var response struct {
-		Words []string `json:"words"`
-	}
+	var response APIResponse
 	err = json.Unmarshal(body, &response)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing API response: %v", err)
-	}
-
-	if len(response.Words) < count {
-		return nil, fmt.Errorf("API returned fewer words than requested")
+	if err != nil || len(response.Words) < count {
+		return generateFallbackWords(count), nil
 	}
 
 	return response.Words[:count], nil
 }
 
 func GenerateRandomNick(apiURL string, maxWordLength int, timeoutSeconds int) (string, error) {
-	client := http.Client{
+	client := &http.Client{
 		Timeout: time.Duration(timeoutSeconds) * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
 	}
 
-	// Add parameters to URL
 	fullURL := fmt.Sprintf("%s?upto=%d&count=100", apiURL, maxWordLength)
-
 	resp, err := client.Get(fullURL)
 	if err != nil {
-		return "", fmt.Errorf("error fetching nicks from API: %v", err)
+		return GenerateFallbackNick(), nil
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API returned status %d", resp.StatusCode)
-	}
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("error reading API response: %v", err)
+		return GenerateFallbackNick(), nil
 	}
 
 	var apiResp APIResponse
 	err = json.Unmarshal(body, &apiResp)
-	if err != nil {
-		return "", fmt.Errorf("error parsing API response: %v", err)
+	if err != nil || len(apiResp.Words) == 0 {
+		return GenerateFallbackNick(), nil
 	}
 
-	if len(apiResp.Words) == 0 {
-		return "", fmt.Errorf("API returned no words")
-	}
-
-	// Filter words of appropriate length and letters only
 	validWords := []string{}
 	for _, word := range apiResp.Words {
 		word = strings.TrimSpace(word)
@@ -89,12 +79,27 @@ func GenerateRandomNick(apiURL string, maxWordLength int, timeoutSeconds int) (s
 	}
 
 	if len(validWords) == 0 {
-		return "", fmt.Errorf("no suitable words after filtering")
+		return GenerateFallbackNick(), nil
 	}
 
-	// Randomly select one word
-	nick := validWords[rand.Intn(len(validWords))]
-	return nick, nil
+	return validWords[rand.Intn(len(validWords))], nil
+}
+
+func generateFallbackWords(count int) []string {
+	words := make([]string, count)
+	for i := 0; i < count; i++ {
+		words[i] = GenerateFallbackNick()
+	}
+	return words
+}
+
+func GenerateFallbackNick() string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	nick := make([]byte, 8)
+	for i := range nick {
+		nick[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(nick)
 }
 
 func isAlpha(s string) bool {
@@ -111,8 +116,4 @@ func capitalize(s string) string {
 		return s
 	}
 	return strings.ToUpper(string(s[0])) + strings.ToLower(s[1:])
-}
-
-func GenerateFallbackNick() string {
-	return fmt.Sprintf("Bot%d", time.Now().UnixNano()%10000)
 }

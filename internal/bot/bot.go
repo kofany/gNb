@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/kofany/gNb/internal/auth"
+	"github.com/kofany/gNb/internal/bnc"
 	"github.com/kofany/gNb/internal/config"
 	"github.com/kofany/gNb/internal/types"
 	"github.com/kofany/gNb/internal/util"
@@ -31,6 +32,7 @@ type Bot struct {
 	gaveUp          bool
 	isonResponse    chan []string
 	ServerName      string // Nazwa serwera otrzymana po połączeniu
+	bncServer       *bnc.BNCServer
 }
 
 // GetBotManager returns the BotManager for this bot
@@ -105,7 +107,8 @@ func (b *Bot) connectWithRetry() error {
 	retryInterval := time.Duration(b.GlobalConfig.ReconnectInterval) * time.Second
 
 	for attempts := 0; attempts < maxRetries; attempts++ {
-		b.Connection = irc.IRC(b.CurrentNick, b.Username, b.Config.Vhost)
+		b.Connection = irc.IRC(b.CurrentNick, b.Username)
+		b.Connection.SetLocalIP(b.Config.Vhost)
 		b.Connection.VerboseCallbackHandler = false
 		b.Connection.Debug = false
 		b.Connection.UseTLS = b.Config.SSL
@@ -197,7 +200,11 @@ func (b *Bot) addCallbacks() {
 			}
 		})
 	}
-
+	//BNC
+	b.Connection.AddCallback("*", func(e *irc.Event) {
+		rawMessage := e.Raw
+		b.ForwardToTunnel(rawMessage)
+	})
 	// Callback for private and public messages
 	b.Connection.AddCallback("PRIVMSG", b.handlePrivMsg)
 
@@ -338,7 +345,8 @@ func (b *Bot) Reconnect() {
 		time.Sleep(5 * time.Second)
 
 		// Połącz ponownie z nowym nickiem
-		b.Connection = irc.IRC(newNick, b.Username, b.Config.Vhost)
+		b.Connection = irc.IRC(newNick, b.Username)
+		b.Connection.SetLocalIP(b.Config.Vhost)
 		b.Connection.VerboseCallbackHandler = false
 		b.Connection.Debug = false
 		b.Connection.UseTLS = b.Config.SSL
@@ -446,4 +454,53 @@ func (b *Bot) SetChannels(channels []string) {
 // GetCurrentNick returns the bot's current nick
 func (b *Bot) GetCurrentNick() string {
 	return b.CurrentNick
+}
+
+// BNC
+
+type BNCServer struct {
+	bot      types.Bot
+	Port     int
+	Password string
+	Tunnel   *bnc.RawTunnel
+}
+
+func (b *Bot) StartBNC() (int, string, error) {
+	util.Debug("StartBNC called for bot %s", b.GetCurrentNick())
+	if b.bncServer != nil {
+		util.Debug("BNC already active for bot %s", b.GetCurrentNick())
+		return 0, "", fmt.Errorf("BNC already active for this bot")
+	}
+
+	server, err := bnc.StartBNCServer(b)
+	if err != nil {
+		util.Error("Failed to start BNC server for bot %s: %v", b.GetCurrentNick(), err)
+		return 0, "", err
+	}
+
+	b.bncServer = server
+	util.Debug("BNC server started successfully for bot %s on port %d", b.GetCurrentNick(), server.Port)
+	return server.Port, server.Password, nil
+}
+
+func (b *Bot) StopBNC() {
+	if b.bncServer != nil {
+		b.bncServer.Stop()
+		b.bncServer = nil
+	}
+}
+
+func (b *Bot) SendRaw(message string) {
+	if b.IsConnected() {
+		b.Connection.SendRaw(message)
+		if b.bncServer != nil && b.bncServer.Tunnel != nil {
+			b.bncServer.Tunnel.WriteToConn(message)
+		}
+	}
+}
+
+func (b *Bot) ForwardToTunnel(data string) {
+	if b.bncServer != nil && b.bncServer.Tunnel != nil {
+		b.bncServer.Tunnel.WriteToConn(data)
+	}
 }
