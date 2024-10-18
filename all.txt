@@ -2,89 +2,182 @@
 package main
 
 import (
+	"flag"
 	"log"
+	"math/rand"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/fatih/color"
 	"github.com/kofany/gNb/internal/auth"
 	"github.com/kofany/gNb/internal/bot"
 	"github.com/kofany/gNb/internal/config"
 	"github.com/kofany/gNb/internal/nickmanager"
 	"github.com/kofany/gNb/internal/util"
+	"github.com/sevlyar/go-daemon"
 )
 
+var (
+	devMode = flag.Bool("dev", false, "run in development mode (non-daemon)")
+)
+
+const banner = `                   _      __             __
+    ____  ____    (_)__  / /_  __  __   / /____  ____ _____ ___
+   / __ \/ __ \  / / _ \/ __ \/ / / /  / __/ _ \/ __ ` + "`" + `/ __ ` + "`" + `__ \
+  / /_/ / /_/ / / /  __/ /_/ / /_/ /  / /_/  __/ /_/ / / / / / /
+ / .___/\____/_/ /\___/_.___/\__, /   \__/\___/\__,_/_/ /_/ /_/
+/_/         /___/           /____/              pick Nick bot
+`
+
+func logLevelToString(level util.LogLevel) string {
+	switch level {
+	case util.DEBUG:
+		return "DEBUG"
+	case util.INFO:
+		return "INFO"
+	case util.WARNING:
+		return "WARNING"
+	case util.ERROR:
+		return "ERROR"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+func printBanner() {
+	color.Cyan(banner)
+}
+
 func main() {
-	// Load configuration from YAML file
+	printBanner()
+
+	color.Blue("Starting main function")
+	color.Blue("Checking and creating config files")
+	err := config.CheckAndCreateConfigFiles()
+	if err != nil {
+		color.Red("Error checking/creating config files: %v", err)
+		os.Exit(1)
+	}
+	color.Green("Config files checked and created if necessary")
+
+	color.Blue("Parsing flags")
+	flag.Parse()
+
+	color.Blue("Initializing random number generator")
+	rand.Seed(time.Now().UnixNano())
+
+	if !*devMode {
+		color.Yellow("Starting in daemon mode")
+		printBanner()
+		cntxt := &daemon.Context{
+			PidFileName: "bot.pid",
+			PidFilePerm: 0644,
+			LogFileName: "bot.log",
+			LogFilePerm: 0640,
+			WorkDir:     "./",
+			Umask:       027,
+		}
+		d, err := cntxt.Reborn()
+		if err != nil {
+			color.Red("Unable to run: %v", err)
+			os.Exit(1)
+		}
+		if d != nil {
+			color.Green("[pNb] pick Nick bot is running in background with pid: %d", d.Pid)
+			return
+		}
+		defer cntxt.Release()
+		log.Print("Daemon started")
+	} else {
+		color.Yellow("Starting in development mode")
+	}
+
+	color.Blue("Loading configuration from YAML file")
 	cfg, err := config.LoadConfig("configs/config.yaml")
 	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
+		color.Red("Failed to load configuration: %v", err)
+		os.Exit(1)
+	}
+	color.Green("Configuration loaded successfully")
+
+	var level util.LogLevel
+	if !*devMode {
+		level = util.WARNING
+		color.Yellow("Log level set to WARNING in daemon mode")
+	} else {
+		color.Blue("Parsing log level from config")
+		level, err = util.ParseLogLevel(cfg.Global.LogLevel)
+		if err != nil {
+			color.Red("Invalid log level in config: %v", err)
+			os.Exit(1)
+		}
+		color.Green("Log level set to %s", logLevelToString(level))
 	}
 
-	// Parse log level from configuration
-	level, err := util.ParseLogLevel(cfg.Global.LogLevel)
-	if err != nil {
-		log.Fatalf("Invalid log level in config: %v", err)
+	logFile := "bot.log"
+	if *devMode {
+		logFile = "bot_dev.log"
 	}
-
-	// Initialize logger
-	err = util.InitLogger(level, "bot.log")
+	color.Blue("Initializing logger with file: %s", logFile)
+	err = util.InitLogger(level, logFile)
 	if err != nil {
-		log.Fatalf("Failed to initialize logger: %v", err)
+		color.Red("Failed to initialize logger: %v", err)
+		os.Exit(1)
 	}
 	defer util.CloseLogger()
 
-	util.Info("Logger initialized with level: %s", cfg.Global.LogLevel)
+	util.Info("Logger initialized with level: %s", logLevelToString(level))
 
-	// Load owners from JSON file
+	color.Blue("Loading owners from JSON file")
 	owners, err := auth.LoadOwners("configs/owners.json")
 	if err != nil {
-		util.Error("Failed to load owners: %v", err)
+		color.Red("Failed to load owners: %v", err)
 		return
 	}
-
 	util.Debug("Owners loaded: %+v", owners)
 
-	// Create and initialize NickManager
+	color.Blue("Creating and initializing NickManager")
 	nm := nickmanager.NewNickManager()
 	err = nm.LoadNicks("data/nicks.json")
 	if err != nil {
-		util.Error("Failed to load nicks: %v", err)
+		color.Red("Failed to load nicks: %v", err)
 		return
 	}
-
 	util.Debug("NickManager initialized with nicks: %+v", nm.GetNicksToCatch())
 
-	// Create BotManager
+	color.Blue("Creating BotManager")
 	botManager := bot.NewBotManager(cfg, owners, nm)
 
-	// Start bots
-	botManager.StartBots()
+	color.Blue("Starting bots")
+	go botManager.StartBots()
 
-	// Start NickManager's monitoring loop
-	nm.Start()
+	color.Blue("Starting NickManager's monitoring loop")
+	go nm.Start()
 
 	util.Debug("Configuration loaded: %+v", cfg)
 
-	// Handle system signals for clean shutdown
+	color.Blue("Setting up signal handling for clean shutdown")
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
-	util.Info("Bot is running. Press Ctrl+C to exit.")
+	color.Green("Bot is running. Press Ctrl+C to exit.")
 
-	// Wait for shutdown signal
+	color.Blue("Waiting for shutdown signal")
 	<-sigs
 
-	// Stop bots and exit application
+	color.Yellow("Shutdown signal received")
 	botManager.Stop()
 	util.Info("Application has been shut down.")
+	color.Green("Application has been shut down.")
 }
 
 # Koniec /Users/kfn/gognb/cmd/main.go
 
 # Plik /Users/kfn/gognb/configs/config.example.yaml
-global:
-  log_level: debug  # Logging level: debug, info, warning, error
+global: # Please do not play with global values if you are not sure what you are doing
+  log_level: warning  # Logging level: debug, info, warning, error
   ison_interval: 1  # Interval in seconds between ISON requests
   nick_api:
     url: 'https://i.got.al/words.php'
@@ -97,9 +190,10 @@ global:
     - "@"
   reconnect_retries: 3
   reconnect_interval: 2
-
+  mass_command_cooldown: 5
+  
 bots:
-  - server: mirc.irc.al
+  - server: mirc.irc.al #example server 
     port: 6667
     ssl: false
     vhost: 192.168.176.35 # example IPv4
@@ -109,7 +203,7 @@ bots:
     vhost: 2a02:2454:ffff:0101:1c56:2b73:771e:f9dd # example IPv6 
 
 channels:
-  - "#irpg"
+  - "#irc.al" #example channel
 
 owner_command_prefixes:
   - "!"
@@ -135,6 +229,7 @@ global:
     - "@"
   reconnect_retries: 3
   reconnect_interval: 2
+  mass_command_cooldown: 5
 
 bots:
   - server: mirc.irc.al
@@ -144,70 +239,70 @@ bots:
   - server: mirc.irc.al
     port: 6667
     ssl: false
-    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+    vhost: 2a02:2454:8545:4900:1111:1111:1111:1111
   - server: mirc.irc.al
     port: 6667
     ssl: false
-    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+    vhost: 2a02:2454:8545:4900:1111:1111:1111:1111
   - server: mirc.irc.al
     port: 6667
     ssl: false
-    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+    vhost: 2a02:2454:8545:4900:1111:1111:1111:1111
   - server: mirc.irc.al
     port: 6667
     ssl: false
-    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+    vhost: 2a02:2454:8545:4900:1111:1111:1111:1111
   - server: mirc.irc.al
     port: 6667
     ssl: false
-    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+    vhost: 2a02:2454:8545:4900:1111:1111:1111:1111
   - server: mirc.irc.al
     port: 6667
     ssl: false
-    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+    vhost: 2a02:2454:8545:4900:1111:1111:1111:1111
   - server: mirc.irc.al
     port: 6667
     ssl: false
-    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+    vhost: 2a02:2454:8545:4900:1111:1111:1111:1111
   - server: mirc.irc.al
     port: 6667
     ssl: false
-    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+    vhost: 2a02:2454:8545:4900:1111:1111:1111:1111
   - server: mirc.irc.al
     port: 6667
     ssl: false
-    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+    vhost: 2a02:2454:8545:4900:1111:1111:1111:1111
   - server: mirc.irc.al
     port: 6667
     ssl: false
-    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+    vhost: 2a02:2454:8545:4900:1111:1111:1111:1111
   - server: mirc.irc.al
     port: 6667
     ssl: false
-    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+    vhost: 2a02:2454:8545:4900:1111:1111:1111:1111
   - server: mirc.irc.al
     port: 6667
     ssl: false
-    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+    vhost: 2a02:2454:8545:4900:1111:1111:1111:1111
   - server: mirc.irc.al
     port: 6667
     ssl: false
-    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+    vhost: 2a02:2454:8545:4900:1111:1111:1111:1111
   - server: mirc.irc.al
     port: 6667
     ssl: false
-    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+    vhost: 2a02:2454:8545:4900:1111:1111:1111:1111
   - server: mirc.irc.al
     port: 6667
     ssl: false
-    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+    vhost: 2a02:2454:8545:4900:1111:1111:1111:1111
   - server: mirc.irc.al
     port: 6667
     ssl: false
-    vhost: 2a02:2454:8545:4900:1c56:2b73:771e:f9dd
+    vhost: 2a02:2454:8545:4900:1111:1111:1111:1111
 
 channels:
-  - "#irpg"
+  - "#irc.al"
 
 owner_command_prefixes:
   - "!"
@@ -232,7 +327,9 @@ owner_command_prefixes:
     "NickKeeper",
     "IRCGuardian",
     "NetWatcher",
-    "test335"
+    "test335",
+    "kupaka1",
+    "bdsm"
   ]
 }
 # Koniec /Users/kfn/gognb/data/nicks.json
@@ -284,30 +381,68 @@ echo "Zawartość wszystkich plików (bez plików .log) została zapisana do $OU
 # Plik /Users/kfn/gognb/go.mod
 module github.com/kofany/gNb
 
-go 1.23.1
+go 1.23.2
 
 require (
-	github.com/kofany/go-ircevent v0.1.1
+	github.com/fatih/color v1.17.0
+	github.com/gliderlabs/ssh v0.3.5
+	github.com/kofany/go-ircevent v0.1.4
+	github.com/sevlyar/go-daemon v0.1.6
 	gopkg.in/yaml.v2 v2.4.0
 )
 
 require (
-	golang.org/x/net v0.0.0-20210614182718-04defd469f4e // indirect
-	golang.org/x/text v0.3.6 // indirect
+	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
+	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
+	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
+	golang.org/x/crypto v0.0.0-20220826181053-bd7e27e6170d // indirect
+	golang.org/x/net v0.0.0-20220826154423-83b083e8dc8b // indirect
+	golang.org/x/sys v0.18.0 // indirect
+	golang.org/x/text v0.3.7 // indirect
 )
 
 # Koniec /Users/kfn/gognb/go.mod
 
 # Plik /Users/kfn/gognb/go.sum
-github.com/kofany/go-ircevent v0.1.1 h1:0bItjV2MaZPNs/lUzncuA+JvhnIh0yH1He/hNH9Q9p0=
-github.com/kofany/go-ircevent v0.1.1/go.mod h1:jLTZ6WBLG226Axc2gmMqxooBdh2GXZBALYfUMZFahBA=
-golang.org/x/net v0.0.0-20210614182718-04defd469f4e h1:XpT3nA5TvE525Ne3hInMh6+GETgn27Zfm9dxsThnX2Q=
-golang.org/x/net v0.0.0-20210614182718-04defd469f4e/go.mod h1:9nx3DQGgdP8bBQD5qxJ1jj9UTztislL4KSBs9R2vV5Y=
+github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be h1:9AeTilPcZAjCFIImctFaOjnTIavg87rW78vTPkQqLI8=
+github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be/go.mod h1:ySMOLuWl6zY27l47sB3qLNK6tF2fkHG55UZxx8oIVo4=
+github.com/fatih/color v1.17.0 h1:GlRw1BRJxkpqUCBKzKOw098ed57fEsKeNjpTe3cSjK4=
+github.com/fatih/color v1.17.0/go.mod h1:YZ7TlrGPkiz6ku9fK3TLD/pl3CpsiFyu8N92HLgmosI=
+github.com/gliderlabs/ssh v0.3.5 h1:OcaySEmAQJgyYcArR+gGGTHCyE7nvhEMTlYY+Dp8CpY=
+github.com/gliderlabs/ssh v0.3.5/go.mod h1:8XB4KraRrX39qHhT6yxPsHedjA08I/uBVwj4xC+/+z4=
+github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 h1:iQTw/8FWTuc7uiaSepXwyf3o52HaUYcV+Tu66S3F5GA=
+github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0/go.mod h1:1NbS8ALrpOvjt0rHPNLyCIeMtbizbir8U//inJ+zuB8=
+github.com/kofany/go-ircevent v0.1.4 h1:JA6VcH8JC1tegToXzcTMnCbqj1hEXM7FxlJPQhs0fLM=
+github.com/kofany/go-ircevent v0.1.4/go.mod h1:CkKzziK3GOA3Aw6KcZWFDcMehZysWWjfrYbn7KX24UE=
+github.com/mattn/go-colorable v0.1.13 h1:fFA4WZxdEF4tXPZVKMLwD8oUnCTTo08duU7wxecdEvA=
+github.com/mattn/go-colorable v0.1.13/go.mod h1:7S9/ev0klgBDR4GtXTXX8a3vIGJpMovkB8vQcUbaXHg=
+github.com/mattn/go-isatty v0.0.16/go.mod h1:kYGgaQfpe5nmfYZH+SKPsOc2e4SrIfOl2e/yFXSvRLM=
+github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=
+github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
+github.com/sevlyar/go-daemon v0.1.6 h1:EUh1MDjEM4BI109Jign0EaknA2izkOyi0LV3ro3QQGs=
+github.com/sevlyar/go-daemon v0.1.6/go.mod h1:6dJpPatBT9eUwM5VCw9Bt6CdX9Tk6UWvhW3MebLDRKE=
+golang.org/x/crypto v0.0.0-20220826181053-bd7e27e6170d h1:3qF+Z8Hkrw9sOhrFHti9TlB1Hkac1x+DNRkv0XQiFjo=
+golang.org/x/crypto v0.0.0-20220826181053-bd7e27e6170d/go.mod h1:IxCIyHEi3zRg3s0A5j5BB6A9Jmi73HwBIUl50j+osU4=
+golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2/go.mod h1:9nx3DQGgdP8bBQD5qxJ1jj9UTztislL4KSBs9R2vV5Y=
+golang.org/x/net v0.0.0-20220826154423-83b083e8dc8b h1:ZmngSVLe/wycRns9MKikG9OWIEjGcGAkacif7oYQaUY=
+golang.org/x/net v0.0.0-20220826154423-83b083e8dc8b/go.mod h1:YDH+HFinaLZZlnHAfSS6ZXJJ9M9t4Dl22yv3iI2vPwk=
 golang.org/x/sys v0.0.0-20201119102817-f84b799fce68/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20210423082822-04245dca01da/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
+golang.org/x/sys v0.0.0-20210615035016-665e8c7367d1/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.0.0-20220728004956-3c1f35247d10/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.0.0-20220811171246-fbc7d0a398ab/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.0.0-20220825204002-c680a09ffe64/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.6.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.18.0 h1:DBdB3niSjOA/O0blCZBqDefyWNYveAYMNF1Wum0DYQ4=
+golang.org/x/sys v0.18.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
 golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1/go.mod h1:bj7SfCRtBDWHUb9snDiAeCFNEtKQo2Wmx5Cou7ajbmo=
-golang.org/x/text v0.3.6 h1:aRYxNxv6iGQlyVaZmk6ZgYEDa+Jg18DxebPSrd6bg1M=
+golang.org/x/term v0.0.0-20210927222741-03fcf44c2211/go.mod h1:jbD1KX2456YbFQfuXm/mYQcufACuNUgVhRMnK/tPxf8=
+golang.org/x/term v0.0.0-20220722155259-a9ba230a4035 h1:Q5284mrmYTpACcm+eAKjKJH48BBwSyfJqmmGDTtT8Vc=
+golang.org/x/term v0.0.0-20220722155259-a9ba230a4035/go.mod h1:jbD1KX2456YbFQfuXm/mYQcufACuNUgVhRMnK/tPxf8=
 golang.org/x/text v0.3.6/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+golang.org/x/text v0.3.7 h1:olpwvP2KacW1ZWvsR7uQhoyTYvKAupfQrRGBFM352Gk=
+golang.org/x/text v0.3.7/go.mod h1:u+2+/6zg+i71rQMx5EYifcz6MCKuco9NR6JIITiCfzQ=
 golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
@@ -364,6 +499,367 @@ func (ol *OwnerList) GetOwners() []string {
 
 # Koniec /Users/kfn/gognb/internal/auth/owner.go
 
+# Plik /Users/kfn/gognb/internal/bnc/rawtunnel.go
+package bnc
+
+import (
+	"bufio"
+	"fmt"
+	"io"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/kofany/gNb/internal/types"
+	"github.com/kofany/gNb/internal/util"
+)
+
+type RawTunnel struct {
+	conn          io.ReadWriteCloser
+	bot           types.Bot
+	active        bool
+	mu            sync.Mutex
+	ignoredEvents map[string]bool
+}
+
+func NewRawTunnel(bot types.Bot) *RawTunnel {
+	return &RawTunnel{
+		bot:           bot,
+		active:        false,
+		ignoredEvents: map[string]bool{"303": true}, // Domyślnie ignoruj 303
+	}
+}
+
+func (rt *RawTunnel) SetIgnoredEvent(event string, ignore bool) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.ignoredEvents[event] = ignore
+}
+
+func (rt *RawTunnel) Start(conn io.ReadWriteCloser) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+
+	if rt.active {
+		util.Warning("Raw tunnel already active for bot %s", rt.bot.GetCurrentNick())
+		return
+	}
+
+	rt.conn = conn
+	rt.active = true
+
+	welcomeMessage := `
+Welcome to the BNC SSH connection!
+
+Command usage:
+1. To send raw IRC commands, simply type them as usual.
+2. To send a message to a channel or user, use the following format:
+   .<target> <message>
+
+   Examples:
+   .#channel Hello, everyone!
+   .nickname Hi there, how are you?
+
+Enjoy your session!
+
+`
+	rt.conn.Write([]byte(welcomeMessage))
+
+	time.Sleep(100 * time.Millisecond)
+
+	go rt.readFromConn()
+}
+
+func (rt *RawTunnel) Stop() {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+
+	if !rt.active {
+		return
+	}
+
+	rt.active = false
+	if rt.conn != nil {
+		rt.conn.Close()
+	}
+}
+
+func (rt *RawTunnel) readFromConn() {
+	defer rt.Stop()
+
+	scanner := bufio.NewScanner(rt.conn)
+	for scanner.Scan() {
+		command := scanner.Text()
+
+		if strings.HasPrefix(command, ".") {
+			parts := strings.SplitN(command[1:], " ", 2)
+			if len(parts) == 2 {
+				target := parts[0]
+				message := parts[1]
+				command = fmt.Sprintf("PRIVMSG %s :%s", target, message)
+			}
+		}
+
+		rt.bot.SendRaw(command)
+
+		// Format and display the outgoing command
+		formattedMessage := rt.formatOutgoingMessage(command)
+		if formattedMessage != "" {
+			rt.conn.Write([]byte(formattedMessage + "\r\n"))
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		util.Error("Error reading from BNC connection: %v", err)
+	}
+}
+
+func (rt *RawTunnel) WriteToConn(data string) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+
+	if !rt.active || rt.conn == nil {
+		return
+	}
+
+	// Ignore 303 (ISON) events completely
+	if strings.Contains(data, " 303 ") {
+		return
+	}
+
+	formattedMessage := rt.formatIncomingMessage(data)
+	if formattedMessage != "" {
+		_, err := rt.conn.Write([]byte(formattedMessage + "\r\n"))
+		if err != nil {
+			util.Error("Error writing formatted message to BNC connection: %v", err)
+		}
+	}
+}
+
+func (rt *RawTunnel) formatOutgoingMessage(raw string) string {
+	parts := strings.SplitN(raw, " ", 3)
+	if len(parts) < 2 {
+		return ""
+	}
+
+	command := parts[0]
+	switch command {
+	case "PRIVMSG":
+		if len(parts) < 3 {
+			return ""
+		}
+		channel := parts[1]
+		message := strings.TrimPrefix(parts[2], ":")
+		return fmt.Sprintf("%s | <%s> %s", channel, rt.bot.GetCurrentNick(), message)
+	case "JOIN":
+		return fmt.Sprintf("Join %s %s", parts[1], rt.bot.GetCurrentNick())
+	case "PART":
+		if len(parts) > 2 {
+			return fmt.Sprintf("Part %s %s (%s)", parts[1], rt.bot.GetCurrentNick(), parts[2])
+		}
+		return fmt.Sprintf("Part %s %s", parts[1], rt.bot.GetCurrentNick())
+	case "QUIT":
+		if len(parts) > 1 {
+			return fmt.Sprintf("Quit %s (%s)", rt.bot.GetCurrentNick(), parts[1])
+		}
+		return fmt.Sprintf("Quit %s", rt.bot.GetCurrentNick())
+	case "NICK":
+		return fmt.Sprintf("%s changed nick to %s", rt.bot.GetCurrentNick(), parts[1])
+	default:
+		return ""
+	}
+}
+
+func (rt *RawTunnel) formatIncomingMessage(raw string) string {
+	if !strings.HasPrefix(raw, ":") {
+		return ""
+	}
+
+	parts := strings.SplitN(raw, " ", 4)
+	if len(parts) < 2 {
+		return ""
+	}
+
+	prefix := parts[0][1:] // Remove leading ':'
+	command := parts[1]
+
+	switch command {
+	case "PRIVMSG":
+		if len(parts) < 4 {
+			return ""
+		}
+		channel := parts[2]
+		message := strings.TrimPrefix(parts[3], ":")
+		return fmt.Sprintf("%s | <%s> %s", channel, rt.getNickFromPrefix(prefix), message)
+	case "MODE":
+		if len(parts) < 4 {
+			return ""
+		}
+		channel := parts[2]
+		modeChanges := strings.Join(parts[3:], " ")
+		return fmt.Sprintf("Mode %s %s by %s", channel, modeChanges, rt.getNickFromPrefix(prefix))
+	case "JOIN":
+		if len(parts) < 3 {
+			return ""
+		}
+		channel := strings.TrimPrefix(parts[2], ":")
+		return fmt.Sprintf("Join %s %s", channel, rt.getNickFromPrefix(prefix))
+	case "PART":
+		if len(parts) < 3 {
+			return ""
+		}
+		channel := parts[2]
+		message := ""
+		if len(parts) > 3 {
+			message = " (" + strings.TrimPrefix(parts[3], ":") + ")"
+		}
+		return fmt.Sprintf("Part %s %s%s", channel, rt.getNickFromPrefix(prefix), message)
+	case "QUIT":
+		message := ""
+		if len(parts) > 2 {
+			message = " (" + strings.TrimPrefix(parts[2], ":") + ")"
+		}
+		return fmt.Sprintf("Quit %s%s", rt.getNickFromPrefix(prefix), message)
+	case "NICK":
+		if len(parts) < 3 {
+			return ""
+		}
+		oldNick := rt.getNickFromPrefix(prefix)
+		newNick := strings.TrimPrefix(parts[2], ":")
+		return fmt.Sprintf("%s changed nick to %s", oldNick, newNick)
+	default:
+		return ""
+	}
+}
+
+func (rt *RawTunnel) getNickFromPrefix(prefix string) string {
+	if strings.Contains(prefix, "!") {
+		return strings.SplitN(prefix, "!", 2)[0]
+	}
+	return prefix
+}
+
+# Koniec /Users/kfn/gognb/internal/bnc/rawtunnel.go
+
+# Plik /Users/kfn/gognb/internal/bnc/server.go
+package bnc
+
+import (
+	"fmt"
+	"math/rand"
+	"net"
+	"time"
+
+	"github.com/gliderlabs/ssh"
+	"github.com/kofany/gNb/internal/types"
+	"github.com/kofany/gNb/internal/util"
+)
+
+type BNCServer struct {
+	Bot      types.Bot
+	Port     int
+	Password string
+	Tunnel   *RawTunnel
+}
+
+func StartBNCServer(bot types.Bot) (*BNCServer, error) {
+	util.Debug("Starting BNC server for bot %s", bot.GetCurrentNick())
+	port := randomPort()
+	password := generatePassword()
+	server := &BNCServer{
+		Bot:      bot,
+		Port:     port,
+		Password: password,
+		Tunnel:   NewRawTunnel(bot),
+	}
+	util.Debug("BNC server created with port %d and password %s", port, password)
+	go server.listen()
+	return server, nil
+}
+
+func (s *BNCServer) listen() {
+	util.Debug("BNC server listening started for bot %s", s.Bot.GetCurrentNick())
+
+	// Konfiguracja serwera SSH
+	server := &ssh.Server{
+		PasswordHandler: func(ctx ssh.Context, password string) bool {
+			util.Debug("Password authentication attempt for user: %s", ctx.User())
+			return ctx.User() == s.Bot.GetCurrentNick() && password == s.Password
+		},
+		Handler: func(sess ssh.Session) {
+			util.Debug("New SSH connection received for bot %s", s.Bot.GetCurrentNick())
+			util.Debug("User: %s, Command: %v", sess.User(), sess.Command())
+
+			if sess.User() != s.Bot.GetCurrentNick() {
+				util.Warning("BNC authentication failed: incorrect username for bot %s", s.Bot.GetCurrentNick())
+				sess.Close()
+				return
+			}
+			if len(sess.Command()) == 0 {
+				util.Warning("BNC authentication failed: no command provided for bot %s", s.Bot.GetCurrentNick())
+				sess.Close()
+				return
+			}
+			if sess.Command()[0] != s.Password {
+				util.Warning("BNC authentication failed: incorrect password for bot %s", s.Bot.GetCurrentNick())
+				sess.Close()
+				return
+			}
+
+			util.Info("BNC connection established for bot %s", s.Bot.GetCurrentNick())
+			s.Tunnel.Start(sess)
+
+			// Keep the session alive
+			for {
+				time.Sleep(time.Second * 30)
+				if _, err := sess.SendRequest("keepalive", false, nil); err != nil {
+					util.Debug("Keepalive failed for bot %s: %v", s.Bot.GetCurrentNick(), err)
+					break
+				}
+			}
+		},
+	}
+
+	// Use an empty host key
+	server.SetOption(ssh.HostKeyFile(""))
+
+	// Nasłuchuj na IPv4 i IPv6
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.Port))
+	if err != nil {
+		util.Error("Failed to start BNC listener: %v", err)
+		return
+	}
+	defer listener.Close()
+
+	util.Info("Starting BNC server for bot %s on port %d", s.Bot.GetCurrentNick(), s.Port)
+
+	err = server.Serve(listener)
+	if err != nil {
+		util.Error("Failed to serve BNC: %v", err)
+	}
+}
+
+func (s *BNCServer) Stop() {
+	util.Debug("Stopping BNC server for bot %s", s.Bot.GetCurrentNick())
+	s.Tunnel.Stop()
+}
+
+func randomPort() int {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	return r.Intn(1000) + 4000 // Random port between 50000 and 59999
+}
+
+func generatePassword() string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	password := make([]byte, 16)
+	for i := range password {
+		password[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(password)
+}
+
+# Koniec /Users/kfn/gognb/internal/bnc/server.go
+
 # Plik /Users/kfn/gognb/internal/bot/bot.go
 package bot
 
@@ -373,14 +869,12 @@ import (
 	"time"
 
 	"github.com/kofany/gNb/internal/auth"
+	"github.com/kofany/gNb/internal/bnc"
 	"github.com/kofany/gNb/internal/config"
 	"github.com/kofany/gNb/internal/types"
 	"github.com/kofany/gNb/internal/util"
 	irc "github.com/kofany/go-ircevent"
 )
-
-// Ensure Bot implements types.Bot
-var _ types.Bot = (*Bot)(nil)
 
 // Bot represents a single IRC bot
 type Bot struct {
@@ -400,24 +894,48 @@ type Bot struct {
 	botManager      types.BotManager
 	gaveUp          bool
 	isonResponse    chan []string
+	ServerName      string // Nazwa serwera otrzymana po połączeniu
+	bncServer       *bnc.BNCServer
+}
+
+// GetBotManager returns the BotManager for this bot
+func (b *Bot) GetBotManager() types.BotManager {
+	return b.botManager
+}
+
+// GetNickManager returns the NickManager for this bot
+func (b *Bot) GetNickManager() types.NickManager {
+	return b.nickManager
+}
+
+// SetBotManager sets the BotManager for this bot
+func (b *Bot) SetBotManager(manager types.BotManager) {
+	b.botManager = manager
+}
+
+// SetNickManager sets the NickManager for this bot
+func (b *Bot) SetNickManager(manager types.NickManager) {
+	b.nickManager = manager
+}
+
+func (bm *BotManager) getWordFromPool() string {
+	bm.wordPoolMutex.Lock()
+	defer bm.wordPoolMutex.Unlock()
+
+	if len(bm.wordPool) == 0 {
+		return util.GenerateFallbackNick()
+	}
+
+	word := bm.wordPool[0]
+	bm.wordPool = bm.wordPool[1:]
+	return word
 }
 
 // NewBot creates a new Bot instance
-func NewBot(cfg *config.BotConfig, globalConfig *config.GlobalConfig, nm types.NickManager, bm types.BotManager) *Bot {
-	nick, err := util.GenerateRandomNick(globalConfig.NickAPI.URL, globalConfig.NickAPI.MaxWordLength, globalConfig.NickAPI.Timeout)
-	if err != nil {
-		nick = util.GenerateFallbackNick()
-	}
-
-	ident, err := util.GenerateRandomNick(globalConfig.NickAPI.URL, globalConfig.NickAPI.MaxWordLength, globalConfig.NickAPI.Timeout)
-	if err != nil {
-		ident = "botuser"
-	}
-
-	realname, err := util.GenerateRandomNick(globalConfig.NickAPI.URL, globalConfig.NickAPI.MaxWordLength, globalConfig.NickAPI.Timeout)
-	if err != nil {
-		realname = "Nick Catcher Bot"
-	}
+func NewBot(cfg *config.BotConfig, globalConfig *config.GlobalConfig, nm types.NickManager, bm *BotManager) *Bot {
+	nick := bm.getWordFromPool()
+	ident := bm.getWordFromPool()
+	realname := bm.getWordFromPool()
 
 	bot := &Bot{
 		Config:       cfg,
@@ -452,7 +970,8 @@ func (b *Bot) connectWithRetry() error {
 	retryInterval := time.Duration(b.GlobalConfig.ReconnectInterval) * time.Second
 
 	for attempts := 0; attempts < maxRetries; attempts++ {
-		b.Connection = irc.IRC(b.CurrentNick, b.Username, b.Config.Vhost)
+		b.Connection = irc.IRC(b.CurrentNick, b.Username)
+		b.Connection.SetLocalIP(b.Config.Vhost)
 		b.Connection.VerboseCallbackHandler = false
 		b.Connection.Debug = false
 		b.Connection.UseTLS = b.Config.SSL
@@ -489,14 +1008,14 @@ func (b *Bot) connectWithRetry() error {
 	return fmt.Errorf("bot %s could not connect after %d attempts", b.CurrentNick, maxRetries)
 }
 
-// addCallbacks adds necessary callbacks to the IRC connection
 func (b *Bot) addCallbacks() {
 	// Callback for successful connection
 	b.Connection.AddCallback("001", func(e *irc.Event) {
 		b.isConnected = true
-		b.gaveUp = false // Reset flag upon successful connection
+		b.ServerName = e.Source // To będzie pełna nazwa serwera
+		b.gaveUp = false        // Reset flag upon successful connection
 		b.lastConnectTime = time.Now()
-		util.Info("Bot %s connected to %s as %s", b.CurrentNick, b.Config.Server, b.CurrentNick)
+		util.Info("Bot %s connected to %s as %s", b.CurrentNick, b.ServerName, b.CurrentNick)
 		// Join channels
 		for _, channel := range b.channels {
 			b.JoinChannel(channel)
@@ -516,6 +1035,9 @@ func (b *Bot) addCallbacks() {
 			oldNick := b.CurrentNick
 			b.CurrentNick = e.Message()
 			util.Info("Bot %s changed nick to %s", oldNick, b.CurrentNick)
+			if b.nickManager != nil {
+				b.nickManager.NotifyNickChange(oldNick, b.CurrentNick)
+			}
 		}
 	})
 
@@ -524,36 +1046,48 @@ func (b *Bot) addCallbacks() {
 
 	// List of nick-related error codes
 	nickErrorCodes := []string{"431", "432", "433", "436", "437", "484"}
-
 	for _, code := range nickErrorCodes {
 		codeCopy := code
 		b.Connection.AddCallback(codeCopy, func(e *irc.Event) {
 			util.Warning("Bot %s encountered error %s: %s", b.CurrentNick, codeCopy, e.Message())
-
-			// Jeśli dotyczy zmiany nicka, dodaj nick do tempUnavailableNicks
 			if len(e.Arguments) > 1 {
 				nickInQuestion := e.Arguments[1]
-				b.nickManager.MarkNickAsTemporarilyUnavailable(nickInQuestion)
+				if codeCopy == "432" && len(nickInQuestion) == 1 {
+					// Jeśli otrzymaliśmy błąd 432 dla jednoliterowego nicka
+					util.Warning("Server %s does not accept single-letter nick %s. Marking it.", b.ServerName, nickInQuestion)
+					b.nickManager.MarkServerNoLetters(b.ServerName)
+				} else {
+					// Dla innych przypadków, oznacz nick jako tymczasowo niedostępny
+					b.nickManager.MarkNickAsTemporarilyUnavailable(nickInQuestion)
+				}
 			}
-
-			// Reset nicka do obecnego, aby zapobiec automatycznej zmianie
-			b.Connection.Nick(b.CurrentNick)
 		})
 	}
-
+	//BNC
+	b.Connection.AddCallback("*", func(e *irc.Event) {
+		rawMessage := e.Raw
+		b.ForwardToTunnel(rawMessage)
+	})
 	// Callback for private and public messages
 	b.Connection.AddCallback("PRIVMSG", b.handlePrivMsg)
 
+	// Callback for invite handling
+	b.Connection.AddCallback("INVITE", b.handleInvite)
+
 	// Callback for disconnection
 	b.Connection.AddCallback("DISCONNECTED", func(e *irc.Event) {
-		util.Warning("Bot %s disconnected from server", b.CurrentNick)
+		util.Warning("Bot %s disconnected from server %s", b.CurrentNick, b.ServerName)
 		b.isConnected = false
 		if !b.isReconnecting && !b.gaveUp {
 			go b.handleReconnect()
 		} else if b.gaveUp {
-			util.Info("Bot %s has given up on reconnecting", b.CurrentNick)
+			util.Info("Bot %s has given up on reconnecting to %s", b.CurrentNick, b.ServerName)
 		}
 	})
+}
+
+func (b *Bot) GetServerName() string {
+	return b.ServerName
 }
 
 // handleISONResponse handles the ISON responses and forwards them to the NickManager
@@ -565,6 +1099,19 @@ func (b *Bot) handleISONResponse(e *irc.Event) {
 	case b.isonResponse <- isonResponse:
 	default:
 		util.Warning("Bot %s isonResponse channel is full", b.CurrentNick)
+	}
+}
+
+func (b *Bot) handleInvite(e *irc.Event) {
+	inviter := e.Nick
+	channel := e.Arguments[1]
+
+	// Sprawdź, czy zapraszający jest właścicielem
+	if auth.IsOwner(e, b.owners) {
+		util.Info("Bot %s received INVITE to %s from owner %s", b.CurrentNick, channel, inviter)
+		b.JoinChannel(channel)
+	} else {
+		util.Debug("Bot %s ignored INVITE to %s from non-owner %s", b.CurrentNick, channel, inviter)
 	}
 }
 
@@ -590,8 +1137,27 @@ func (b *Bot) RequestISON(nicks []string) ([]string, error) {
 // ChangeNick attempts to change the bot's nick to a new one
 func (b *Bot) ChangeNick(newNick string) {
 	if b.IsConnected() {
-		util.Info("Bot %s is attempting to change nick to %s", b.CurrentNick, newNick)
+		oldNick := b.CurrentNick
+		util.Info("Bot %s is attempting to change nick to %s", oldNick, newNick)
 		b.Connection.Nick(newNick)
+
+		// Dodajemy opóźnienie, aby dać serwerowi czas na przetworzenie zmiany nicka
+		time.Sleep(1 * time.Second)
+
+		// Sprawdzamy, czy zmiana nicka się powiodła
+		if b.Connection.GetNick() == newNick {
+			util.Info("Bot successfully changed nick from %s to %s", oldNick, newNick)
+			b.CurrentNick = newNick
+
+			// Powiadamiamy NickManager o zmianie nicka
+			if b.nickManager != nil {
+				b.nickManager.NotifyNickChange(oldNick, newNick)
+			} else {
+				util.Warning("NickManager is not set for bot %s", oldNick)
+			}
+		} else {
+			util.Warning("Failed to change nick for bot %s from %s to %s", oldNick, oldNick, newNick)
+		}
 	} else {
 		util.Debug("Bot %s is not connected; cannot change nick", b.CurrentNick)
 	}
@@ -617,15 +1183,53 @@ func (b *Bot) PartChannel(channel string) {
 	}
 }
 
-// Reconnect disconnects and reconnects the bot to the IRC server
 func (b *Bot) Reconnect() {
 	if b.IsConnected() {
+		oldNick := b.CurrentNick
+
+		// Generuj nowy, losowy nick
+		newNick, err := util.GenerateRandomNick(b.GlobalConfig.NickAPI.URL, b.GlobalConfig.NickAPI.MaxWordLength, b.GlobalConfig.NickAPI.Timeout)
+		if err != nil {
+			newNick = util.GenerateFallbackNick()
+		}
+
+		// Rozłącz bota
 		b.Quit("Reconnecting")
-	}
-	time.Sleep(5 * time.Second)
-	err := b.Connect()
-	if err != nil {
-		util.Error("Failed to reconnect bot %s: %v", b.CurrentNick, err)
+
+		// Zwróć stary nick do puli, jeśli był to nick do złapania
+		if b.nickManager != nil {
+			b.nickManager.ReturnNickToPool(oldNick)
+		}
+
+		// Aktualizuj informacje o bocie
+		b.CurrentNick = newNick
+
+		// Poczekaj chwilę przed ponownym połączeniem
+		time.Sleep(5 * time.Second)
+
+		// Połącz ponownie z nowym nickiem
+		b.Connection = irc.IRC(newNick, b.Username)
+		b.Connection.SetLocalIP(b.Config.Vhost)
+		b.Connection.VerboseCallbackHandler = false
+		b.Connection.Debug = false
+		b.Connection.UseTLS = b.Config.SSL
+		b.Connection.RealName = b.Realname
+
+		err = b.Connect()
+		if err != nil {
+			util.Error("Failed to reconnect bot %s (new nick: %s): %v", oldNick, newNick, err)
+			// W przypadku błędu, przywróć stary nick
+			b.CurrentNick = oldNick
+		} else {
+			util.Info("Bot %s successfully reconnected with new nick: %s", oldNick, newNick)
+
+			// Powiadom NickManager o zmianie nicka
+			if b.nickManager != nil {
+				b.nickManager.NotifyNickChange(oldNick, newNick)
+			}
+		}
+	} else {
+		util.Debug("Bot %s is not connected; cannot reconnect", b.CurrentNick)
 	}
 }
 
@@ -662,16 +1266,6 @@ func (b *Bot) SendMessage(target, message string) {
 	}
 }
 
-// SendNotice sends a notice to a specified target (channel or user)
-func (b *Bot) SendNotice(target, message string) {
-	if b.IsConnected() {
-		util.Debug("Bot %s is sending notice to %s: %s", b.CurrentNick, target, message)
-		b.Connection.Notice(target, message)
-	} else {
-		util.Debug("Bot %s is not connected; cannot send notice to %s", b.CurrentNick, target)
-	}
-}
-
 // Quit disconnects the bot from the IRC server
 func (b *Bot) Quit(message string) {
 	if b.IsConnected() {
@@ -705,13 +1299,7 @@ func (b *Bot) shouldChangeNick(nick string) bool {
 
 // handlePrivMsg handles private and public messages and owner commands
 func (b *Bot) handlePrivMsg(e *irc.Event) {
-	// Delegate command handling to HandleCommands in commands.go
 	b.HandleCommands(e)
-}
-
-// shouldHandleCommand determines if this bot should handle the command
-func (b *Bot) shouldHandleCommand() bool {
-	return b.botManager.ShouldHandleCommand(b)
 }
 
 // SetOwnerList sets the list of owners for the bot
@@ -731,6 +1319,55 @@ func (b *Bot) GetCurrentNick() string {
 	return b.CurrentNick
 }
 
+// BNC
+
+type BNCServer struct {
+	bot      types.Bot
+	Port     int
+	Password string
+	Tunnel   *bnc.RawTunnel
+}
+
+func (b *Bot) StartBNC() (int, string, error) {
+	util.Debug("StartBNC called for bot %s", b.GetCurrentNick())
+	if b.bncServer != nil {
+		util.Debug("BNC already active for bot %s", b.GetCurrentNick())
+		return 0, "", fmt.Errorf("BNC already active for this bot")
+	}
+
+	server, err := bnc.StartBNCServer(b)
+	if err != nil {
+		util.Error("Failed to start BNC server for bot %s: %v", b.GetCurrentNick(), err)
+		return 0, "", err
+	}
+
+	b.bncServer = server
+	util.Debug("BNC server started successfully for bot %s on port %d", b.GetCurrentNick(), server.Port)
+	return server.Port, server.Password, nil
+}
+
+func (b *Bot) StopBNC() {
+	if b.bncServer != nil {
+		b.bncServer.Stop()
+		b.bncServer = nil
+	}
+}
+
+func (b *Bot) SendRaw(message string) {
+	if b.IsConnected() {
+		b.Connection.SendRaw(message)
+		if b.bncServer != nil && b.bncServer.Tunnel != nil {
+			b.bncServer.Tunnel.WriteToConn(message)
+		}
+	}
+}
+
+func (b *Bot) ForwardToTunnel(data string) {
+	if b.bncServer != nil && b.bncServer.Tunnel != nil {
+		b.bncServer.Tunnel.WriteToConn(data)
+	}
+}
+
 # Koniec /Users/kfn/gognb/internal/bot/bot.go
 
 # Plik /Users/kfn/gognb/internal/bot/commands.go
@@ -739,15 +1376,53 @@ package bot
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kofany/gNb/internal/auth"
+	"github.com/kofany/gNb/internal/types"
+	"github.com/kofany/gNb/internal/util"
 	irc "github.com/kofany/go-ircevent"
 )
 
+type CommandType int
+
+const (
+	SingleCommand CommandType = iota
+	MassCommand
+)
+
+type Command struct {
+	Type    CommandType
+	Handler func(*Bot, *irc.Event, []string)
+}
+
+var commandMap map[string]Command
+
+func init() {
+	commandMap = map[string]Command{
+		"quit":       {Type: SingleCommand, Handler: handleQuitCommand},
+		"say":        {Type: SingleCommand, Handler: handleSayCommand},
+		"join":       {Type: MassCommand, Handler: handleJoinCommand},
+		"part":       {Type: MassCommand, Handler: handlePartCommand},
+		"reconnect":  {Type: MassCommand, Handler: handleReconnectCommand},
+		"addnick":    {Type: SingleCommand, Handler: handleAddNickCommand},
+		"delnick":    {Type: SingleCommand, Handler: handleDelNickCommand},
+		"listnicks":  {Type: SingleCommand, Handler: handleListNicksCommand},
+		"addowner":   {Type: SingleCommand, Handler: handleAddOwnerCommand},
+		"delowner":   {Type: SingleCommand, Handler: handleDelOwnerCommand},
+		"bnc":        {Type: SingleCommand, Handler: handleBNCCommand},
+		"listowners": {Type: SingleCommand, Handler: handleListOwnersCommand},
+	}
+}
+
 // HandleCommands processes owner commands received by the bot.
 func (b *Bot) HandleCommands(e *irc.Event) {
+	util.Debug("Received command for bot %s: %s", b.GetCurrentNick(), e.Message())
+
 	message := e.Message()
 	sender := e.Nick
+	target := e.Arguments[0]
+	isChannelMsg := strings.HasPrefix(target, "#")
 
 	// Check if message starts with any command prefixes
 	if !startsWithAny(message, b.GlobalConfig.CommandPrefixes) {
@@ -756,66 +1431,49 @@ func (b *Bot) HandleCommands(e *irc.Event) {
 
 	// Check if sender is an owner
 	if !auth.IsOwner(e, b.owners) {
-		return
-	}
-
-	// Before processing the command, check if this bot should handle it
-	if !b.shouldHandleCommand() {
+		util.Debug("Command rejected: sender %s is not an owner", sender)
 		return
 	}
 
 	// Parse the command
 	commandLine := strings.TrimLeft(message, strings.Join(b.GlobalConfig.CommandPrefixes, ""))
 	args := strings.Fields(commandLine)
-
 	if len(args) == 0 {
 		return
 	}
 
-	// Handle commands
-	switch strings.ToLower(args[0]) {
-	case "quit":
-		b.Quit("Command from owner")
-	case "say":
-		if len(args) >= 3 {
-			targetChannel := args[1]
-			msg := strings.Join(args[2:], " ")
-			b.SendMessage(targetChannel, msg)
+	cmdName := strings.ToLower(args[0])
+	cmd, exists := commandMap[cmdName]
+	if !exists {
+		b.sendReply(isChannelMsg, target, sender, "Unknown command")
+		return
+	}
+
+	util.Debug("Command %s recognized for bot %s", cmdName, b.GetCurrentNick())
+
+	switch cmd.Type {
+	case SingleCommand:
+		if cmdName == "bnc" || b.botManager.ShouldHandleCommand(b, cmdName) {
+			util.Debug("Executing command %s for bot %s", cmdName, b.GetCurrentNick())
+			cmd.Handler(b, e, args[1:])
 		} else {
-			b.SendNotice(sender, "Usage: say <channel> <message>")
+			util.Debug("Command %s not handled by bot %s", cmdName, b.GetCurrentNick())
 		}
-	case "join":
-		if len(args) >= 2 {
-			channel := args[1]
-			b.JoinChannel(channel)
+	case MassCommand:
+		if b.botManager.CanExecuteMassCommand(cmdName) {
+			util.Debug("Executing mass command %s for bot %s", cmdName, b.GetCurrentNick())
+			cmd.Handler(b, e, args[1:])
 		} else {
-			b.SendNotice(sender, "Usage: join <channel>")
+			util.Debug("Mass command %s not executed due to cooldown", cmdName)
 		}
-	case "part":
-		if len(args) >= 2 {
-			channel := args[1]
-			b.PartChannel(channel)
-		} else {
-			b.SendNotice(sender, "Usage: part <channel>")
-		}
-	case "reconnect":
-		b.Reconnect()
-	// New commands for nick management
-	case "addnick":
-		b.handleAddNickCommand(args, sender)
-	case "delnick":
-		b.handleDelNickCommand(args, sender)
-	case "listnicks":
-		b.handleListNicksCommand(sender)
-	// New commands for owner management
-	case "addowner":
-		b.handleAddOwnerCommand(args, sender)
-	case "delowner":
-		b.handleDelOwnerCommand(args, sender)
-	case "listowners":
-		b.handleListOwnersCommand(sender)
-	default:
-		b.SendNotice(sender, "Unknown command")
+	}
+}
+
+func (b *Bot) sendReply(isChannelMsg bool, target, sender, message string) {
+	if isChannelMsg {
+		b.SendMessage(target, message)
+	} else {
+		b.SendMessage(sender, message)
 	}
 }
 
@@ -829,74 +1487,219 @@ func startsWithAny(s string, prefixes []string) bool {
 	return false
 }
 
-// Command handlers for nick management
+// Command handlers
 
-func (b *Bot) handleAddNickCommand(args []string, sender string) {
+func handleQuitCommand(b *Bot, e *irc.Event, args []string) {
+	sender := e.Nick
+	target := e.Arguments[0]
+	isChannelMsg := strings.HasPrefix(target, "#")
+
+	b.sendReply(isChannelMsg, target, sender, "Quitting...")
+	b.Quit("Command from owner")
+}
+
+func handleSayCommand(b *Bot, e *irc.Event, args []string) {
+	sender := e.Nick
+	target := e.Arguments[0]
+	isChannelMsg := strings.HasPrefix(target, "#")
+
 	if len(args) >= 2 {
-		nick := args[1]
+		targetChannel := args[0]
+		msg := strings.Join(args[1:], " ")
+		b.SendMessage(targetChannel, msg)
+		b.sendReply(isChannelMsg, target, sender, "Message sent")
+	} else {
+		b.sendReply(isChannelMsg, target, sender, "Usage: say <channel> <message>")
+	}
+}
+
+func handleJoinCommand(b *Bot, e *irc.Event, args []string) {
+	sender := e.Nick
+	target := e.Arguments[0]
+	isChannelMsg := strings.HasPrefix(target, "#")
+
+	if len(args) >= 1 {
+		channel := args[0]
+		if isChannelMsg {
+			// Jeśli komenda została wydana na kanale, wszystkie boty powinny ją wykonać
+			for _, bot := range b.botManager.GetBots() {
+				bot.JoinChannel(channel)
+			}
+			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("All bots are joining channel %s", channel))
+		} else {
+			// Jeśli komenda została wydana prywatnie, tylko ten bot powinien ją wykonać
+			b.JoinChannel(channel)
+			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Joined channel %s", channel))
+		}
+	} else {
+		b.sendReply(isChannelMsg, target, sender, "Usage: join <channel>")
+	}
+}
+
+func handlePartCommand(b *Bot, e *irc.Event, args []string) {
+	sender := e.Nick
+	target := e.Arguments[0]
+	isChannelMsg := strings.HasPrefix(target, "#")
+
+	if len(args) >= 1 {
+		channel := args[0]
+		if isChannelMsg {
+			// Jeśli komenda została wydana na kanale, wszystkie boty powinny ją wykonać
+			for _, bot := range b.botManager.GetBots() {
+				bot.PartChannel(channel)
+			}
+			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("All bots are leaving channel %s", channel))
+		} else {
+			// Jeśli komenda została wydana prywatnie, tylko ten bot powinien ją wykonać
+			b.PartChannel(channel)
+			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Left channel %s", channel))
+		}
+	} else {
+		b.sendReply(isChannelMsg, target, sender, "Usage: part <channel>")
+	}
+}
+
+func handleReconnectCommand(b *Bot, e *irc.Event, args []string) {
+	sender := e.Nick
+	target := e.Arguments[0]
+	isChannelMsg := strings.HasPrefix(target, "#")
+
+	if isChannelMsg {
+		b.sendReply(isChannelMsg, target, sender, "All bots are reconnecting with new nicks...")
+		for _, bot := range b.GetBotManager().GetBots() {
+			go func(bot types.Bot) {
+				bot.Reconnect()
+			}(bot)
+		}
+	} else {
+		b.sendReply(isChannelMsg, target, sender, "Reconnecting with a new nick...")
+		b.Reconnect()
+	}
+}
+
+func handleAddNickCommand(b *Bot, e *irc.Event, args []string) {
+	sender := e.Nick
+	target := e.Arguments[0]
+	isChannelMsg := strings.HasPrefix(target, "#")
+
+	if len(args) >= 1 {
+		nick := args[0]
 		err := b.nickManager.AddNick(nick)
 		if err != nil {
-			b.SendNotice(sender, fmt.Sprintf("Error adding nick: %v", err))
+			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Error adding nick: %v", err))
 		} else {
-			b.SendNotice(sender, fmt.Sprintf("Nick '%s' has been added.", nick))
+			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Nick '%s' has been added.", nick))
 		}
 	} else {
-		b.SendNotice(sender, "Usage: addnick <nick>")
+		b.sendReply(isChannelMsg, target, sender, "Usage: addnick <nick>")
 	}
 }
 
-func (b *Bot) handleDelNickCommand(args []string, sender string) {
-	if len(args) >= 2 {
-		nick := args[1]
+func handleDelNickCommand(b *Bot, e *irc.Event, args []string) {
+	sender := e.Nick
+	target := e.Arguments[0]
+	isChannelMsg := strings.HasPrefix(target, "#")
+
+	if len(args) >= 1 {
+		nick := args[0]
 		err := b.nickManager.RemoveNick(nick)
 		if err != nil {
-			b.SendNotice(sender, fmt.Sprintf("Error removing nick: %v", err))
+			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Error removing nick: %v", err))
 		} else {
-			b.SendNotice(sender, fmt.Sprintf("Nick '%s' has been removed.", nick))
+			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Nick '%s' has been removed.", nick))
 		}
 	} else {
-		b.SendNotice(sender, "Usage: delnick <nick>")
+		b.sendReply(isChannelMsg, target, sender, "Usage: delnick <nick>")
 	}
 }
 
-func (b *Bot) handleListNicksCommand(sender string) {
+func handleListNicksCommand(b *Bot, e *irc.Event, args []string) {
+	sender := e.Nick
+	target := e.Arguments[0]
+	isChannelMsg := strings.HasPrefix(target, "#")
+
 	nicks := b.nickManager.GetNicks()
-	b.SendNotice(sender, fmt.Sprintf("Current nicks: %s", strings.Join(nicks, ", ")))
+	b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Current nicks: %s", strings.Join(nicks, ", ")))
 }
 
-// Command handlers for owner management
+func handleAddOwnerCommand(b *Bot, e *irc.Event, args []string) {
+	sender := e.Nick
+	target := e.Arguments[0]
+	isChannelMsg := strings.HasPrefix(target, "#")
 
-func (b *Bot) handleAddOwnerCommand(args []string, sender string) {
-	if len(args) >= 2 {
-		ownerMask := args[1]
+	if len(args) >= 1 {
+		ownerMask := args[0]
 		err := b.botManager.AddOwner(ownerMask)
 		if err != nil {
-			b.SendNotice(sender, fmt.Sprintf("Error adding owner: %v", err))
+			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Error adding owner: %v", err))
 		} else {
-			b.SendNotice(sender, fmt.Sprintf("Owner '%s' has been added.", ownerMask))
+			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Owner '%s' has been added.", ownerMask))
 		}
 	} else {
-		b.SendNotice(sender, "Usage: addowner <mask>")
+		b.sendReply(isChannelMsg, target, sender, "Usage: addowner <mask>")
 	}
 }
 
-func (b *Bot) handleDelOwnerCommand(args []string, sender string) {
-	if len(args) >= 2 {
-		ownerMask := args[1]
+func handleDelOwnerCommand(b *Bot, e *irc.Event, args []string) {
+	sender := e.Nick
+	target := e.Arguments[0]
+	isChannelMsg := strings.HasPrefix(target, "#")
+
+	if len(args) >= 1 {
+		ownerMask := args[0]
 		err := b.botManager.RemoveOwner(ownerMask)
 		if err != nil {
-			b.SendNotice(sender, fmt.Sprintf("Error removing owner: %v", err))
+			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Error removing owner: %v", err))
 		} else {
-			b.SendNotice(sender, fmt.Sprintf("Owner '%s' has been removed.", ownerMask))
+			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Owner '%s' has been removed.", ownerMask))
 		}
 	} else {
-		b.SendNotice(sender, "Usage: delowner <mask>")
+		b.sendReply(isChannelMsg, target, sender, "Usage: delowner <mask>")
 	}
 }
 
-func (b *Bot) handleListOwnersCommand(sender string) {
+func handleListOwnersCommand(b *Bot, e *irc.Event, args []string) {
+	sender := e.Nick
+	target := e.Arguments[0]
+	isChannelMsg := strings.HasPrefix(target, "#")
+
 	owners := b.botManager.GetOwners()
-	b.SendNotice(sender, fmt.Sprintf("Current owners: %s", strings.Join(owners, ", ")))
+	b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Current owners: %s", strings.Join(owners, ", ")))
+}
+
+// BNC
+func handleBNCCommand(b *Bot, e *irc.Event, args []string) {
+	sender := e.Nick
+	target := e.Arguments[0]
+	isChannelMsg := strings.HasPrefix(target, "#")
+
+	if len(args) < 1 {
+		b.sendReply(isChannelMsg, target, sender, "Usage: !bnc <start|stop>")
+		return
+	}
+
+	switch args[0] {
+	case "start":
+		port, password, err := b.StartBNC()
+		if err != nil {
+			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Failed to start BNC: %v", err))
+		} else {
+			// Wysyłanie pierwszej wiadomości
+			b.sendReply(false, sender, sender, "BNC started successfully. Use the following command to connect:")
+
+			// Tworzenie linii SSH do skopiowania, używając vhosta z konfiguracji
+			sshCommand := fmt.Sprintf("ssh -p %d %s@%s %s", port, b.GetCurrentNick(), b.Config.Vhost, password)
+
+			// Wysyłanie drugiej wiadomości z linią SSH
+			time.Sleep(1 * time.Second) // Krótkie opóźnienie między wiadomościami
+			b.sendReply(false, sender, sender, fmt.Sprintf("%s", sshCommand))
+		}
+	case "stop":
+		b.StopBNC()
+		b.sendReply(isChannelMsg, target, sender, "BNC stopped")
+	default:
+		b.sendReply(isChannelMsg, target, sender, "Invalid BNC command. Use 'start' or 'stop'")
+	}
 }
 
 # Koniec /Users/kfn/gognb/internal/bot/commands.go
@@ -909,6 +1712,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/kofany/gNb/internal/auth"
 	"github.com/kofany/gNb/internal/config"
@@ -921,29 +1725,56 @@ var _ types.BotManager = (*BotManager)(nil)
 
 // BotManager manages multiple IRC bots
 type BotManager struct {
-	bots            []types.Bot
-	owners          auth.OwnerList
-	wg              sync.WaitGroup
-	stopChan        chan struct{}
-	nickManager     types.NickManager
-	commandBotIndex int
-	mutex           sync.Mutex
+	bots                []types.Bot
+	owners              auth.OwnerList
+	wg                  sync.WaitGroup
+	stopChan            chan struct{}
+	nickManager         types.NickManager
+	commandBotIndex     int
+	mutex               sync.Mutex
+	lastMassCommand     map[string]time.Time
+	massCommandCooldown time.Duration
+	wordPool            []string
+	wordPoolMutex       sync.Mutex
 }
 
 // NewBotManager creates a new BotManager instance
 func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManager) *BotManager {
-	manager := &BotManager{
-		bots:        make([]types.Bot, len(cfg.Bots)),
-		owners:      owners,
-		stopChan:    make(chan struct{}),
-		nickManager: nm,
+	requiredWords := len(cfg.Bots)*3 + 10 // 3 słowa na bota (nick, ident, realname) + 10 zapasowych
+
+	wordPool, err := util.GetWordsFromAPI(
+		cfg.Global.NickAPI.URL,
+		cfg.Global.NickAPI.MaxWordLength,
+		cfg.Global.NickAPI.Timeout,
+		requiredWords,
+	)
+
+	if err != nil {
+		util.Error("Failed to get words from API: %v", err)
+		wordPool = make([]string, requiredWords)
+		for i := range wordPool {
+			wordPool[i] = util.GenerateFallbackNick()
+		}
 	}
 
-	// Creating bots
+	manager := &BotManager{
+		bots:                make([]types.Bot, len(cfg.Bots)),
+		owners:              owners,
+		stopChan:            make(chan struct{}),
+		nickManager:         nm,
+		lastMassCommand:     make(map[string]time.Time),
+		massCommandCooldown: time.Duration(cfg.Global.MassCommandCooldown) * time.Second,
+		wordPool:            wordPool,
+		wordPoolMutex:       sync.Mutex{},
+	}
+
+	// Tworzenie botów
 	for i, botCfg := range cfg.Bots {
 		bot := NewBot(&botCfg, &cfg.Global, nm, manager)
 		bot.SetOwnerList(manager.owners)
 		bot.SetChannels(cfg.Channels)
+		bot.SetBotManager(manager)
+		bot.SetNickManager(nm)
 		manager.bots[i] = bot
 		util.Debug("BotManager added bot %s", bot.GetCurrentNick())
 	}
@@ -974,21 +1805,47 @@ func (bm *BotManager) Stop() {
 }
 
 // ShouldHandleCommand determines if a given bot should handle a command
-func (bm *BotManager) ShouldHandleCommand(bot types.Bot) bool {
+func (bm *BotManager) ShouldHandleCommand(bot types.Bot, cmdName string) bool {
 	bm.mutex.Lock()
 	defer bm.mutex.Unlock()
 
+	util.Debug("ShouldHandleCommand called for bot %s, command: %s", bot.GetCurrentNick(), cmdName)
+
+	// Zawsze pozwól na obsługę komendy !bnc przez bota, który ją otrzymał
+	if cmdName == "bnc" {
+		util.Debug("BNC command will be handled by bot %s", bot.GetCurrentNick())
+		return true
+	}
+
 	if len(bm.bots) == 0 {
+		util.Debug("No bots available to handle command")
 		return false
 	}
 
 	if bm.bots[bm.commandBotIndex] == bot {
+		util.Debug("Bot %s selected to handle command", bot.GetCurrentNick())
 		// Move index to next bot
 		bm.commandBotIndex = (bm.commandBotIndex + 1) % len(bm.bots)
-		util.Debug("BotManager: Bot %s will handle the command", bot.GetCurrentNick())
 		return true
 	}
-	util.Debug("BotManager: Bot %s will not handle the command", bot.GetCurrentNick())
+
+	util.Debug("Bot %s not selected to handle command", bot.GetCurrentNick())
+	return false
+}
+
+// CanExecuteMassCommand checks if a mass command can be executed
+func (bm *BotManager) CanExecuteMassCommand(cmdName string) bool {
+	bm.mutex.Lock()
+	defer bm.mutex.Unlock()
+
+	lastExecution, exists := bm.lastMassCommand[cmdName]
+	if !exists || time.Since(lastExecution) > bm.massCommandCooldown {
+		bm.lastMassCommand[cmdName] = time.Now()
+		util.Debug("BotManager: Mass command %s can be executed", cmdName)
+		return true
+	}
+
+	util.Debug("BotManager: Mass command %s is on cooldown", cmdName)
 	return false
 }
 
@@ -996,7 +1853,7 @@ func (bm *BotManager) AddOwner(ownerMask string) error {
 	bm.mutex.Lock()
 	defer bm.mutex.Unlock()
 
-	// Sprawdź, czy owner już istnieje
+	// Check if owner already exists
 	for _, owner := range bm.owners.Owners {
 		if owner == ownerMask {
 			return fmt.Errorf("owner '%s' already exists", ownerMask)
@@ -1005,7 +1862,7 @@ func (bm *BotManager) AddOwner(ownerMask string) error {
 
 	bm.owners.Owners = append(bm.owners.Owners, ownerMask)
 
-	// Zapisz do pliku
+	// Save to file
 	return bm.saveOwnersToFile()
 }
 
@@ -1027,7 +1884,7 @@ func (bm *BotManager) RemoveOwner(ownerMask string) error {
 
 	bm.owners.Owners = append(bm.owners.Owners[:index], bm.owners.Owners[index+1:]...)
 
-	// Zapisz do pliku
+	// Save to file
 	return bm.saveOwnersToFile()
 }
 
@@ -1051,12 +1908,41 @@ func (bm *BotManager) saveOwnersToFile() error {
 		return err
 	}
 
-	// Zaktualizuj listę właścicieli w botach
+	// Update owner list in bots
 	for _, bot := range bm.bots {
 		bot.SetOwnerList(bm.owners)
 	}
 
 	return nil
+}
+
+// GetBots returns a copy of the bot slice
+func (bm *BotManager) GetBots() []types.Bot {
+	bm.mutex.Lock()
+	defer bm.mutex.Unlock()
+
+	botsCopy := make([]types.Bot, len(bm.bots))
+	copy(botsCopy, bm.bots)
+	return botsCopy
+}
+
+// GetNickManager returns the NickManager
+func (bm *BotManager) GetNickManager() types.NickManager {
+	return bm.nickManager
+}
+
+// SetMassCommandCooldown sets the cooldown duration for mass commands
+func (bm *BotManager) SetMassCommandCooldown(duration time.Duration) {
+	bm.mutex.Lock()
+	defer bm.mutex.Unlock()
+	bm.massCommandCooldown = duration
+}
+
+// GetMassCommandCooldown returns the current cooldown duration for mass commands
+func (bm *BotManager) GetMassCommandCooldown() time.Duration {
+	bm.mutex.Lock()
+	defer bm.mutex.Unlock()
+	return bm.massCommandCooldown
 }
 
 # Koniec /Users/kfn/gognb/internal/bot/manager.go
@@ -1068,6 +1954,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/fatih/color"
+
 	"gopkg.in/yaml.v2"
 )
 
@@ -1078,14 +1966,15 @@ type Config struct {
 }
 
 type GlobalConfig struct {
-	LogLevel          string   `yaml:"log_level"`
-	IsonInterval      int      `yaml:"ison_interval"`
-	MaxNickLength     int      `yaml:"max_nick_length"`
-	CommandPrefixes   []string `yaml:"owner_command_prefixes"`
-	NickAPI           NickAPI  `yaml:"nick_api"`
-	Channels          []string `yaml:"channels"`
-	ReconnectRetries  int      `yaml:"reconnect_retries"`
-	ReconnectInterval int      `yaml:"reconnect_interval"`
+	LogLevel            string   `yaml:"log_level"`
+	IsonInterval        int      `yaml:"ison_interval"`
+	MaxNickLength       int      `yaml:"max_nick_length"`
+	CommandPrefixes     []string `yaml:"owner_command_prefixes"`
+	NickAPI             NickAPI  `yaml:"nick_api"`
+	Channels            []string `yaml:"channels"`
+	ReconnectRetries    int      `yaml:"reconnect_retries"`
+	ReconnectInterval   int      `yaml:"reconnect_interval"`
+	MassCommandCooldown int      `yaml:"mass_command_cooldown"`
 }
 
 type NickAPI struct {
@@ -1116,6 +2005,111 @@ func LoadConfig(filename string) (*Config, error) {
 
 func (cfg *BotConfig) ServerAddress() string {
 	return fmt.Sprintf("%s:%d", cfg.Server, cfg.Port)
+}
+
+func CheckAndCreateConfigFiles() error {
+	folders := []string{"configs", "data"}
+	files := map[string]string{
+		"configs/config.yaml": `global:
+  # Please do not play with global values if you are not sure what you are doing
+  log_level: warning  # Logging level: debug, info, warning, error
+  ison_interval: 1  # Interval in seconds between ISON requests
+  nick_api:
+    url: 'https://i.got.al/words.php'
+    max_word_length: 12
+    timeout: 5  # Timeout for API requests in seconds
+  max_nick_length: 14
+  owner_command_prefixes:
+    - "!"
+    - "."
+    - "@"
+  reconnect_retries: 3
+  reconnect_interval: 2
+  mass_command_cooldown: 5
+
+bots:
+  - server: mirc.irc.al  #example server
+    port: 6667
+    ssl: false
+    vhost: 192.168.176.35  # example IPv4
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:ffff:0101:1c56:2b73:771e:f9dd  # example IPv6
+
+channels:
+  - "#irc.al"  #example channel
+
+owner_command_prefixes:
+  - "!"
+  - "."
+  - "@"`,
+		"configs/owners.json": `{
+  "owners": [
+    "*!*ident@hostname"
+  ]
+}`,
+		"data/nicks.json": `{
+  "nicks": [
+    "CoolBot",
+    "NickKeeper",
+    "IRCGuardian",
+    "NetWatcher"
+  ]
+}`,
+	}
+
+	missingItems := []string{}
+
+	cyan := color.New(color.FgCyan).SprintFunc()
+	green := color.New(color.FgGreen).SprintFunc()
+	red := color.New(color.FgRed).SprintFunc()
+	yellow := color.New(color.FgYellow).SprintFunc()
+
+	fmt.Println(cyan("Checking core files:"))
+
+	// Check and create folders
+	for _, folder := range folders {
+		fmt.Printf("%-25s", cyan(folder))
+		if _, err := os.Stat(folder); os.IsNotExist(err) {
+			if err := os.MkdirAll(folder, 0755); err != nil {
+				fmt.Println(red("[ ERROR ]"))
+				return fmt.Errorf("failed to create folder %s: %v", folder, err)
+			}
+			missingItems = append(missingItems, folder)
+			fmt.Println(yellow("[ CREATED ]"))
+		} else {
+			fmt.Println(green("[ OK ]"))
+		}
+	}
+
+	// Check and create files
+	for file, content := range files {
+		fmt.Printf("%-25s", cyan(file))
+		if _, err := os.Stat(file); os.IsNotExist(err) {
+			if err := os.WriteFile(file, []byte(content), 0644); err != nil {
+				fmt.Println(red("[ ERROR ]"))
+				return fmt.Errorf("failed to create file %s: %v", file, err)
+			}
+			missingItems = append(missingItems, file)
+			fmt.Println(yellow("[ CREATED ]"))
+		} else {
+			fmt.Println(green("[ OK ]"))
+		}
+	}
+
+	if len(missingItems) > 0 {
+		fmt.Println("\n" + yellow("The following items were missing and have been created with example content:"))
+		for _, item := range missingItems {
+			fmt.Printf("- %s\n", cyan(item))
+		}
+		fmt.Println("\n" + yellow("Please edit these files with your desired configuration before running the bot again."))
+		fmt.Println(red("Exiting the program."))
+		os.Exit(1)
+	}
+
+	fmt.Println("\n" + green("All necessary folders and files are present."))
+	return nil
 }
 
 # Koniec /Users/kfn/gognb/internal/config/config.go
@@ -1159,7 +2153,8 @@ func NewClient(server string, port int, nick, username, realname, vhost string, 
 
 // Connect establishes a connection to the IRC server
 func (c *Client) Connect() error {
-	c.Connection = irc.IRC(c.Nick, c.Username, c.Vhost)
+	c.Connection = irc.IRC(c.Nick, c.Username)
+	c.Connection.SetLocalIP(c.Vhost)
 	c.Connection.VerboseCallbackHandler = false
 	c.Connection.Debug = false
 	c.Connection.UseTLS = c.SSL
@@ -1335,9 +2330,10 @@ type NickManager struct {
 	secondaryNicks       []string
 	bots                 []types.Bot
 	botIndex             int
-	mutex                sync.Mutex
 	isonInterval         time.Duration
-	tempUnavailableNicks map[string]time.Time // Nowa mapa
+	tempUnavailableNicks map[string]time.Time // Mapa do blokowania nicków
+	NoLettersServers     map[string]bool      // Mapa serwerów, które nie akceptują jednoliterowych nicków
+	mutex                sync.Mutex
 }
 
 type NicksData struct {
@@ -1347,6 +2343,7 @@ type NicksData struct {
 func NewNickManager() *NickManager {
 	return &NickManager{
 		tempUnavailableNicks: make(map[string]time.Time),
+		NoLettersServers:     make(map[string]bool),
 	}
 }
 
@@ -1411,7 +2408,7 @@ func (nm *NickManager) monitorNicks() {
 		}
 
 		// Wait before sending the next ISON
-		time.Sleep(time.Duration(nm.isonInterval) * time.Second)
+		time.Sleep(1 * time.Second)
 	}
 }
 
@@ -1427,18 +2424,6 @@ func (nm *NickManager) handleISONResponse(onlineNicks []string) {
 	availablePriorityNicks := nm.filterAvailableNicks(nm.priorityNicks, onlineNicks)
 	availableSecondaryNicks := nm.filterAvailableNicks(nm.secondaryNicks, onlineNicks)
 
-	for _, nick := range nm.priorityNicks {
-		if !util.Contains(onlineNicks, nick) {
-			availablePriorityNicks = append(availablePriorityNicks, nick)
-		}
-	}
-
-	for _, nick := range nm.secondaryNicks {
-		if !util.Contains(onlineNicks, nick) {
-			availableSecondaryNicks = append(availableSecondaryNicks, nick)
-		}
-	}
-
 	// Get list of available bots
 	availableBots := nm.getAvailableBots()
 	if len(availableBots) == 0 {
@@ -1453,8 +2438,15 @@ func (nm *NickManager) handleISONResponse(onlineNicks []string) {
 		nick := availablePriorityNicks[0]
 		availablePriorityNicks = availablePriorityNicks[1:]
 		bot := availableBots[assignedBots]
+
+		// Skip single-letter nicks for servers that don't accept them
+		if len(nick) == 1 && nm.NoLettersServers[bot.GetServerName()] {
+			util.Debug("Skipping single-letter nick %s for server %s", nick, bot.GetServerName())
+			continue
+		}
+
 		assignedBots++
-		util.Debug("Assigning priority nick %s to bot %s", nick, bot.GetCurrentNick())
+		util.Debug("Assigning priority nick %s to bot %s on server %s", nick, bot.GetCurrentNick(), bot.GetServerName())
 		go bot.AttemptNickChange(nick)
 	}
 
@@ -1463,8 +2455,15 @@ func (nm *NickManager) handleISONResponse(onlineNicks []string) {
 		nick := availableSecondaryNicks[0]
 		availableSecondaryNicks = availableSecondaryNicks[1:]
 		bot := availableBots[assignedBots]
+
+		// Skip single-letter nicks for servers that don't accept them
+		if len(nick) == 1 && nm.NoLettersServers[bot.GetServerName()] {
+			util.Debug("Skipping single-letter nick %s for server %s", nick, bot.GetServerName())
+			continue
+		}
+
 		assignedBots++
-		util.Debug("Assigning secondary nick %s to bot %s", nick, bot.GetCurrentNick())
+		util.Debug("Assigning secondary nick %s to bot %s on server %s", nick, bot.GetCurrentNick(), bot.GetServerName())
 		go bot.AttemptNickChange(nick)
 	}
 }
@@ -1492,7 +2491,19 @@ func (nm *NickManager) getAvailableBots() []types.Bot {
 }
 
 func (nm *NickManager) ReturnNickToPool(nick string) {
-	// No action needed since we check availability each time
+	nm.mutex.Lock()
+	defer nm.mutex.Unlock()
+
+	// Sprawdź, czy nick jest w pliku nicks.json lub jest pojedynczą literą
+	if util.IsTargetNick(nick, nm.priorityNicks) || (len(nick) == 1 && nick >= "a" && nick <= "z") {
+		delete(nm.tempUnavailableNicks, strings.ToLower(nick))
+
+		// Natychmiast spróbuj przydzielić ten nick innemu botowi
+		availableBots := nm.getAvailableBots()
+		if len(availableBots) > 0 {
+			go availableBots[0].AttemptNickChange(nick)
+		}
+	}
 }
 
 func (nm *NickManager) GetNicksToCatch() []string {
@@ -1606,7 +2617,32 @@ func (nm *NickManager) MarkNickAsTemporarilyUnavailable(nick string) {
 	nm.mutex.Lock()
 	defer nm.mutex.Unlock()
 
-	nm.tempUnavailableNicks[strings.ToLower(nick)] = time.Now().Add(5 * time.Minute)
+	nm.tempUnavailableNicks[strings.ToLower(nick)] = time.Now().Add(1 * time.Minute)
+}
+
+func (nm *NickManager) NotifyNickChange(oldNick, newNick string) {
+	nm.mutex.Lock()
+	defer nm.mutex.Unlock()
+
+	if util.IsTargetNick(oldNick, nm.nicksToCatch) {
+		// Oznacz stary nick jako dostępny
+		delete(nm.tempUnavailableNicks, strings.ToLower(oldNick))
+
+		// Natychmiast spróbuj przydzielić ten nick innemu botowi
+		availableBots := nm.getAvailableBots()
+		if len(availableBots) > 0 {
+			go availableBots[0].AttemptNickChange(oldNick)
+		}
+	}
+
+	// Nie oznaczamy nowego nicka jako tymczasowo niedostępnego,
+	// ponieważ jest to losowy nick, a nie z puli do łapania
+}
+
+func (nm *NickManager) MarkServerNoLetters(serverName string) {
+	nm.mutex.Lock()
+	defer nm.mutex.Unlock()
+	nm.NoLettersServers[serverName] = true
 }
 
 # Koniec /Users/kfn/gognb/internal/nickmanager/nickmanager.go
@@ -1614,7 +2650,12 @@ func (nm *NickManager) MarkNickAsTemporarilyUnavailable(nick string) {
 # Plik /Users/kfn/gognb/internal/types/interfaces.go
 package types
 
-import "github.com/kofany/gNb/internal/auth"
+import (
+	"time"
+
+	"github.com/kofany/gNb/internal/auth"
+	irc "github.com/kofany/go-ircevent"
+)
 
 type Bot interface {
 	AttemptNickChange(nick string)
@@ -1626,6 +2667,19 @@ type Bot interface {
 	Connect() error
 	Quit(message string)
 	Reconnect()
+	SendMessage(target, message string)
+	JoinChannel(channel string)
+	PartChannel(channel string)
+	ChangeNick(newNick string)
+	HandleCommands(e *irc.Event)
+	SetBotManager(manager BotManager)
+	GetBotManager() BotManager
+	SetNickManager(manager NickManager)
+	GetNickManager() NickManager
+	GetServerName() string
+	StartBNC() (int, string, error)
+	StopBNC()
+	SendRaw(message string)
 }
 
 type NickManager interface {
@@ -1636,13 +2690,24 @@ type NickManager interface {
 	AddNick(nick string) error
 	RemoveNick(nick string) error
 	GetNicks() []string
-	MarkNickAsTemporarilyUnavailable(nick string) // Dodaj tę linię
+	MarkNickAsTemporarilyUnavailable(nick string)
+	NotifyNickChange(oldNick, newNick string)
+	MarkServerNoLetters(serverName string)
+	Start()
 }
+
 type BotManager interface {
-	ShouldHandleCommand(bot Bot) bool
+	StartBots()
+	Stop()
+	ShouldHandleCommand(bot Bot, cmdName string) bool
+	CanExecuteMassCommand(cmdName string) bool
 	AddOwner(ownerMask string) error
 	RemoveOwner(ownerMask string) error
 	GetOwners() []string
+	GetBots() []Bot
+	GetNickManager() NickManager
+	SetMassCommandCooldown(duration time.Duration)
+	GetMassCommandCooldown() time.Duration
 }
 
 # Koniec /Users/kfn/gognb/internal/types/interfaces.go
@@ -1981,6 +3046,7 @@ func (m *Matcher) matchWildcard(pattern, str string) bool {
 package util
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1994,40 +3060,61 @@ type APIResponse struct {
 	Words []string `json:"words"`
 }
 
-func GenerateRandomNick(apiURL string, maxWordLength int, timeoutSeconds int) (string, error) {
-	client := http.Client{
-		Timeout: time.Duration(timeoutSeconds) * time.Second,
+func GetWordsFromAPI(apiURL string, maxWordLength, timeout, count int) ([]string, error) {
+	client := &http.Client{
+		Timeout: time.Duration(timeout) * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
 	}
 
-	// Add parameters to URL
-	fullURL := fmt.Sprintf("%s?upto=%d&count=100", apiURL, maxWordLength)
-
-	resp, err := client.Get(fullURL)
+	url := fmt.Sprintf("%s?count=%d&length=%d", apiURL, count, maxWordLength)
+	resp, err := client.Get(url)
 	if err != nil {
-		return "", fmt.Errorf("error fetching nicks from API: %v", err)
+		return generateFallbackWords(count), nil
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API returned status %d", resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return generateFallbackWords(count), nil
 	}
+
+	var response APIResponse
+	err = json.Unmarshal(body, &response)
+	if err != nil || len(response.Words) < count {
+		return generateFallbackWords(count), nil
+	}
+
+	return response.Words[:count], nil
+}
+
+func GenerateRandomNick(apiURL string, maxWordLength int, timeoutSeconds int) (string, error) {
+	client := &http.Client{
+		Timeout: time.Duration(timeoutSeconds) * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+
+	fullURL := fmt.Sprintf("%s?upto=%d&count=100", apiURL, maxWordLength)
+	resp, err := client.Get(fullURL)
+	if err != nil {
+		return GenerateFallbackNick(), nil
+	}
+	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("error reading API response: %v", err)
+		return GenerateFallbackNick(), nil
 	}
 
 	var apiResp APIResponse
 	err = json.Unmarshal(body, &apiResp)
-	if err != nil {
-		return "", fmt.Errorf("error parsing API response: %v", err)
+	if err != nil || len(apiResp.Words) == 0 {
+		return GenerateFallbackNick(), nil
 	}
 
-	if len(apiResp.Words) == 0 {
-		return "", fmt.Errorf("API returned no words")
-	}
-
-	// Filter words of appropriate length and letters only
 	validWords := []string{}
 	for _, word := range apiResp.Words {
 		word = strings.TrimSpace(word)
@@ -2037,12 +3124,27 @@ func GenerateRandomNick(apiURL string, maxWordLength int, timeoutSeconds int) (s
 	}
 
 	if len(validWords) == 0 {
-		return "", fmt.Errorf("no suitable words after filtering")
+		return GenerateFallbackNick(), nil
 	}
 
-	// Randomly select one word
-	nick := validWords[rand.Intn(len(validWords))]
-	return nick, nil
+	return validWords[rand.Intn(len(validWords))], nil
+}
+
+func generateFallbackWords(count int) []string {
+	words := make([]string, count)
+	for i := 0; i < count; i++ {
+		words[i] = GenerateFallbackNick()
+	}
+	return words
+}
+
+func GenerateFallbackNick() string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	nick := make([]byte, 8)
+	for i := range nick {
+		nick[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(nick)
 }
 
 func isAlpha(s string) bool {
@@ -2059,10 +3161,6 @@ func capitalize(s string) string {
 		return s
 	}
 	return strings.ToUpper(string(s[0])) + strings.ToLower(s[1:])
-}
-
-func GenerateFallbackNick() string {
-	return fmt.Sprintf("Bot%d", time.Now().UnixNano()%10000)
 }
 
 # Koniec /Users/kfn/gognb/internal/util/nickgen.go
