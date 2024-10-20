@@ -48,8 +48,10 @@ func (b *Bot) HandleCommands(e *irc.Event) {
 	sender := e.Nick
 	target := e.Arguments[0]
 	isChannelMsg := strings.HasPrefix(target, "#")
+	util.Debug("HandleCommands: isChannelMsg=%v, target=%s, sender=%s, message=%s", isChannelMsg, target, sender, message)
 
 	if !startsWithAny(message, b.GlobalConfig.CommandPrefixes) {
+		util.Debug("Message doesn't start with a command prefix: %s", message)
 		return
 	}
 
@@ -91,6 +93,7 @@ func (b *Bot) sendReply(isChannelMsg bool, target, sender, message string) {
 	if isChannelMsg {
 		b.GetBotManager().CollectReactions(target, message, nil)
 	} else {
+		util.Debug("SendReply reciver: sender: %s, message: %s", sender, message)
 		b.SendMessage(sender, message)
 	}
 }
@@ -237,7 +240,7 @@ func handleListNicksCommand(b *Bot, e *irc.Event, args []string) {
 	if isChannelMsg {
 		b.GetBotManager().CollectReactions(
 			target,
-			"Listing current nicks",
+			"",
 			func() error {
 				nicks := b.GetNickManager().GetNicks()
 				message := fmt.Sprintf("Current nicks: %s", strings.Join(nicks, ", "))
@@ -293,7 +296,7 @@ func handleListOwnersCommand(b *Bot, e *irc.Event, args []string) {
 	if isChannelMsg {
 		b.GetBotManager().CollectReactions(
 			target,
-			"Listing current owners",
+			"",
 			func() error {
 				owners := b.GetBotManager().GetOwners()
 				message := fmt.Sprintf("Current owners: %s", strings.Join(owners, ", "))
@@ -321,11 +324,13 @@ func handleBNCCommand(b *Bot, e *irc.Event, args []string) {
 	case "start":
 		port, password, err := b.StartBNC()
 		if err != nil {
+			util.Debug("Failed to start BNC")
 			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Failed to start BNC: %v", err))
 		} else {
 			b.sendReply(false, sender, sender, "BNC started successfully. Use the following command to connect:")
 			sshCommand := fmt.Sprintf("ssh -p %d %s@%s %s", port, b.GetCurrentNick(), b.Config.Vhost, password)
 			time.Sleep(1 * time.Second)
+			util.Debug("sendReply: %s, %s, %s", sender, sender, sshCommand)
 			b.sendReply(false, sender, sender, sshCommand)
 		}
 	case "stop":

@@ -247,8 +247,9 @@ func (bm *BotManager) CollectReactions(channel, message string, action func() er
 		}
 	}
 
-	// Immediately send message
-	bm.SendSingleMsg(channel, message)
+	if message != "" {
+		bm.SendSingleMsg(channel, message)
+	}
 
 	// Save request to ignore duplicates for the next 5 seconds
 	bm.reactionRequests[key] = types.ReactionRequest{

@@ -15,14 +15,22 @@ global: # Please do not play with global values if you are not sure what you are
   mass_command_cooldown: 5
   
 bots:
-  - server: mirc.irc.al #example server 
+  - server: irc.al #example server 
     port: 6667
     ssl: false
     vhost: 192.168.176.35 # example IPv4
   - server: mirc.irc.al
     port: 6667
     ssl: false
-    vhost: 2a02:2454:ffff:0101:1c56:2b73:771e:f9dd # example IPv6 
+    vhost: 2a02:2454:8545:4900:1111:1111:1111:1111 # example IPv6 
+  - server: irc.al #example server 
+    port: 6667
+    ssl: false
+    vhost: 192.168.176.35 # example IPv4
+  - server: mirc.irc.al
+    port: 6667
+    ssl: false
+    vhost: 2a02:2454:8545:4900:1111:1111:1111:1111 # example IPv6 
 
 channels:
   - "#irc.al" #example channel

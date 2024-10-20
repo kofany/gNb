@@ -454,6 +454,7 @@ func (b *Bot) shouldChangeNick(nick string) bool {
 }
 
 func (b *Bot) handlePrivMsg(e *irc.Event) {
+	util.Debug("Received PRIVMSG: target=%s, sender=%s, message=%s", e.Arguments[0], e.Nick, e.Message())
 	b.HandleCommands(e)
 }
 
@@ -477,10 +478,17 @@ func (b *Bot) GetCurrentNick() string {
 	return b.CurrentNick
 }
 
+// BNC
+
+type BNCServer struct {
+	bot      types.Bot
+	Port     int
+	Password string
+	Tunnel   *bnc.RawTunnel
+}
+
 func (b *Bot) StartBNC() (int, string, error) {
 	util.Debug("StartBNC called for bot %s", b.GetCurrentNick())
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
 	if b.bncServer != nil {
 		util.Debug("BNC already active for bot %s", b.GetCurrentNick())
 		return 0, "", fmt.Errorf("BNC already active for this bot")
@@ -498,19 +506,20 @@ func (b *Bot) StartBNC() (int, string, error) {
 }
 
 func (b *Bot) StopBNC() {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
+	util.Debug("StopBNC called for bot %s", b.GetCurrentNick())
+
 	if b.bncServer != nil {
 		b.bncServer.Stop()
 		b.bncServer = nil
+		util.Debug("BNC server stopped for bot %s", b.GetCurrentNick())
+	} else {
+		util.Debug("No active BNC server for bot %s", b.GetCurrentNick())
 	}
 }
 
 func (b *Bot) SendRaw(message string) {
 	if b.IsConnected() {
 		b.Connection.SendRaw(message)
-		b.mutex.Lock()
-		defer b.mutex.Unlock()
 		if b.bncServer != nil && b.bncServer.Tunnel != nil {
 			b.bncServer.Tunnel.WriteToConn(message)
 		}
@@ -518,8 +527,6 @@ func (b *Bot) SendRaw(message string) {
 }
 
 func (b *Bot) ForwardToTunnel(data string) {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
 	if b.bncServer != nil && b.bncServer.Tunnel != nil {
 		b.bncServer.Tunnel.WriteToConn(data)
 	}

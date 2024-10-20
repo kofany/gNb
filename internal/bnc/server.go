@@ -16,6 +16,9 @@ type BNCServer struct {
 	Port     int
 	Password string
 	Tunnel   *RawTunnel
+	listener net.Listener
+	server   *ssh.Server
+	stopChan chan struct{}
 }
 
 func StartBNCServer(bot types.Bot) (*BNCServer, error) {
@@ -27,6 +30,7 @@ func StartBNCServer(bot types.Bot) (*BNCServer, error) {
 		Port:     port,
 		Password: password,
 		Tunnel:   NewRawTunnel(bot),
+		stopChan: make(chan struct{}),
 	}
 	util.Debug("BNC server created with port %d and password %s", port, password)
 	go server.listen()
@@ -37,7 +41,7 @@ func (s *BNCServer) listen() {
 	util.Debug("BNC server listening started for bot %s", s.Bot.GetCurrentNick())
 
 	// Konfiguracja serwera SSH
-	server := &ssh.Server{
+	s.server = &ssh.Server{
 		PasswordHandler: func(ctx ssh.Context, password string) bool {
 			util.Debug("Password authentication attempt for user: %s", ctx.User())
 			return ctx.User() == s.Bot.GetCurrentNick() && password == s.Password
@@ -67,42 +71,58 @@ func (s *BNCServer) listen() {
 
 			// Keep the session alive
 			for {
-				time.Sleep(time.Second * 30)
-				if _, err := sess.SendRequest("keepalive", false, nil); err != nil {
-					util.Debug("Keepalive failed for bot %s: %v", s.Bot.GetCurrentNick(), err)
-					break
+				select {
+				case <-s.stopChan:
+					return
+				case <-time.After(time.Second * 30):
+					if _, err := sess.SendRequest("keepalive", false, nil); err != nil {
+						util.Debug("Keepalive failed for bot %s: %v", s.Bot.GetCurrentNick(), err)
+						return
+					}
 				}
 			}
 		},
 	}
 
 	// Use an empty host key
-	server.SetOption(ssh.HostKeyFile(""))
+	s.server.SetOption(ssh.HostKeyFile(""))
 
-	// Nasłuchuj na IPv4 i IPv6
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.Port))
+	var err error
+	s.listener, err = net.Listen("tcp", fmt.Sprintf(":%d", s.Port))
 	if err != nil {
 		util.Error("Failed to start BNC listener: %v", err)
 		return
 	}
-	defer listener.Close()
 
 	util.Info("Starting BNC server for bot %s on port %d", s.Bot.GetCurrentNick(), s.Port)
 
-	err = server.Serve(listener)
-	if err != nil {
+	err = s.server.Serve(s.listener)
+	if err != nil && err != ssh.ErrServerClosed {
 		util.Error("Failed to serve BNC: %v", err)
 	}
 }
 
 func (s *BNCServer) Stop() {
 	util.Debug("Stopping BNC server for bot %s", s.Bot.GetCurrentNick())
-	s.Tunnel.Stop()
+
+	close(s.stopChan)
+
+	if s.listener != nil {
+		s.listener.Close()
+	}
+	if s.server != nil {
+		s.server.Close()
+	}
+	if s.Tunnel != nil {
+		s.Tunnel.Stop()
+	}
+
+	util.Debug("BNC server stopped for bot %s", s.Bot.GetCurrentNick())
 }
 
 func randomPort() int {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	return r.Intn(1000) + 4000 // Random port between 50000 and 59999
+	return r.Intn(1000) + 4000 // Random port between 4000 and 4999
 }
 
 func generatePassword() string {
