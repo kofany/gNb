@@ -49,7 +49,6 @@ type NickManager interface {
 type BotManager interface {
 	StartBots()
 	Stop()
-	ShouldHandleCommand(bot Bot, cmdName string) bool
 	CanExecuteMassCommand(cmdName string) bool
 	AddOwner(ownerMask string) error
 	RemoveOwner(ownerMask string) error

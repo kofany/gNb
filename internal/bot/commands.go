@@ -42,6 +42,7 @@ func init() {
 	}
 }
 
+// Modyfikujemy funkcję HandleCommands w pliku commands.go
 func (b *Bot) HandleCommands(e *irc.Event) {
 	util.Debug("Received command for bot %s: %s", b.GetCurrentNick(), e.Message())
 
@@ -76,12 +77,8 @@ func (b *Bot) HandleCommands(e *irc.Event) {
 
 	switch cmd.Type {
 	case SingleCommand:
-		if cmdName == "bnc" || b.botManager.ShouldHandleCommand(b, cmdName) {
-			util.Debug("Executing command %s for bot %s", cmdName, b.GetCurrentNick())
-			cmd.Handler(b, e, args[1:])
-		} else {
-			util.Debug("Command %s not handled by bot %s", cmdName, b.GetCurrentNick())
-		}
+		util.Debug("Executing command %s for bot %s", cmdName, b.GetCurrentNick())
+		cmd.Handler(b, e, args[1:])
 	case MassCommand:
 		if b.botManager.CanExecuteMassCommand(cmdName) {
 			util.Debug("Executing mass command %s for bot %s", cmdName, b.GetCurrentNick())
