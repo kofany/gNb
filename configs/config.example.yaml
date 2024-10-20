@@ -22,7 +22,7 @@ bots:
   - server: mirc.irc.al
     port: 6667
     ssl: false
-    vhost: 2a02:2454:8545:4900:1111:1111:1111:1111 # example IPv6 
+    vhost: 2a02:2454:8545:4555:1111:1111:1111:1111 # example IPv6 
   - server: irc.al #example server 
     port: 6667
     ssl: false
@@ -30,7 +30,7 @@ bots:
   - server: mirc.irc.al
     port: 6667
     ssl: false
-    vhost: 2a02:2454:8545:4900:1111:1111:1111:1111 # example IPv6 
+    vhost: 2a02:2454:8545:4555:1111:1111:1111:1111 # example IPv6 
 
 channels:
   - "#irc.al" #example channel
