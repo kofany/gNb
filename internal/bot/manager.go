@@ -81,7 +81,7 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 
 // StartBots starts all bots and connects them to their servers
 func (bm *BotManager) StartBots() {
-	groupSize := 99
+	groupSize := 3
 	totalBots := len(bm.bots)
 	for i := 0; i < totalBots; i += groupSize {
 		var wg sync.WaitGroup
