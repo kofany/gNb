@@ -2,8 +2,11 @@ package bot
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
+	"sync"
 	"time"
+	"unicode"
 
 	"github.com/kofany/gNb/internal/auth"
 	"github.com/kofany/gNb/internal/bnc"
@@ -33,6 +36,7 @@ type Bot struct {
 	isonResponse    chan []string
 	ServerName      string // Nazwa serwera otrzymana po połączeniu
 	bncServer       *bnc.BNCServer
+	mutex           sync.Mutex
 }
 
 // GetBotManager returns the BotManager for this bot
@@ -47,25 +51,16 @@ func (b *Bot) GetNickManager() types.NickManager {
 
 // SetBotManager sets the BotManager for this bot
 func (b *Bot) SetBotManager(manager types.BotManager) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
 	b.botManager = manager
 }
 
 // SetNickManager sets the NickManager for this bot
 func (b *Bot) SetNickManager(manager types.NickManager) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
 	b.nickManager = manager
-}
-
-func (bm *BotManager) getWordFromPool() string {
-	bm.wordPoolMutex.Lock()
-	defer bm.wordPoolMutex.Unlock()
-
-	if len(bm.wordPool) == 0 {
-		return util.GenerateFallbackNick()
-	}
-
-	word := bm.wordPool[0]
-	bm.wordPool = bm.wordPool[1:]
-	return word
 }
 
 // NewBot creates a new Bot instance
@@ -91,8 +86,23 @@ func NewBot(cfg *config.BotConfig, globalConfig *config.GlobalConfig, nm types.N
 	return bot
 }
 
+func (bm *BotManager) getWordFromPool() string {
+	bm.wordPoolMutex.Lock()
+	defer bm.wordPoolMutex.Unlock()
+
+	if len(bm.wordPool) == 0 {
+		return util.GenerateFallbackNick()
+	}
+
+	word := bm.wordPool[0]
+	bm.wordPool = bm.wordPool[1:]
+	return word
+}
+
 // IsConnected returns the connection status of the bot
 func (b *Bot) IsConnected() bool {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
 	return b.isConnected
 }
 
@@ -148,22 +158,20 @@ func (b *Bot) connectWithRetry() error {
 func (b *Bot) addCallbacks() {
 	// Callback for successful connection
 	b.Connection.AddCallback("001", func(e *irc.Event) {
+		b.mutex.Lock()
 		b.isConnected = true
-		b.ServerName = e.Source // To będzie pełna nazwa serwera
-		b.gaveUp = false        // Reset flag upon successful connection
+		b.ServerName = e.Source
+		b.gaveUp = false
 		b.lastConnectTime = time.Now()
+		b.mutex.Unlock()
+
 		util.Info("Bot %s connected to %s as %s", b.CurrentNick, b.ServerName, b.CurrentNick)
 		// Join channels
 		for _, channel := range b.channels {
 			b.JoinChannel(channel)
 		}
 		// Signal that connection has been established
-		select {
-		case <-b.connected:
-			// Kanał już zamknięty, nic nie robimy
-		default:
-			close(b.connected)
-		}
+		close(b.connected)
 	})
 
 	// Callback for nick changes
@@ -190,21 +198,21 @@ func (b *Bot) addCallbacks() {
 			if len(e.Arguments) > 1 {
 				nickInQuestion := e.Arguments[1]
 				if codeCopy == "432" && len(nickInQuestion) == 1 {
-					// Jeśli otrzymaliśmy błąd 432 dla jednoliterowego nicka
 					util.Warning("Server %s does not accept single-letter nick %s. Marking it.", b.ServerName, nickInQuestion)
 					b.nickManager.MarkServerNoLetters(b.ServerName)
 				} else {
-					// Dla innych przypadków, oznacz nick jako tymczasowo niedostępny
 					b.nickManager.MarkNickAsTemporarilyUnavailable(nickInQuestion)
 				}
 			}
 		})
 	}
-	//BNC
+
+	// BNC
 	b.Connection.AddCallback("*", func(e *irc.Event) {
 		rawMessage := e.Raw
 		b.ForwardToTunnel(rawMessage)
 	})
+
 	// Callback for private and public messages
 	b.Connection.AddCallback("PRIVMSG", b.handlePrivMsg)
 
@@ -214,7 +222,9 @@ func (b *Bot) addCallbacks() {
 	// Callback for disconnection
 	b.Connection.AddCallback("DISCONNECTED", func(e *irc.Event) {
 		util.Warning("Bot %s disconnected from server %s", b.CurrentNick, b.ServerName)
+		b.mutex.Lock()
 		b.isConnected = false
+		b.mutex.Unlock()
 		if !b.isReconnecting && !b.gaveUp {
 			go b.handleReconnect()
 		} else if b.gaveUp {
@@ -224,14 +234,14 @@ func (b *Bot) addCallbacks() {
 }
 
 func (b *Bot) GetServerName() string {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
 	return b.ServerName
 }
 
-// handleISONResponse handles the ISON responses and forwards them to the NickManager
 func (b *Bot) handleISONResponse(e *irc.Event) {
 	isonResponse := strings.Fields(e.Message())
 	util.Debug("Bot %s received ISON response: %v", b.CurrentNick, isonResponse)
-	// Send the response to the NickManager via the channel
 	select {
 	case b.isonResponse <- isonResponse:
 	default:
@@ -243,7 +253,6 @@ func (b *Bot) handleInvite(e *irc.Event) {
 	inviter := e.Nick
 	channel := e.Arguments[1]
 
-	// Sprawdź, czy zapraszający jest właścicielem
 	if auth.IsOwner(e, b.owners) {
 		util.Info("Bot %s received INVITE to %s from owner %s", b.CurrentNick, channel, inviter)
 		b.JoinChannel(channel)
@@ -252,7 +261,6 @@ func (b *Bot) handleInvite(e *irc.Event) {
 	}
 }
 
-// RequestISON sends an ISON command and waits for the response
 func (b *Bot) RequestISON(nicks []string) ([]string, error) {
 	if !b.IsConnected() {
 		return nil, fmt.Errorf("bot %s is not connected", b.CurrentNick)
@@ -262,7 +270,6 @@ func (b *Bot) RequestISON(nicks []string) ([]string, error) {
 	util.Debug("Bot %s is sending ISON command: %s", b.CurrentNick, command)
 	b.Connection.SendRaw(command)
 
-	// Wait for the ISON response or timeout
 	select {
 	case response := <-b.isonResponse:
 		return response, nil
@@ -271,22 +278,18 @@ func (b *Bot) RequestISON(nicks []string) ([]string, error) {
 	}
 }
 
-// ChangeNick attempts to change the bot's nick to a new one
 func (b *Bot) ChangeNick(newNick string) {
 	if b.IsConnected() {
 		oldNick := b.CurrentNick
 		util.Info("Bot %s is attempting to change nick to %s", oldNick, newNick)
 		b.Connection.Nick(newNick)
 
-		// Dodajemy opóźnienie, aby dać serwerowi czas na przetworzenie zmiany nicka
 		time.Sleep(1 * time.Second)
 
-		// Sprawdzamy, czy zmiana nicka się powiodła
 		if b.Connection.GetNick() == newNick {
 			util.Info("Bot successfully changed nick from %s to %s", oldNick, newNick)
 			b.CurrentNick = newNick
 
-			// Powiadamiamy NickManager o zmianie nicka
 			if b.nickManager != nil {
 				b.nickManager.NotifyNickChange(oldNick, newNick)
 			} else {
@@ -300,7 +303,6 @@ func (b *Bot) ChangeNick(newNick string) {
 	}
 }
 
-// JoinChannel joins a specified channel
 func (b *Bot) JoinChannel(channel string) {
 	if b.IsConnected() {
 		util.Debug("Bot %s is joining channel %s", b.CurrentNick, channel)
@@ -310,7 +312,6 @@ func (b *Bot) JoinChannel(channel string) {
 	}
 }
 
-// PartChannel leaves a specified channel
 func (b *Bot) PartChannel(channel string) {
 	if b.IsConnected() {
 		util.Debug("Bot %s is leaving channel %s", b.CurrentNick, channel)
@@ -324,43 +325,39 @@ func (b *Bot) Reconnect() {
 	if b.IsConnected() {
 		oldNick := b.CurrentNick
 
-		// Generuj nowy, losowy nick
 		newNick, err := util.GenerateRandomNick(b.GlobalConfig.NickAPI.URL, b.GlobalConfig.NickAPI.MaxWordLength, b.GlobalConfig.NickAPI.Timeout)
 		if err != nil {
 			newNick = util.GenerateFallbackNick()
 		}
 
-		// Rozłącz bota
 		b.Quit("Reconnecting")
 
-		// Zwróć stary nick do puli, jeśli był to nick do złapania
 		if b.nickManager != nil {
 			b.nickManager.ReturnNickToPool(oldNick)
 		}
 
-		// Aktualizuj informacje o bocie
 		b.CurrentNick = newNick
 
-		// Poczekaj chwilę przed ponownym połączeniem
 		time.Sleep(5 * time.Second)
 
-		// Połącz ponownie z nowym nickiem
-		b.Connection = irc.IRC(newNick, b.Username)
-		b.Connection.SetLocalIP(b.Config.Vhost)
-		b.Connection.VerboseCallbackHandler = false
-		b.Connection.Debug = false
-		b.Connection.UseTLS = b.Config.SSL
-		b.Connection.RealName = b.Realname
-
-		err = b.Connect()
+		err = b.connectWithNewNick(newNick)
 		if err != nil {
 			util.Error("Failed to reconnect bot %s (new nick: %s): %v", oldNick, newNick, err)
-			// W przypadku błędu, przywróć stary nick
-			b.CurrentNick = oldNick
+
+			shuffledNick := shuffleNick(oldNick)
+			util.Info("Attempting to reconnect with shuffled nick: %s", shuffledNick)
+
+			err = b.connectWithNewNick(shuffledNick)
+			if err != nil {
+				util.Error("Failed to reconnect bot with shuffled nick %s: %v", shuffledNick, err)
+			} else {
+				util.Info("Bot successfully reconnected with shuffled nick: %s", shuffledNick)
+				if b.nickManager != nil {
+					b.nickManager.NotifyNickChange(oldNick, shuffledNick)
+				}
+			}
 		} else {
 			util.Info("Bot %s successfully reconnected with new nick: %s", oldNick, newNick)
-
-			// Powiadom NickManager o zmianie nicka
 			if b.nickManager != nil {
 				b.nickManager.NotifyNickChange(oldNick, newNick)
 			}
@@ -370,10 +367,35 @@ func (b *Bot) Reconnect() {
 	}
 }
 
-// handleReconnect handles reconnection attempts after disconnection
+func (b *Bot) connectWithNewNick(nick string) error {
+	b.Connection = irc.IRC(nick, b.Username)
+	b.Connection.SetLocalIP(b.Config.Vhost)
+	b.Connection.VerboseCallbackHandler = false
+	b.Connection.Debug = false
+	b.Connection.UseTLS = b.Config.SSL
+	b.Connection.RealName = b.Realname
+
+	return b.Connect()
+}
+
+func shuffleNick(nick string) string {
+	runes := []rune(nick)
+	rand.Shuffle(len(runes), func(i, j int) {
+		runes[i], runes[j] = runes[j], runes[i]
+	})
+
+	if unicode.IsDigit(runes[0]) {
+		return "a_" + string(runes)
+	}
+
+	return string(runes)
+}
+
 func (b *Bot) handleReconnect() {
 	b.isReconnecting = true
-	defer func() { b.isReconnecting = false }()
+	defer func() {
+		b.isReconnecting = false
+	}()
 
 	maxRetries := b.GlobalConfig.ReconnectRetries
 	retryInterval := time.Duration(b.GlobalConfig.ReconnectInterval) * time.Second
@@ -393,7 +415,6 @@ func (b *Bot) handleReconnect() {
 	b.gaveUp = true
 }
 
-// SendMessage sends a message to a specified target (channel or user)
 func (b *Bot) SendMessage(target, message string) {
 	if b.IsConnected() {
 		util.Debug("Bot %s is sending message to %s: %s", b.CurrentNick, target, message)
@@ -403,17 +424,17 @@ func (b *Bot) SendMessage(target, message string) {
 	}
 }
 
-// Quit disconnects the bot from the IRC server
 func (b *Bot) Quit(message string) {
 	if b.IsConnected() {
 		util.Info("Bot %s is disconnecting: %s", b.CurrentNick, message)
 		b.Connection.QuitMessage = message
 		b.Connection.Quit()
+		b.mutex.Lock()
 		b.isConnected = false
+		b.mutex.Unlock()
 	}
 }
 
-// AttemptNickChange attempts to change the bot's nick to an available nick
 func (b *Bot) AttemptNickChange(nick string) {
 	util.Debug("Bot %s received request to change nick to %s", b.CurrentNick, nick)
 	if b.shouldChangeNick(nick) {
@@ -425,48 +446,41 @@ func (b *Bot) AttemptNickChange(nick string) {
 	}
 }
 
-// shouldChangeNick determines if the bot should change its nick
 func (b *Bot) shouldChangeNick(nick string) bool {
-	// Check if current nick is already a target nick
 	if util.IsTargetNick(b.CurrentNick, b.nickManager.GetNicksToCatch()) {
 		return false
 	}
 	return b.CurrentNick != nick
 }
 
-// handlePrivMsg handles private and public messages and owner commands
 func (b *Bot) handlePrivMsg(e *irc.Event) {
 	b.HandleCommands(e)
 }
 
-// SetOwnerList sets the list of owners for the bot
 func (b *Bot) SetOwnerList(owners auth.OwnerList) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
 	b.owners = owners
 	util.Debug("Bot %s set owners: %v", b.CurrentNick, owners)
 }
 
-// SetChannels sets the list of channels for the bot to join
 func (b *Bot) SetChannels(channels []string) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
 	b.channels = channels
 	util.Debug("Bot %s set channels: %v", b.CurrentNick, channels)
 }
 
-// GetCurrentNick returns the bot's current nick
 func (b *Bot) GetCurrentNick() string {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
 	return b.CurrentNick
-}
-
-// BNC
-
-type BNCServer struct {
-	bot      types.Bot
-	Port     int
-	Password string
-	Tunnel   *bnc.RawTunnel
 }
 
 func (b *Bot) StartBNC() (int, string, error) {
 	util.Debug("StartBNC called for bot %s", b.GetCurrentNick())
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
 	if b.bncServer != nil {
 		util.Debug("BNC already active for bot %s", b.GetCurrentNick())
 		return 0, "", fmt.Errorf("BNC already active for this bot")
@@ -484,6 +498,8 @@ func (b *Bot) StartBNC() (int, string, error) {
 }
 
 func (b *Bot) StopBNC() {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
 	if b.bncServer != nil {
 		b.bncServer.Stop()
 		b.bncServer = nil
@@ -493,6 +509,8 @@ func (b *Bot) StopBNC() {
 func (b *Bot) SendRaw(message string) {
 	if b.IsConnected() {
 		b.Connection.SendRaw(message)
+		b.mutex.Lock()
+		defer b.mutex.Unlock()
 		if b.bncServer != nil && b.bncServer.Tunnel != nil {
 			b.bncServer.Tunnel.WriteToConn(message)
 		}
@@ -500,6 +518,8 @@ func (b *Bot) SendRaw(message string) {
 }
 
 func (b *Bot) ForwardToTunnel(data string) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
 	if b.bncServer != nil && b.bncServer.Tunnel != nil {
 		b.bncServer.Tunnel.WriteToConn(data)
 	}

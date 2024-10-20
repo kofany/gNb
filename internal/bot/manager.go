@@ -29,19 +29,13 @@ type BotManager struct {
 	massCommandCooldown time.Duration
 	wordPool            []string
 	wordPoolMutex       sync.Mutex
-	reactionRequests    map[string]ReactionRequest
+	reactionRequests    map[string]types.ReactionRequest
 	reactionMutex       sync.Mutex
-}
-
-type ReactionRequest struct {
-	Channel   string
-	Message   string
-	Timestamp time.Time
 }
 
 // NewBotManager creates a new BotManager instance
 func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManager) *BotManager {
-	requiredWords := len(cfg.Bots)*3 + 10 // 3 słowa na bota (nick, ident, realname) + 10 zapasowych
+	requiredWords := len(cfg.Bots)*3 + 10 // 3 words per bot (nick, ident, realname) + 10 spare
 
 	wordPool, err := util.GetWordsFromAPI(
 		cfg.Global.NickAPI.URL,
@@ -67,10 +61,10 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 		massCommandCooldown: time.Duration(cfg.Global.MassCommandCooldown) * time.Second,
 		wordPool:            wordPool,
 		wordPoolMutex:       sync.Mutex{},
-		reactionRequests:    make(map[string]ReactionRequest),
+		reactionRequests:    make(map[string]types.ReactionRequest),
 	}
 
-	// Tworzenie botów
+	// Creating bots
 	for i, botCfg := range cfg.Bots {
 		bot := NewBot(&botCfg, &cfg.Global, nm, manager)
 		bot.SetOwnerList(manager.owners)
@@ -87,7 +81,7 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 
 // StartBots starts all bots and connects them to their servers
 func (bm *BotManager) StartBots() {
-	groupSize := 5
+	groupSize := 99
 	totalBots := len(bm.bots)
 	for i := 0; i < totalBots; i += groupSize {
 		var wg sync.WaitGroup
@@ -107,8 +101,6 @@ func (bm *BotManager) StartBots() {
 			}(bot)
 		}
 		wg.Wait()
-		// Opcjonalne opóźnienie między grupami
-		// time.Sleep(2 * time.Second)
 	}
 }
 
@@ -234,8 +226,8 @@ func (bm *BotManager) GetMassCommandCooldown() time.Duration {
 	return bm.massCommandCooldown
 }
 
-// Dodajemy funkcję CollectReactions w pliku manager.go (jeśli jeszcze nie została dodana)
-func (bm *BotManager) CollectReactions(channel, message string) {
+// CollectReactions collects reactions and executes them
+func (bm *BotManager) CollectReactions(channel, message string, action func() error) {
 	bm.reactionMutex.Lock()
 	defer bm.reactionMutex.Unlock()
 
@@ -243,32 +235,40 @@ func (bm *BotManager) CollectReactions(channel, message string) {
 	now := time.Now()
 
 	if req, exists := bm.reactionRequests[key]; exists && now.Sub(req.Timestamp) < 5*time.Second {
-		return // Ignoruj duplikaty w ciągu 5 sekund
+		return // Ignore duplicates within 5 seconds
 	}
 
-	bm.reactionRequests[key] = ReactionRequest{
+	// Execute action
+	if action != nil {
+		err := action()
+		if err != nil {
+			bm.SendSingleMsg(channel, fmt.Sprintf("Error: %v", err))
+			return
+		}
+	}
+
+	// Immediately send message
+	bm.SendSingleMsg(channel, message)
+
+	// Save request to ignore duplicates for the next 5 seconds
+	bm.reactionRequests[key] = types.ReactionRequest{
 		Channel:   channel,
 		Message:   message,
 		Timestamp: now,
+		Action:    action,
 	}
 
-	go bm.processPendingReactions()
+	// Run cleanup after 5 seconds
+	go bm.cleanupReactionRequest(key)
 }
 
-// Dodajemy funkcję processPendingReactions w pliku manager.go (jeśli jeszcze nie została dodana)
-func (bm *BotManager) processPendingReactions() {
+func (bm *BotManager) cleanupReactionRequest(key string) {
+	time.Sleep(5 * time.Second)
 	bm.reactionMutex.Lock()
 	defer bm.reactionMutex.Unlock()
-
-	for key, req := range bm.reactionRequests {
-		if time.Since(req.Timestamp) >= 5*time.Second {
-			bm.SendSingleMsg(req.Channel, req.Message)
-			delete(bm.reactionRequests, key)
-		}
-	}
+	delete(bm.reactionRequests, key)
 }
 
-// Dodajemy funkcję SendSingleMsg w pliku manager.go (jeśli jeszcze nie została dodana)
 func (bm *BotManager) SendSingleMsg(channel, message string) {
 	bm.mutex.Lock()
 	defer bm.mutex.Unlock()
