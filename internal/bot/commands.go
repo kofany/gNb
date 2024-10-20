@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/kofany/gNb/internal/auth"
-	"github.com/kofany/gNb/internal/types"
 	"github.com/kofany/gNb/internal/util"
 	irc "github.com/kofany/go-ircevent"
 )
@@ -42,7 +41,6 @@ func init() {
 	}
 }
 
-// HandleCommands processes owner commands received by the bot.
 func (b *Bot) HandleCommands(e *irc.Event) {
 	util.Debug("Received command for bot %s: %s", b.GetCurrentNick(), e.Message())
 
@@ -51,18 +49,15 @@ func (b *Bot) HandleCommands(e *irc.Event) {
 	target := e.Arguments[0]
 	isChannelMsg := strings.HasPrefix(target, "#")
 
-	// Check if message starts with any command prefixes
 	if !startsWithAny(message, b.GlobalConfig.CommandPrefixes) {
 		return
 	}
 
-	// Check if sender is an owner
 	if !auth.IsOwner(e, b.owners) {
 		util.Debug("Command rejected: sender %s is not an owner", sender)
 		return
 	}
 
-	// Parse the command
 	commandLine := strings.TrimLeft(message, strings.Join(b.GlobalConfig.CommandPrefixes, ""))
 	args := strings.Fields(commandLine)
 	if len(args) == 0 {
@@ -80,14 +75,10 @@ func (b *Bot) HandleCommands(e *irc.Event) {
 
 	switch cmd.Type {
 	case SingleCommand:
-		if cmdName == "bnc" || b.botManager.ShouldHandleCommand(b, cmdName) {
-			util.Debug("Executing command %s for bot %s", cmdName, b.GetCurrentNick())
-			cmd.Handler(b, e, args[1:])
-		} else {
-			util.Debug("Command %s not handled by bot %s", cmdName, b.GetCurrentNick())
-		}
+		util.Debug("Executing command %s for bot %s", cmdName, b.GetCurrentNick())
+		cmd.Handler(b, e, args[1:])
 	case MassCommand:
-		if b.botManager.CanExecuteMassCommand(cmdName) {
+		if b.GetBotManager().CanExecuteMassCommand(cmdName) {
 			util.Debug("Executing mass command %s for bot %s", cmdName, b.GetCurrentNick())
 			cmd.Handler(b, e, args[1:])
 		} else {
@@ -98,13 +89,12 @@ func (b *Bot) HandleCommands(e *irc.Event) {
 
 func (b *Bot) sendReply(isChannelMsg bool, target, sender, message string) {
 	if isChannelMsg {
-		b.SendMessage(target, message)
+		b.GetBotManager().CollectReactions(target, message, nil)
 	} else {
 		b.SendMessage(sender, message)
 	}
 }
 
-// Helper function to check if the string starts with any of the provided prefixes
 func startsWithAny(s string, prefixes []string) bool {
 	for _, prefix := range prefixes {
 		if strings.HasPrefix(s, prefix) {
@@ -113,8 +103,6 @@ func startsWithAny(s string, prefixes []string) bool {
 	}
 	return false
 }
-
-// Command handlers
 
 func handleQuitCommand(b *Bot, e *irc.Event, args []string) {
 	sender := e.Nick
@@ -133,10 +121,13 @@ func handleSayCommand(b *Bot, e *irc.Event, args []string) {
 	if len(args) >= 2 {
 		targetChannel := args[0]
 		msg := strings.Join(args[1:], " ")
-		b.SendMessage(targetChannel, msg)
-		b.sendReply(isChannelMsg, target, sender, "Message sent")
+		if strings.HasPrefix(targetChannel, "#") {
+			b.GetBotManager().CollectReactions(targetChannel, msg, nil)
+		} else {
+			b.SendMessage(targetChannel, msg)
+		}
 	} else {
-		b.sendReply(isChannelMsg, target, sender, "Usage: say <channel> <message>")
+		b.sendReply(isChannelMsg, target, sender, "Usage: say <channel/nick> <message>")
 	}
 }
 
@@ -148,13 +139,13 @@ func handleJoinCommand(b *Bot, e *irc.Event, args []string) {
 	if len(args) >= 1 {
 		channel := args[0]
 		if isChannelMsg {
-			// Jeśli komenda została wydana na kanale, wszystkie boty powinny ją wykonać
-			for _, bot := range b.botManager.GetBots() {
-				bot.JoinChannel(channel)
-			}
-			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("All bots are joining channel %s", channel))
+			b.GetBotManager().CollectReactions(target, fmt.Sprintf("All bots are joining channel %s", channel), func() error {
+				for _, bot := range b.GetBotManager().GetBots() {
+					bot.JoinChannel(channel)
+				}
+				return nil
+			})
 		} else {
-			// Jeśli komenda została wydana prywatnie, tylko ten bot powinien ją wykonać
 			b.JoinChannel(channel)
 			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Joined channel %s", channel))
 		}
@@ -171,13 +162,13 @@ func handlePartCommand(b *Bot, e *irc.Event, args []string) {
 	if len(args) >= 1 {
 		channel := args[0]
 		if isChannelMsg {
-			// Jeśli komenda została wydana na kanale, wszystkie boty powinny ją wykonać
-			for _, bot := range b.botManager.GetBots() {
-				bot.PartChannel(channel)
-			}
-			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("All bots are leaving channel %s", channel))
+			b.GetBotManager().CollectReactions(target, fmt.Sprintf("All bots are leaving channel %s", channel), func() error {
+				for _, bot := range b.GetBotManager().GetBots() {
+					bot.PartChannel(channel)
+				}
+				return nil
+			})
 		} else {
-			// Jeśli komenda została wydana prywatnie, tylko ten bot powinien ją wykonać
 			b.PartChannel(channel)
 			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Left channel %s", channel))
 		}
@@ -192,12 +183,12 @@ func handleReconnectCommand(b *Bot, e *irc.Event, args []string) {
 	isChannelMsg := strings.HasPrefix(target, "#")
 
 	if isChannelMsg {
-		b.sendReply(isChannelMsg, target, sender, "All bots are reconnecting with new nicks...")
-		for _, bot := range b.GetBotManager().GetBots() {
-			go func(bot types.Bot) {
-				bot.Reconnect()
-			}(bot)
-		}
+		b.GetBotManager().CollectReactions(target, "All bots are reconnecting with new nicks...", func() error {
+			for _, bot := range b.GetBotManager().GetBots() {
+				go bot.Reconnect()
+			}
+			return nil
+		})
 	} else {
 		b.sendReply(isChannelMsg, target, sender, "Reconnecting with a new nick...")
 		b.Reconnect()
@@ -211,12 +202,11 @@ func handleAddNickCommand(b *Bot, e *irc.Event, args []string) {
 
 	if len(args) >= 1 {
 		nick := args[0]
-		err := b.nickManager.AddNick(nick)
-		if err != nil {
-			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Error adding nick: %v", err))
-		} else {
-			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Nick '%s' has been added.", nick))
-		}
+		b.GetBotManager().CollectReactions(
+			target,
+			fmt.Sprintf("Nick '%s' has been added.", nick),
+			func() error { return b.GetNickManager().AddNick(nick) },
+		)
 	} else {
 		b.sendReply(isChannelMsg, target, sender, "Usage: addnick <nick>")
 	}
@@ -229,12 +219,11 @@ func handleDelNickCommand(b *Bot, e *irc.Event, args []string) {
 
 	if len(args) >= 1 {
 		nick := args[0]
-		err := b.nickManager.RemoveNick(nick)
-		if err != nil {
-			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Error removing nick: %v", err))
-		} else {
-			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Nick '%s' has been removed.", nick))
-		}
+		b.GetBotManager().CollectReactions(
+			target,
+			fmt.Sprintf("Nick '%s' has been removed.", nick),
+			func() error { return b.GetNickManager().RemoveNick(nick) },
+		)
 	} else {
 		b.sendReply(isChannelMsg, target, sender, "Usage: delnick <nick>")
 	}
@@ -245,8 +234,21 @@ func handleListNicksCommand(b *Bot, e *irc.Event, args []string) {
 	target := e.Arguments[0]
 	isChannelMsg := strings.HasPrefix(target, "#")
 
-	nicks := b.nickManager.GetNicks()
-	b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Current nicks: %s", strings.Join(nicks, ", ")))
+	if isChannelMsg {
+		b.GetBotManager().CollectReactions(
+			target,
+			"Listing current nicks",
+			func() error {
+				nicks := b.GetNickManager().GetNicks()
+				message := fmt.Sprintf("Current nicks: %s", strings.Join(nicks, ", "))
+				b.GetBotManager().SendSingleMsg(target, message)
+				return nil
+			},
+		)
+	} else {
+		nicks := b.GetNickManager().GetNicks()
+		b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Current nicks: %s", strings.Join(nicks, ", ")))
+	}
 }
 
 func handleAddOwnerCommand(b *Bot, e *irc.Event, args []string) {
@@ -256,12 +258,11 @@ func handleAddOwnerCommand(b *Bot, e *irc.Event, args []string) {
 
 	if len(args) >= 1 {
 		ownerMask := args[0]
-		err := b.botManager.AddOwner(ownerMask)
-		if err != nil {
-			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Error adding owner: %v", err))
-		} else {
-			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Owner '%s' has been added.", ownerMask))
-		}
+		b.GetBotManager().CollectReactions(
+			target,
+			fmt.Sprintf("Owner '%s' has been added.", ownerMask),
+			func() error { return b.GetBotManager().AddOwner(ownerMask) },
+		)
 	} else {
 		b.sendReply(isChannelMsg, target, sender, "Usage: addowner <mask>")
 	}
@@ -274,12 +275,11 @@ func handleDelOwnerCommand(b *Bot, e *irc.Event, args []string) {
 
 	if len(args) >= 1 {
 		ownerMask := args[0]
-		err := b.botManager.RemoveOwner(ownerMask)
-		if err != nil {
-			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Error removing owner: %v", err))
-		} else {
-			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Owner '%s' has been removed.", ownerMask))
-		}
+		b.GetBotManager().CollectReactions(
+			target,
+			fmt.Sprintf("Owner '%s' has been removed.", ownerMask),
+			func() error { return b.GetBotManager().RemoveOwner(ownerMask) },
+		)
 	} else {
 		b.sendReply(isChannelMsg, target, sender, "Usage: delowner <mask>")
 	}
@@ -290,11 +290,23 @@ func handleListOwnersCommand(b *Bot, e *irc.Event, args []string) {
 	target := e.Arguments[0]
 	isChannelMsg := strings.HasPrefix(target, "#")
 
-	owners := b.botManager.GetOwners()
-	b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Current owners: %s", strings.Join(owners, ", ")))
+	if isChannelMsg {
+		b.GetBotManager().CollectReactions(
+			target,
+			"Listing current owners",
+			func() error {
+				owners := b.GetBotManager().GetOwners()
+				message := fmt.Sprintf("Current owners: %s", strings.Join(owners, ", "))
+				b.GetBotManager().SendSingleMsg(target, message)
+				return nil
+			},
+		)
+	} else {
+		owners := b.GetBotManager().GetOwners()
+		b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Current owners: %s", strings.Join(owners, ", ")))
+	}
 }
 
-// BNC
 func handleBNCCommand(b *Bot, e *irc.Event, args []string) {
 	sender := e.Nick
 	target := e.Arguments[0]
@@ -311,15 +323,10 @@ func handleBNCCommand(b *Bot, e *irc.Event, args []string) {
 		if err != nil {
 			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Failed to start BNC: %v", err))
 		} else {
-			// Wysyłanie pierwszej wiadomości
 			b.sendReply(false, sender, sender, "BNC started successfully. Use the following command to connect:")
-
-			// Tworzenie linii SSH do skopiowania, używając vhosta z konfiguracji
 			sshCommand := fmt.Sprintf("ssh -p %d %s@%s %s", port, b.GetCurrentNick(), b.Config.Vhost, password)
-
-			// Wysyłanie drugiej wiadomości z linią SSH
-			time.Sleep(1 * time.Second) // Krótkie opóźnienie między wiadomościami
-			b.sendReply(false, sender, sender, fmt.Sprintf("%s", sshCommand))
+			time.Sleep(1 * time.Second)
+			b.sendReply(false, sender, sender, sshCommand)
 		}
 	case "stop":
 		b.StopBNC()

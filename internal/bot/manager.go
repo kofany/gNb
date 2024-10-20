@@ -29,11 +29,13 @@ type BotManager struct {
 	massCommandCooldown time.Duration
 	wordPool            []string
 	wordPoolMutex       sync.Mutex
+	reactionRequests    map[string]types.ReactionRequest
+	reactionMutex       sync.Mutex
 }
 
 // NewBotManager creates a new BotManager instance
 func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManager) *BotManager {
-	requiredWords := len(cfg.Bots)*3 + 10 // 3 słowa na bota (nick, ident, realname) + 10 zapasowych
+	requiredWords := len(cfg.Bots)*3 + 10 // 3 words per bot (nick, ident, realname) + 10 spare
 
 	wordPool, err := util.GetWordsFromAPI(
 		cfg.Global.NickAPI.URL,
@@ -59,9 +61,10 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 		massCommandCooldown: time.Duration(cfg.Global.MassCommandCooldown) * time.Second,
 		wordPool:            wordPool,
 		wordPoolMutex:       sync.Mutex{},
+		reactionRequests:    make(map[string]types.ReactionRequest),
 	}
 
-	// Tworzenie botów
+	// Creating bots
 	for i, botCfg := range cfg.Bots {
 		bot := NewBot(&botCfg, &cfg.Global, nm, manager)
 		bot.SetOwnerList(manager.owners)
@@ -78,12 +81,26 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 
 // StartBots starts all bots and connects them to their servers
 func (bm *BotManager) StartBots() {
-	for _, bot := range bm.bots {
-		err := bot.Connect()
-		if err != nil {
-			util.Error("Failed to connect bot: %v", err)
-			continue
+	groupSize := 3
+	totalBots := len(bm.bots)
+	for i := 0; i < totalBots; i += groupSize {
+		var wg sync.WaitGroup
+		end := i + groupSize
+		if end > totalBots {
+			end = totalBots
 		}
+		group := bm.bots[i:end]
+		for _, bot := range group {
+			wg.Add(1)
+			go func(b types.Bot) {
+				defer wg.Done()
+				err := b.Connect()
+				if err != nil {
+					util.Error("Failed to connect bot: %v", err)
+				}
+			}(bot)
+		}
+		wg.Wait()
 	}
 }
 
@@ -95,35 +112,6 @@ func (bm *BotManager) Stop() {
 		bot.Quit("Shutting down")
 	}
 	util.Info("All bots have been stopped.")
-}
-
-// ShouldHandleCommand determines if a given bot should handle a command
-func (bm *BotManager) ShouldHandleCommand(bot types.Bot, cmdName string) bool {
-	bm.mutex.Lock()
-	defer bm.mutex.Unlock()
-
-	util.Debug("ShouldHandleCommand called for bot %s, command: %s", bot.GetCurrentNick(), cmdName)
-
-	// Zawsze pozwól na obsługę komendy !bnc przez bota, który ją otrzymał
-	if cmdName == "bnc" {
-		util.Debug("BNC command will be handled by bot %s", bot.GetCurrentNick())
-		return true
-	}
-
-	if len(bm.bots) == 0 {
-		util.Debug("No bots available to handle command")
-		return false
-	}
-
-	if bm.bots[bm.commandBotIndex] == bot {
-		util.Debug("Bot %s selected to handle command", bot.GetCurrentNick())
-		// Move index to next bot
-		bm.commandBotIndex = (bm.commandBotIndex + 1) % len(bm.bots)
-		return true
-	}
-
-	util.Debug("Bot %s not selected to handle command", bot.GetCurrentNick())
-	return false
 }
 
 // CanExecuteMassCommand checks if a mass command can be executed
@@ -236,4 +224,59 @@ func (bm *BotManager) GetMassCommandCooldown() time.Duration {
 	bm.mutex.Lock()
 	defer bm.mutex.Unlock()
 	return bm.massCommandCooldown
+}
+
+// CollectReactions collects reactions and executes them
+func (bm *BotManager) CollectReactions(channel, message string, action func() error) {
+	bm.reactionMutex.Lock()
+	defer bm.reactionMutex.Unlock()
+
+	key := channel + ":" + message
+	now := time.Now()
+
+	if req, exists := bm.reactionRequests[key]; exists && now.Sub(req.Timestamp) < 5*time.Second {
+		return // Ignore duplicates within 5 seconds
+	}
+
+	// Execute action
+	if action != nil {
+		err := action()
+		if err != nil {
+			bm.SendSingleMsg(channel, fmt.Sprintf("Error: %v", err))
+			return
+		}
+	}
+
+	// Immediately send message
+	bm.SendSingleMsg(channel, message)
+
+	// Save request to ignore duplicates for the next 5 seconds
+	bm.reactionRequests[key] = types.ReactionRequest{
+		Channel:   channel,
+		Message:   message,
+		Timestamp: now,
+		Action:    action,
+	}
+
+	// Run cleanup after 5 seconds
+	go bm.cleanupReactionRequest(key)
+}
+
+func (bm *BotManager) cleanupReactionRequest(key string) {
+	time.Sleep(5 * time.Second)
+	bm.reactionMutex.Lock()
+	defer bm.reactionMutex.Unlock()
+	delete(bm.reactionRequests, key)
+}
+
+func (bm *BotManager) SendSingleMsg(channel, message string) {
+	bm.mutex.Lock()
+	defer bm.mutex.Unlock()
+
+	if len(bm.bots) == 0 {
+		return
+	}
+	bot := bm.bots[bm.commandBotIndex]
+	bm.commandBotIndex = (bm.commandBotIndex + 1) % len(bm.bots)
+	bot.SendMessage(channel, message)
 }

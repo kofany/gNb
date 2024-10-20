@@ -49,7 +49,6 @@ type NickManager interface {
 type BotManager interface {
 	StartBots()
 	Stop()
-	ShouldHandleCommand(bot Bot, cmdName string) bool
 	CanExecuteMassCommand(cmdName string) bool
 	AddOwner(ownerMask string) error
 	RemoveOwner(ownerMask string) error
@@ -58,4 +57,13 @@ type BotManager interface {
 	GetNickManager() NickManager
 	SetMassCommandCooldown(duration time.Duration)
 	GetMassCommandCooldown() time.Duration
+	CollectReactions(channel, message string, action func() error)
+	SendSingleMsg(channel, message string)
+}
+
+type ReactionRequest struct {
+	Channel   string
+	Message   string
+	Timestamp time.Time
+	Action    func() error
 }
