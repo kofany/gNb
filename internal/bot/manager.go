@@ -29,6 +29,14 @@ type BotManager struct {
 	massCommandCooldown time.Duration
 	wordPool            []string
 	wordPoolMutex       sync.Mutex
+	reactionRequests    map[string]ReactionRequest
+	reactionMutex       sync.Mutex
+}
+
+type ReactionRequest struct {
+	Channel   string
+	Message   string
+	Timestamp time.Time
 }
 
 // NewBotManager creates a new BotManager instance
@@ -59,6 +67,7 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 		massCommandCooldown: time.Duration(cfg.Global.MassCommandCooldown) * time.Second,
 		wordPool:            wordPool,
 		wordPoolMutex:       sync.Mutex{},
+		reactionRequests:    make(map[string]ReactionRequest),
 	}
 
 	// Tworzenie botów
@@ -252,4 +261,51 @@ func (bm *BotManager) GetMassCommandCooldown() time.Duration {
 	bm.mutex.Lock()
 	defer bm.mutex.Unlock()
 	return bm.massCommandCooldown
+}
+
+// Dodajemy funkcję CollectReactions w pliku manager.go (jeśli jeszcze nie została dodana)
+func (bm *BotManager) CollectReactions(channel, message string) {
+	bm.reactionMutex.Lock()
+	defer bm.reactionMutex.Unlock()
+
+	key := channel + ":" + message
+	now := time.Now()
+
+	if req, exists := bm.reactionRequests[key]; exists && now.Sub(req.Timestamp) < 5*time.Second {
+		return // Ignoruj duplikaty w ciągu 5 sekund
+	}
+
+	bm.reactionRequests[key] = ReactionRequest{
+		Channel:   channel,
+		Message:   message,
+		Timestamp: now,
+	}
+
+	go bm.processPendingReactions()
+}
+
+// Dodajemy funkcję processPendingReactions w pliku manager.go (jeśli jeszcze nie została dodana)
+func (bm *BotManager) processPendingReactions() {
+	bm.reactionMutex.Lock()
+	defer bm.reactionMutex.Unlock()
+
+	for key, req := range bm.reactionRequests {
+		if time.Since(req.Timestamp) >= 5*time.Second {
+			bm.SendSingleMsg(req.Channel, req.Message)
+			delete(bm.reactionRequests, key)
+		}
+	}
+}
+
+// Dodajemy funkcję SendSingleMsg w pliku manager.go (jeśli jeszcze nie została dodana)
+func (bm *BotManager) SendSingleMsg(channel, message string) {
+	bm.mutex.Lock()
+	defer bm.mutex.Unlock()
+
+	if len(bm.bots) == 0 {
+		return
+	}
+	bot := bm.bots[bm.commandBotIndex]
+	bm.commandBotIndex = (bm.commandBotIndex + 1) % len(bm.bots)
+	bot.SendMessage(channel, message)
 }

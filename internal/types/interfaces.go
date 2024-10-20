@@ -58,4 +58,6 @@ type BotManager interface {
 	GetNickManager() NickManager
 	SetMassCommandCooldown(duration time.Duration)
 	GetMassCommandCooldown() time.Duration
+	CollectReactions(channel, message string)
+	SendSingleMsg(channel, message string)
 }
