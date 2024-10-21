@@ -3,3 +3,4 @@ bot.log
 setup_git_ignore.sh
 bot.pid
 bot_dev.log
+.DS_Store
