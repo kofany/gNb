@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt" // Dodano import fmt
 	"log"
 	"math/rand"
 	"os"
@@ -18,8 +19,13 @@ import (
 	"github.com/sevlyar/go-daemon"
 )
 
+// Globalna zmienna version. Może być nadpisana podczas kompilacji za pomocą -ldflags.
+var version = "v1.1.1"
+
 var (
-	devMode = flag.Bool("dev", false, "run in development mode (non-daemon)")
+	devMode         = flag.Bool("dev", false, "run in development mode (non-daemon)")
+	versionFlag     = flag.Bool("v", false, "show version")       // Flaga -v
+	versionFlagLong = flag.Bool("version", false, "show version") // Flaga --version
 )
 
 const banner = `
@@ -28,7 +34,7 @@ const banner = `
    / __ \/ __ \  / / _ \/ __ \/ / / /  / __/ _ \/ __ ` + "`" + `/ __ ` + "`" + `__ \
   / /_/ / /_/ / / /  __/ /_/ / /_/ /  / /_/  __/ /_/ / / / / / /
  / .___/\____/_/ /\___/_.___/\__, /blo\__/\___/\__,_/_/ /_/ /_/
-/_/  ruciu  /___/   dominik /____/                     kofany
+ /_/  ruciu  /___/   dominik /____/                     kofany
 
 `
 
@@ -51,7 +57,28 @@ func printBanner() {
 	color.Cyan(banner)
 }
 
+// Funkcja do wyświetlania wersji
+func printVersion() {
+	// Tworzenie kolorowego ciągu znaków
+	versionText := fmt.Sprintf("%s %s %s.",
+		color.MagentaString("[gNb]"),
+		color.GreenString("get Nick Bot by kofany"),
+		color.YellowString(version),
+	)
+	fmt.Println(versionText)
+}
+
 func main() {
+	// Definicja flag
+	flag.Parse()
+
+	// Sprawdzenie flagi wersji przed wyświetleniem baneru
+	if *versionFlag || *versionFlagLong {
+		printVersion()
+		os.Exit(0)
+	}
+
+	// Wyświetlenie baneru tylko jeśli flaga wersji nie jest ustawiona
 	printBanner()
 
 	color.Blue("Starting main function")
@@ -63,15 +90,11 @@ func main() {
 	}
 	color.Green("Config files checked and created if necessary")
 
-	color.Blue("Parsing flags")
-	flag.Parse()
-
 	color.Blue("Initializing random number generator")
 	rand.Seed(time.Now().UnixNano())
 
 	if !*devMode {
 		color.Yellow("Starting in daemon mode")
-		printBanner()
 		cntxt := &daemon.Context{
 			PidFileName: "bot.pid",
 			PidFilePerm: 0644,
@@ -86,7 +109,7 @@ func main() {
 			os.Exit(1)
 		}
 		if d != nil {
-			color.Green("[get Nick bot] is running in background with pid: %d [gNb]", d.Pid)
+			color.Green("[gNb] get Nick Bot by kofany %s is running in background with pid: %d.", version, d.Pid)
 			return
 		}
 		defer cntxt.Release()
