@@ -3,6 +3,8 @@ package bot
 import (
 	"fmt"
 	"math/rand"
+	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"github.com/kofany/gNb/internal/auth"
 	"github.com/kofany/gNb/internal/bnc"
 	"github.com/kofany/gNb/internal/config"
+	"github.com/kofany/gNb/internal/dcc"
 	"github.com/kofany/gNb/internal/types"
 	"github.com/kofany/gNb/internal/util"
 	irc "github.com/kofany/go-ircevent"
@@ -37,6 +40,7 @@ type Bot struct {
 	ServerName      string // Nazwa serwera otrzymana po połączeniu
 	bncServer       *bnc.BNCServer
 	mutex           sync.Mutex
+	dccTunnel       *dcc.DCCTunnel
 }
 
 // GetBotManager returns the BotManager for this bot
@@ -209,9 +213,15 @@ func (b *Bot) addCallbacks() {
 
 	// BNC
 	b.Connection.AddCallback("*", func(e *irc.Event) {
+		if b.dccTunnel != nil {
+			b.dccTunnel.WriteToConn(e.Raw)
+		}
 		rawMessage := e.Raw
 		b.ForwardToTunnel(rawMessage)
 	})
+
+	// DCC support
+	b.Connection.AddCallback("CTCP_DCC", b.handleDCCRequest)
 
 	// Callback for private and public messages
 	b.Connection.AddCallback("PRIVMSG", b.handlePrivMsg)
@@ -429,9 +439,13 @@ func (b *Bot) Quit(message string) {
 		util.Info("Bot %s is disconnecting: %s", b.CurrentNick, message)
 		b.Connection.QuitMessage = message
 		b.Connection.Quit()
-		b.mutex.Lock()
 		b.isConnected = false
-		b.mutex.Unlock()
+
+		// Stop the DCC tunnel if active
+		if b.dccTunnel != nil {
+			b.dccTunnel.Stop()
+			b.dccTunnel = nil
+		}
 	}
 }
 
@@ -530,4 +544,60 @@ func (b *Bot) ForwardToTunnel(data string) {
 	if b.bncServer != nil && b.bncServer.Tunnel != nil {
 		b.bncServer.Tunnel.WriteToConn(data)
 	}
+}
+
+// DCC support
+func (b *Bot) handleDCCRequest(e *irc.Event) {
+	// Check if the DCC request is for CHAT
+	if len(e.Arguments) < 2 || e.Arguments[0] != "DCC" {
+		return
+	}
+
+	// Extract the DCC command from the message
+	dccArgs := strings.Fields(e.Message())
+	if len(dccArgs) < 4 || strings.ToUpper(dccArgs[0]) != "DCC" || strings.ToUpper(dccArgs[1]) != "CHAT" {
+		return
+	}
+
+	// Check if the sender is an owner
+	if !auth.IsOwner(e, b.owners) {
+		util.Debug("Ignoring DCC CHAT request from non-owner %s", e.Nick)
+		return
+	}
+
+	util.Info("Accepting DCC CHAT request from owner %s", e.Nick)
+
+	// Parse IP and port from the DCC CHAT request
+	ipInt, err := strconv.ParseUint(dccArgs[2], 10, 32)
+	if err != nil {
+		util.Warning("Invalid IP in DCC CHAT request from %s", e.Nick)
+		return
+	}
+	ip := intToIP(uint32(ipInt))
+
+	portInt, err := strconv.ParseUint(dccArgs[3], 10, 16)
+	if err != nil {
+		util.Warning("Invalid port in DCC CHAT request from %s", e.Nick)
+		return
+	}
+	port := uint16(portInt)
+
+	addr := fmt.Sprintf("%s:%d", ip.String(), port)
+
+	// Connect to the sender
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		util.Error("Failed to connect to DCC CHAT from %s: %v", e.Nick, err)
+		return
+	}
+
+	// Start the DCC tunnel
+	b.dccTunnel = dcc.NewDCCTunnel(b, func() {
+		b.dccTunnel = nil
+	})
+	b.dccTunnel.Start(conn)
+}
+
+func intToIP(intIP uint32) net.IP {
+	return net.IPv4(byte(intIP>>24), byte(intIP>>16), byte(intIP>>8), byte(intIP))
 }
