@@ -258,4 +258,4 @@ Contributions are welcome! Please follow these steps:
 
 This project is licensed under the MIT License.
 
-**Disclaimer**: Use this bot responsibly and ensure you comply with the IRC network's policies and guidelines. Unauthorized use or abuse may result in bans or other penalties from network administrators.
+**Disclaimer**: Use this bot responsibly and ensure you comply with the IRC network's policies and guidelines. Unauthorized use or abuse may result in bans or other penalties from network administrators. 🙈
