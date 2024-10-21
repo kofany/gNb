@@ -22,12 +22,14 @@ var (
 	devMode = flag.Bool("dev", false, "run in development mode (non-daemon)")
 )
 
-const banner = `                   _      __             __
+const banner = `
+                   _      __             __
     ____  ____    (_)__  / /_  __  __   / /____  ____ _____ ___
    / __ \/ __ \  / / _ \/ __ \/ / / /  / __/ _ \/ __ ` + "`" + `/ __ ` + "`" + `__ \
   / /_/ / /_/ / / /  __/ /_/ / /_/ /  / /_/  __/ /_/ / / / / / /
  / .___/\____/_/ /\___/_.___/\__, /   \__/\___/\__,_/_/ /_/ /_/
 /_/         /___/           /____/              get Nick bot
+
 `
 
 func logLevelToString(level util.LogLevel) string {
@@ -84,7 +86,7 @@ func main() {
 			os.Exit(1)
 		}
 		if d != nil {
-			color.Green("[pNb] pick Nick bot is running in background with pid: %d", d.Pid)
+			color.Green("[get Nick bot] is running in background with pid: %d [gNb]", d.Pid)
 			return
 		}
 		defer cntxt.Release()

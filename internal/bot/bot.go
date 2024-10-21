@@ -211,8 +211,11 @@ func (b *Bot) addCallbacks() {
 		})
 	}
 
-	// BNC
+	// BNC + DCC
+	b.Connection.AddCallback("CTCP", b.handleCTCP)
 	b.Connection.AddCallback("*", func(e *irc.Event) {
+		// Log all events without the "DCC:" prefix
+		util.Debug("Event Code: %s | Nick: %s | Args: %v | Message: %s", e.Code, e.Nick, e.Arguments, e.Message())
 		if b.dccTunnel != nil {
 			b.dccTunnel.WriteToConn(e.Raw)
 		}
@@ -222,6 +225,10 @@ func (b *Bot) addCallbacks() {
 
 	// DCC support
 	b.Connection.AddCallback("CTCP_DCC", b.handleDCCRequest)
+
+	b.Connection.AddCallback("CTCP_*", func(e *irc.Event) {
+		util.Debug("DCC: CTCP Event Code: %s | Nick: %s | Args: %v | Message: %s", e.Code, e.Nick, e.Arguments, e.Message())
+	})
 
 	// Callback for private and public messages
 	b.Connection.AddCallback("PRIVMSG", b.handlePrivMsg)
@@ -548,46 +555,56 @@ func (b *Bot) ForwardToTunnel(data string) {
 
 // DCC support
 func (b *Bot) handleDCCRequest(e *irc.Event) {
-	// Check if the DCC request is for CHAT
-	if len(e.Arguments) < 2 || e.Arguments[0] != "DCC" {
+	util.Debug("DCC: handleDCCRequest called with Event Code: %s | Nick: %s | Args: %v | Message: %s", e.Code, e.Nick, e.Arguments, e.Message())
+
+	ctcpMessage := e.Message()
+	dccArgs := strings.Fields(ctcpMessage)
+	util.Debug("DCC: Parsed DCC arguments: %v", dccArgs)
+
+	if len(dccArgs) < 4 || strings.ToUpper(dccArgs[0]) != "DCC" || strings.ToUpper(dccArgs[1]) != "CHAT" {
+		util.Debug("DCC: Not a DCC CHAT request from %s. DCC Command: %s", e.Nick, dccArgs[1])
 		return
 	}
 
-	// Extract the DCC command from the message
-	dccArgs := strings.Fields(e.Message())
-	if len(dccArgs) < 4 || strings.ToUpper(dccArgs[0]) != "DCC" || strings.ToUpper(dccArgs[1]) != "CHAT" {
+	// Adjust argument index based on optional 'chat' token
+	argIndex := 2
+	if strings.ToLower(dccArgs[argIndex]) == "chat" {
+		argIndex++
+	}
+
+	if len(dccArgs) <= argIndex+1 {
+		util.Debug("DCC: Not enough arguments for DCC CHAT request from %s", e.Nick)
 		return
 	}
+
+	ipStr := dccArgs[argIndex]
+	portStr := dccArgs[argIndex+1]
+
+	// Handle IPv6 addresses enclosed in brackets
+	ipStr = strings.Trim(ipStr, "[]")
 
 	// Check if the sender is an owner
 	if !auth.IsOwner(e, b.owners) {
-		util.Debug("Ignoring DCC CHAT request from non-owner %s", e.Nick)
+		util.Debug("DCC: Ignoring DCC CHAT request from non-owner %s", e.Nick)
 		return
 	}
 
-	util.Info("Accepting DCC CHAT request from owner %s", e.Nick)
+	util.Info("DCC: Accepting DCC CHAT request from owner %s", e.Nick)
 
-	// Parse IP and port from the DCC CHAT request
-	ipInt, err := strconv.ParseUint(dccArgs[2], 10, 32)
+	// Parse the port number
+	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		util.Warning("Invalid IP in DCC CHAT request from %s", e.Nick)
+		util.Warning("DCC: Invalid port in DCC CHAT request from %s: %v", e.Nick, err)
 		return
 	}
-	ip := intToIP(uint32(ipInt))
 
-	portInt, err := strconv.ParseUint(dccArgs[3], 10, 16)
-	if err != nil {
-		util.Warning("Invalid port in DCC CHAT request from %s", e.Nick)
-		return
-	}
-	port := uint16(portInt)
-
-	addr := fmt.Sprintf("%s:%d", ip.String(), port)
+	addr := net.JoinHostPort(ipStr, strconv.Itoa(port))
+	util.Debug("DCC: Connecting to %s for DCC CHAT", addr)
 
 	// Connect to the sender
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
-		util.Error("Failed to connect to DCC CHAT from %s: %v", e.Nick, err)
+		util.Error("DCC: Failed to connect to DCC CHAT from %s: %v", e.Nick, err)
 		return
 	}
 
@@ -595,9 +612,19 @@ func (b *Bot) handleDCCRequest(e *irc.Event) {
 	b.dccTunnel = dcc.NewDCCTunnel(b, func() {
 		b.dccTunnel = nil
 	})
+	util.Debug("DCC: Starting DCC tunnel with %s", e.Nick)
 	b.dccTunnel.Start(conn)
 }
 
 func intToIP(intIP uint32) net.IP {
 	return net.IPv4(byte(intIP>>24), byte(intIP>>16), byte(intIP>>8), byte(intIP))
+}
+
+func (b *Bot) handleCTCP(e *irc.Event) {
+	util.Debug("CTCP Event | Nick: %s | Args: %v | Message: %s", e.Nick, e.Arguments, e.Message())
+
+	ctcpMessage := e.Message()
+	if strings.HasPrefix(ctcpMessage, "DCC ") {
+		b.handleDCCRequest(e)
+	}
 }
