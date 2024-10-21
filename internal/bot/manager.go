@@ -81,9 +81,21 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 
 // StartBots starts all bots and connects them to their servers
 func (bm *BotManager) StartBots() {
+	botChannel := make(chan types.Bot, len(bm.bots))
 	for _, bot := range bm.bots {
-		go bm.startBotWithRetry(bot)
+		botChannel <- bot
 	}
+
+	for i := 0; i < len(bm.bots); i++ {
+		go func() {
+			for bot := range botChannel {
+				bm.startBotWithRetry(bot)
+				time.Sleep(time.Second) // Krótkie opóźnienie przed uruchomieniem kolejnego bota
+			}
+		}()
+	}
+
+	close(botChannel)
 }
 
 func (bm *BotManager) startBotWithRetry(bot types.Bot) {
