@@ -81,27 +81,32 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 
 // StartBots starts all bots and connects them to their servers
 func (bm *BotManager) StartBots() {
-	groupSize := 3
-	totalBots := len(bm.bots)
-	for i := 0; i < totalBots; i += groupSize {
-		var wg sync.WaitGroup
-		end := i + groupSize
-		if end > totalBots {
-			end = totalBots
-		}
-		group := bm.bots[i:end]
-		for _, bot := range group {
-			wg.Add(1)
-			go func(b types.Bot) {
-				defer wg.Done()
-				err := b.Connect()
-				if err != nil {
-					util.Error("Failed to connect bot: %v", err)
-				}
-			}(bot)
-		}
-		wg.Wait()
+	for _, bot := range bm.bots {
+		go bm.startBotWithRetry(bot)
 	}
+}
+
+func (bm *BotManager) startBotWithRetry(bot types.Bot) {
+	maxRetries := 3               // Możesz dostosować liczbę prób
+	retryDelay := time.Second * 5 // Opóźnienie między próbami
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		err := bot.Connect()
+		if err == nil {
+			util.Info("Bot %s connected successfully", bot.GetCurrentNick())
+			return
+		}
+
+		util.Warning("Failed to connect bot %s (attempt %d/%d): %v",
+			bot.GetCurrentNick(), attempt, maxRetries, err)
+
+		if attempt < maxRetries {
+			time.Sleep(retryDelay)
+		}
+	}
+
+	util.Error("Failed to connect bot %s after %d attempts",
+		bot.GetCurrentNick(), maxRetries)
 }
 
 // Stop safely shuts down all bots
