@@ -21,16 +21,22 @@ type DCCTunnel struct {
 	ignoredEvents map[string]bool
 	onStop        func()
 	formatter     *MessageFormatter
+	helpMessage   string
 }
 
 func NewDCCTunnel(bot types.Bot, onStop func()) *DCCTunnel {
-	return &DCCTunnel{
+	dt := &DCCTunnel{
 		bot:           bot,
 		active:        false,
 		ignoredEvents: map[string]bool{"303": true}, // Ignore ISON responses
 		onStop:        onStop,
 		formatter:     &MessageFormatter{nickname: bot.GetCurrentNick()},
 	}
+
+	// Initialize the help message
+	dt.helpMessage = dt.constructHelpMessage()
+
+	return dt
 }
 
 func (dt *DCCTunnel) Start(conn net.Conn) {
@@ -48,36 +54,17 @@ func (dt *DCCTunnel) Start(conn net.Conn) {
 	util.Debug("DCC: DCC tunnel started for bot %s", dt.bot.GetCurrentNick())
 
 	welcomeMessage := `
-                   _      __             __
-    ____  ____    (_)__  / /_  __  __   / /____  ____ _____ ___
-   / __ \/ __ \  / / _ \/ __ \/ / / /  / __/ _ \/ __ ` + "`" + `/ __ ` + "`" + `__ \
-  / /_/ / /_/ / / /  __/ /_/ / /_/ /  / /_/  __/ /_/ / / / / / /
- / .___/\____/_/ /\___/_.___/\__, /   \__/\___/\__,_/_/ /_/ /_/
-/_/         /___/           /____/              get Nick bot
+                       _      __             __
+        ____  ____    (_)__  / /_  __  __   / /____  ____ _____ ___
+       / __ \/ __ \  / / _ \/ __ \/ / / /  / __/ _ \/ __ '` + "`" + `/ __ '` + "`" + `__ \
+      / /_/ / /_/ / / /  __/ /_/ / /_/ /  / /_/  __/ /_/ / / / / / /
+     / .___/\____/_/ /\___/_.___/\__, /   \__/\___/\__,_/_/ /_/ /_/
+    /_/         /___/           /____/              get Nick bot
 
 Type your IRC commands here using '.' as the prefix.
 
-Available commands:
-.msg <target> <message>       - Send a private message to a user or channel
-.join <channel>               - Join a channel
-.part <channel>               - Leave a channel
-.mode <target> [modes] [args] - Change channel or user modes
-.kick <channel> <user> [reason] - Kick a user from a channel
-.quit                         - Disconnect the bot and close the DCC chat
-.nick <newnick>               - Change the bot's nickname
-.raw <command>                - Send a raw IRC command
-
-Examples:
-.msg #channel Hello everyone!
-.join #channel
-.mode #channel +m
-.mode #channel +o User
-.kick #channel User Spamming
-.nick NewNick
-
-Type your messages without a prefix to send a message to the default target.
+Type .help to see available commands.
 `
-
 	dt.conn.Write([]byte(welcomeMessage + "\r\n"))
 
 	go dt.readFromConn()
@@ -203,9 +190,47 @@ func (dt *DCCTunnel) processCommand(command string) {
 		} else {
 			dt.sendToClient("Usage: .raw <command>")
 		}
+	case "HELP":
+		dt.sendHelpMessage()
 	default:
 		dt.sendToClient(fmt.Sprintf("Unknown command: %s", cmd))
 	}
+}
+
+func (dt *DCCTunnel) sendHelpMessage() {
+	helpMessage := dt.helpMessage + "\r\n"
+	dt.conn.Write([]byte(helpMessage))
+}
+
+func (dt *DCCTunnel) constructHelpMessage() string {
+	return `
+Available commands (SSH/DCC only):
+.msg <target> <message>       - Send a private message to a user or channel
+.join <channel>               - Join a channel
+.part <channel>               - Leave a channel
+.mode <target> [modes] [args] - Change channel or user modes
+.kick <channel> <user> [reason] - Kick a user from a channel
+.quit                         - Disconnect the bot and close the SSH session
+.nick <newnick>               - Change the bot's nickname
+.raw <command>                - Send a raw IRC command
+.help                         - Display this help message
+
+Available commands (IRC only):
+.quit                         - Quit the bot
+.say <target> <message>       - Make the bot say a message
+.reconnect                    - Reconnect the bot
+.addnick <nick>               - Add a nick to the bot
+.delnick <nick>               - Remove a nick from the bot
+.listnicks                    - List the bot's nicks
+.addowner <mask>              - Add an owner mask
+.delowner <mask>              - Remove an owner mask
+.listowners                   - List owner masks
+.bnc <start|stop>             - Start or stop the BNC
+
+Type your messages without a prefix to send a message to the default target.
+
+Enjoy your session!
+`
 }
 
 func (dt *DCCTunnel) sendToClient(message string) {
