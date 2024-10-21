@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -27,7 +28,7 @@ type Bot struct {
 	CurrentNick     string
 	Username        string
 	Realname        string
-	isConnected     bool
+	isConnected     atomic.Bool
 	owners          auth.OwnerList
 	channels        []string
 	nickManager     types.NickManager
@@ -79,12 +80,13 @@ func NewBot(cfg *config.BotConfig, globalConfig *config.GlobalConfig, nm types.N
 		CurrentNick:  nick,
 		Username:     ident,
 		Realname:     realname,
-		isConnected:  false,
 		nickManager:  nm,
-		connected:    make(chan struct{}),
 		botManager:   bm,
 		isonResponse: make(chan []string, 1),
 	}
+
+	bot.isConnected.Store(false)
+	bot.connected = make(chan struct{})
 
 	nm.RegisterBot(bot)
 	return bot
@@ -105,13 +107,14 @@ func (bm *BotManager) getWordFromPool() string {
 
 // IsConnected returns the connection status of the bot
 func (b *Bot) IsConnected() bool {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	return b.isConnected
+	return b.isConnected.Load() && b.Connection != nil && b.Connection.Connected()
 }
 
 // Connect establishes a connection to the IRC server with retry logic
+// Connect establishes a connection to the IRC server with retry logic
 func (b *Bot) Connect() error {
+	b.isConnected.Store(false)
+	b.connected = make(chan struct{})
 	return b.connectWithRetry()
 }
 
@@ -121,6 +124,10 @@ func (b *Bot) connectWithRetry() error {
 	retryInterval := time.Duration(b.GlobalConfig.ReconnectInterval) * time.Second
 
 	for attempts := 0; attempts < maxRetries; attempts++ {
+		b.mutex.Lock()
+		b.connected = make(chan struct{})
+		b.mutex.Unlock()
+
 		b.Connection = irc.IRC(b.CurrentNick, b.Username)
 		b.Connection.SetLocalIP(b.Config.Vhost)
 		b.Connection.VerboseCallbackHandler = false
@@ -128,13 +135,10 @@ func (b *Bot) connectWithRetry() error {
 		b.Connection.UseTLS = b.Config.SSL
 		b.Connection.RealName = b.Realname
 
-		// Initialize connected channel
-		b.connected = make(chan struct{})
-
 		// Add callbacks
 		b.addCallbacks()
 
-		util.Info("Bot %s is attempting to connect to %s", b.CurrentNick, b.Config.ServerAddress())
+		util.Info("Bot %s is attempting to connect to %s (attempt %d/%d)", b.CurrentNick, b.Config.ServerAddress(), attempts+1, maxRetries)
 		err := b.Connection.Connect(b.Config.ServerAddress())
 		if err != nil {
 			util.Error("Attempt %d: Failed to connect bot %s: %v", attempts+1, b.CurrentNick, err)
@@ -150,32 +154,50 @@ func (b *Bot) connectWithRetry() error {
 			// Connection established
 			util.Info("Bot %s successfully connected", b.CurrentNick)
 			return nil
-		case <-time.After(30 * time.Second):
-			util.Warning("Bot %s did not receive connection confirmation within 30 seconds", b.CurrentNick)
+		case <-time.After(60 * time.Second): // Zwiększamy timeout do 60 sekund
+			if b.IsConnected() {
+				util.Info("Bot %s is fully connected, proceeding", b.CurrentNick)
+				return nil
+			}
+			util.Warning("Bot %s is not fully connected, will retry", b.CurrentNick)
 			b.Connection.Quit()
 		}
+
+		time.Sleep(retryInterval)
 	}
 
+	b.mutex.Lock()
+	b.gaveUp = true
+	b.mutex.Unlock()
 	return fmt.Errorf("bot %s could not connect after %d attempts", b.CurrentNick, maxRetries)
 }
 
 func (b *Bot) addCallbacks() {
 	// Callback for successful connection
 	b.Connection.AddCallback("001", func(e *irc.Event) {
-		b.mutex.Lock()
-		b.isConnected = true
-		b.ServerName = e.Source
-		b.gaveUp = false
-		b.lastConnectTime = time.Now()
-		b.mutex.Unlock()
+		if b.isConnected.Load() {
+			// Bot jest już połączony, nie rób nic
+			return
+		}
 
-		util.Info("Bot %s connected to %s as %s", b.CurrentNick, b.ServerName, b.CurrentNick)
+		b.isConnected.Store(true)
+		b.ServerName = e.Source
+		b.lastConnectTime = time.Now()
+
+		util.Info("Bot %s fully connected to %s as %s", b.CurrentNick, b.ServerName, b.CurrentNick)
+
 		// Join channels
 		for _, channel := range b.channels {
 			b.JoinChannel(channel)
 		}
+
 		// Signal that connection has been established
-		close(b.connected)
+		select {
+		case <-b.connected:
+			// Kanał już zamknięty, ignorujemy
+		default:
+			close(b.connected)
+		}
 	})
 
 	// Callback for nick changes
@@ -239,13 +261,13 @@ func (b *Bot) addCallbacks() {
 	// Callback for disconnection
 	b.Connection.AddCallback("DISCONNECTED", func(e *irc.Event) {
 		util.Warning("Bot %s disconnected from server %s", b.CurrentNick, b.ServerName)
-		b.mutex.Lock()
-		b.isConnected = false
-		b.mutex.Unlock()
-		if !b.isReconnecting && !b.gaveUp {
+
+		wasConnected := b.isConnected.Swap(false)
+
+		if wasConnected {
 			go b.handleReconnect()
-		} else if b.gaveUp {
-			util.Info("Bot %s has given up on reconnecting to %s", b.CurrentNick, b.ServerName)
+		} else {
+			util.Info("Bot %s was already disconnected from %s", b.CurrentNick, b.ServerName)
 		}
 	})
 }
@@ -446,12 +468,20 @@ func (b *Bot) Quit(message string) {
 		util.Info("Bot %s is disconnecting: %s", b.CurrentNick, message)
 		b.Connection.QuitMessage = message
 		b.Connection.Quit()
-		b.isConnected = false
+		b.isConnected.Store(false)
 
 		// Stop the DCC tunnel if active
 		if b.dccTunnel != nil {
 			b.dccTunnel.Stop()
 			b.dccTunnel = nil
+		}
+
+		// Zamknij kanał connected, jeśli jest otwarty
+		select {
+		case <-b.connected:
+			// Kanał już zamknięty, ignorujemy
+		default:
+			close(b.connected)
 		}
 	}
 }

@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -31,10 +32,13 @@ type BotManager struct {
 	wordPoolMutex       sync.Mutex
 	reactionRequests    map[string]types.ReactionRequest
 	reactionMutex       sync.Mutex
+	ctx                 context.Context
+	cancel              context.CancelFunc
 }
 
 // NewBotManager creates a new BotManager instance
 func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManager) *BotManager {
+	ctx, cancel := context.WithCancel(context.Background())
 	requiredWords := len(cfg.Bots)*3 + 10 // 3 words per bot (nick, ident, realname) + 10 spare
 
 	wordPool, err := util.GetWordsFromAPI(
@@ -62,6 +66,8 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 		wordPool:            wordPool,
 		wordPoolMutex:       sync.Mutex{},
 		reactionRequests:    make(map[string]types.ReactionRequest),
+		ctx:                 ctx,
+		cancel:              cancel,
 	}
 
 	// Creating bots
@@ -86,8 +92,11 @@ func (bm *BotManager) StartBots() {
 		botChannel <- bot
 	}
 
+	var wg sync.WaitGroup
 	for i := 0; i < len(bm.bots); i++ {
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			for bot := range botChannel {
 				bm.startBotWithRetry(bot)
 				time.Sleep(time.Second) // Krótkie opóźnienie przed uruchomieniem kolejnego bota
@@ -96,24 +105,34 @@ func (bm *BotManager) StartBots() {
 	}
 
 	close(botChannel)
+	wg.Wait()
 }
 
 func (bm *BotManager) startBotWithRetry(bot types.Bot) {
-	maxRetries := 3               // Możesz dostosować liczbę prób
-	retryDelay := time.Second * 5 // Opóźnienie między próbami
+	maxRetries := 3
+	retryDelay := time.Second * 5
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		err := bot.Connect()
-		if err == nil {
-			util.Info("Bot %s connected successfully", bot.GetCurrentNick())
-			return
-		}
+		select {
+		case <-bm.ctx.Done():
+			return // Zakończ, jeśli kontekst został anulowany
+		default:
+			err := bot.Connect()
+			if err == nil {
+				util.Info("Bot %s connected successfully", bot.GetCurrentNick())
+				return
+			}
 
-		util.Warning("Failed to connect bot %s (attempt %d/%d): %v",
-			bot.GetCurrentNick(), attempt, maxRetries, err)
+			util.Warning("Failed to connect bot %s (attempt %d/%d): %v",
+				bot.GetCurrentNick(), attempt, maxRetries, err)
 
-		if attempt < maxRetries {
-			time.Sleep(retryDelay)
+			if attempt < maxRetries {
+				select {
+				case <-time.After(retryDelay):
+				case <-bm.ctx.Done():
+					return
+				}
+			}
 		}
 	}
 
@@ -123,6 +142,7 @@ func (bm *BotManager) startBotWithRetry(bot types.Bot) {
 
 // Stop safely shuts down all bots
 func (bm *BotManager) Stop() {
+	bm.cancel() // Anuluj kontekst, aby zasygnalizować wszystkim goroutynom, że powinny się zakończyć
 	close(bm.stopChan)
 	bm.wg.Wait()
 	for _, bot := range bm.bots {
