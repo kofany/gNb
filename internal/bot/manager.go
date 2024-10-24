@@ -34,6 +34,8 @@ type BotManager struct {
 	reactionMutex       sync.Mutex
 	ctx                 context.Context
 	cancel              context.CancelFunc
+	errorHandled        bool       // Dodaj flagę do obsługi błędów
+	errorMutex          sync.Mutex // Mutex do kontrolowania dostępu do errorHandled
 }
 
 // NewBotManager creates a new BotManager instance
@@ -263,7 +265,6 @@ func (bm *BotManager) GetMassCommandCooldown() time.Duration {
 	return bm.massCommandCooldown
 }
 
-// CollectReactions collects reactions and executes them
 func (bm *BotManager) CollectReactions(channel, message string, action func() error) {
 	bm.reactionMutex.Lock()
 	defer bm.reactionMutex.Unlock()
@@ -279,7 +280,12 @@ func (bm *BotManager) CollectReactions(channel, message string, action func() er
 	if action != nil {
 		err := action()
 		if err != nil {
-			bm.SendSingleMsg(channel, fmt.Sprintf("Error: %v", err))
+			bm.errorMutex.Lock()
+			if !bm.errorHandled {
+				bm.SendSingleMsg(channel, fmt.Sprintf("Error: %v", err))
+				bm.errorHandled = true // Ustaw flagę po obsłużeniu błędu
+			}
+			bm.errorMutex.Unlock()
 			return
 		}
 	}
@@ -300,11 +306,19 @@ func (bm *BotManager) CollectReactions(channel, message string, action func() er
 	go bm.cleanupReactionRequest(key)
 }
 
+// Zaktualizowana funkcja cleanupReactionRequest
 func (bm *BotManager) cleanupReactionRequest(key string) {
 	time.Sleep(5 * time.Second)
 	bm.reactionMutex.Lock()
 	defer bm.reactionMutex.Unlock()
+
+	// Usuń zapis reakcji
 	delete(bm.reactionRequests, key)
+
+	// Resetuj flagę błędu po zakończeniu reakcji
+	bm.errorMutex.Lock()
+	bm.errorHandled = false
+	bm.errorMutex.Unlock()
 }
 
 func (bm *BotManager) SendSingleMsg(channel, message string) {

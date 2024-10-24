@@ -22,6 +22,8 @@ type NickManager struct {
 	tempUnavailableNicks map[string]time.Time // Mapa do blokowania nicków
 	NoLettersServers     map[string]bool      // Mapa serwerów, które nie akceptują jednoliterowych nicków
 	mutex                sync.Mutex
+	// dodaj pole do przechowywania odwołania do BotManager
+
 }
 
 type NicksData struct {
