@@ -69,7 +69,7 @@ func (b *Bot) HandleCommands(e *irc.Event) {
 	cmdName := strings.ToLower(args[0])
 	cmd, exists := commandMap[cmdName]
 	if !exists {
-		b.sendReply(isChannelMsg, target, sender, "Unknown command")
+		util.Debug("Unknown command")
 		return
 	}
 

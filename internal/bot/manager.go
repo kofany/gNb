@@ -283,7 +283,8 @@ func (bm *BotManager) CollectReactions(channel, message string, action func() er
 			bm.errorMutex.Lock()
 			if !bm.errorHandled {
 				bm.SendSingleMsg(channel, fmt.Sprintf("Error: %v", err))
-				bm.errorHandled = true // Ustaw flagę po obsłużeniu błędu
+				bm.errorHandled = true            // Ustaw flagę po obsłużeniu błędu
+				go bm.cleanupReactionRequest(key) // Wywołaj cleanup po błędzie
 			}
 			bm.errorMutex.Unlock()
 			return
@@ -302,7 +303,7 @@ func (bm *BotManager) CollectReactions(channel, message string, action func() er
 		Action:    action,
 	}
 
-	// Run cleanup after 5 seconds
+	// Run cleanup after 5 seconds for successful command
 	go bm.cleanupReactionRequest(key)
 }
 
