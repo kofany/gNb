@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/kofany/gNb/internal/auth"
-	irc "github.com/kofany/go-ircevent"
+	irc "github.com/kofany/go-ircevo"
 )
 
 type Bot interface {

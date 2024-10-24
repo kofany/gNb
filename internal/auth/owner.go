@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/kofany/gNb/internal/util"
-	irc "github.com/kofany/go-ircevent"
+	irc "github.com/kofany/go-ircevo"
 )
 
 // OwnerList contains the list of owners defined in the JSON file.

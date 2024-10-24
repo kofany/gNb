@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/kofany/gNb/internal/util"
-	irc "github.com/kofany/go-ircevent"
+	irc "github.com/kofany/go-ircevo"
 )
 
 // Client is an abstraction of an IRC connection

@@ -17,7 +17,7 @@ import (
 	"github.com/kofany/gNb/internal/dcc"
 	"github.com/kofany/gNb/internal/types"
 	"github.com/kofany/gNb/internal/util"
-	irc "github.com/kofany/go-ircevent"
+	irc "github.com/kofany/go-ircevo"
 )
 
 // Bot represents a single IRC bot
@@ -107,7 +107,7 @@ func (bm *BotManager) getWordFromPool() string {
 
 // IsConnected returns the connection status of the bot
 func (b *Bot) IsConnected() bool {
-	return b.isConnected.Load() && b.Connection != nil && b.Connection.Connected()
+	return b.isConnected.Load() && b.Connection != nil && b.Connection.IsFullyConnected()
 }
 
 // Connect establishes a connection to the IRC server with retry logic

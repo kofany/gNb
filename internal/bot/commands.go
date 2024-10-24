@@ -7,7 +7,7 @@ import (
 
 	"github.com/kofany/gNb/internal/auth"
 	"github.com/kofany/gNb/internal/util"
-	irc "github.com/kofany/go-ircevent"
+	irc "github.com/kofany/go-ircevo"
 )
 
 type CommandType int
