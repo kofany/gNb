@@ -3,16 +3,17 @@ package dcc
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/kofany/gNb/internal/irc"
 	"github.com/kofany/gNb/internal/types"
 	"github.com/kofany/gNb/internal/util"
 )
 
+// DCCTunnel reprezentuje tunel DCC do komunikacji z botem
 type DCCTunnel struct {
 	conn          net.Conn
 	bot           types.Bot
@@ -21,24 +22,24 @@ type DCCTunnel struct {
 	ignoredEvents map[string]bool
 	onStop        func()
 	formatter     *MessageFormatter
-	helpMessage   string
+	botManager    types.BotManager
 }
 
+// NewDCCTunnel tworzy nową instancję tunelu DCC
 func NewDCCTunnel(bot types.Bot, onStop func()) *DCCTunnel {
 	dt := &DCCTunnel{
 		bot:           bot,
 		active:        false,
 		ignoredEvents: map[string]bool{"303": true}, // Ignore ISON responses
 		onStop:        onStop,
-		formatter:     &MessageFormatter{nickname: bot.GetCurrentNick()},
+		formatter:     NewMessageFormatter(bot.GetCurrentNick()),
+		botManager:    bot.GetBotManager(),
 	}
-
-	// Initialize the help message
-	dt.helpMessage = dt.constructHelpMessage()
 
 	return dt
 }
 
+// Start inicjuje tunel DCC
 func (dt *DCCTunnel) Start(conn net.Conn) {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
@@ -53,23 +54,13 @@ func (dt *DCCTunnel) Start(conn net.Conn) {
 
 	util.Debug("DCC: DCC tunnel started for bot %s", dt.bot.GetCurrentNick())
 
-	welcomeMessage := `
-                 ___      __             __ <<<<<<[get Nick bot]
-    ____  ____  [ m ]__  / /_  __  __   / /____  ____ _____ ___
-   / __ \/ __ \  / / _ \/ __ \/ / / /  / __/ _ \/ __ ` + "`" + `/ __ ` + "`" + `__ \
-  / /_/ / /_/ / / /  __/ /_/ / /_/ /  / /_/  __/ /_/ / / / / / /
- / .___/\____/_/ /\___/_.___/\__, /blo\__/\___/\__,_/_/ /_/ /_/
-/_/  ruciu  /___/   dominik /____/                     kofany
-
-Type your IRC commands here using '.' as the prefix.
-
-Type .help to see available commands.
-`
+	welcomeMessage := dt.getWelcomeMessage()
 	dt.conn.Write([]byte(welcomeMessage + "\r\n"))
 
 	go dt.readFromConn()
 }
 
+// Stop zatrzymuje tunel DCC
 func (dt *DCCTunnel) Stop() {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
@@ -83,12 +74,12 @@ func (dt *DCCTunnel) Stop() {
 		dt.conn.Close()
 	}
 
-	// Call the onStop callback
 	if dt.onStop != nil {
 		dt.onStop()
 	}
 }
 
+// readFromConn obsługuje odczyt danych z połączenia
 func (dt *DCCTunnel) readFromConn() {
 	defer dt.Stop()
 
@@ -104,137 +95,14 @@ func (dt *DCCTunnel) readFromConn() {
 	}
 }
 
+// handleUserInput przetwarza dane wejściowe od użytkownika
 func (dt *DCCTunnel) handleUserInput(input string) {
 	if strings.HasPrefix(input, ".") {
-		// User entered a command
 		dt.processCommand(input)
 	} else {
-		// Regular message, send as PRIVMSG to a default target
-		defaultTarget := dt.bot.GetCurrentNick() // Change this to a default channel or user if desired
+		defaultTarget := dt.bot.GetCurrentNick()
 		dt.bot.SendMessage(defaultTarget, input)
 	}
-}
-
-func (dt *DCCTunnel) processCommand(command string) {
-	fields := strings.Fields(command)
-	if len(fields) == 0 {
-		return
-	}
-
-	// Remove the '.' prefix and convert to upper case for command matching
-	cmd := strings.ToUpper(strings.TrimPrefix(fields[0], "."))
-
-	switch cmd {
-	case "MSG":
-		if len(fields) >= 3 {
-			target := fields[1]
-			message := strings.Join(fields[2:], " ")
-			dt.bot.SendMessage(target, message)
-		} else {
-			dt.sendToClient("Usage: .msg <target> <message>")
-		}
-	case "JOIN":
-		if len(fields) >= 2 {
-			channel := fields[1]
-			dt.bot.JoinChannel(channel)
-		} else {
-			dt.sendToClient("Usage: .join <channel>")
-		}
-	case "PART":
-		if len(fields) >= 2 {
-			channel := fields[1]
-			dt.bot.PartChannel(channel)
-		} else {
-			dt.sendToClient("Usage: .part <channel>")
-		}
-	case "MODE":
-		if len(fields) >= 3 {
-			target := fields[1]
-			modes := strings.Join(fields[2:], " ")
-			command := fmt.Sprintf("MODE %s %s", target, modes)
-			dt.bot.SendRaw(command)
-		} else if len(fields) >= 2 {
-			target := fields[1]
-			command := fmt.Sprintf("MODE %s", target)
-			dt.bot.SendRaw(command)
-		} else {
-			dt.sendToClient("Usage: .mode <target> [modes] [args]")
-		}
-	case "KICK":
-		if len(fields) >= 3 {
-			channel := fields[1]
-			user := fields[2]
-			reason := ""
-			if len(fields) > 3 {
-				reason = strings.Join(fields[3:], " ")
-			}
-			command := fmt.Sprintf("KICK %s %s :%s", channel, user, reason)
-			dt.bot.SendRaw(command)
-		} else {
-			dt.sendToClient("Usage: .kick <channel> <user> [reason]")
-		}
-	case "QUIT":
-		dt.bot.Quit("Quit via DCC")
-		dt.Stop()
-	case "NICK":
-		if len(fields) >= 2 {
-			newNick := fields[1]
-			dt.bot.ChangeNick(newNick)
-		} else {
-			dt.sendToClient("Usage: .nick <newnick>")
-		}
-	case "RAW":
-		if len(fields) >= 2 {
-			rawCmd := strings.Join(fields[1:], " ")
-			dt.bot.SendRaw(rawCmd)
-		} else {
-			dt.sendToClient("Usage: .raw <command>")
-		}
-	case "HELP":
-		dt.sendHelpMessage()
-	default:
-		dt.sendToClient(fmt.Sprintf("Unknown command: %s", cmd))
-	}
-}
-
-func (dt *DCCTunnel) sendHelpMessage() {
-	helpMessage := dt.helpMessage + "\r\n"
-	dt.conn.Write([]byte(helpMessage))
-}
-
-func (dt *DCCTunnel) constructHelpMessage() string {
-	return `
-Available commands (SSH/DCC only):
-.msg <target> <message>       - Send a private message to a user or channel
-.join <channel>               - Join a channel
-.part <channel>               - Leave a channel
-.mode <target> [modes] [args] - Change channel or user modes
-.kick <channel> <user> [reason] - Kick a user from a channel
-.quit                         - Disconnect the bot and close the SSH session
-.nick <newnick>               - Change the bot's nickname
-.raw <command>                - Send a raw IRC command
-.help                         - Display this help message
-
-Available commands (IRC only):
-.quit                         - Quit the bot
-.say <target> <message>       - Make the bot say a message
-.reconnect                    - Reconnect the bot
-.addnick <nick>               - Add a nick to the bot
-.delnick <nick>               - Remove a nick from the bot
-.listnicks                    - List the bot's nicks
-.addowner <mask>              - Add an owner mask
-.delowner <mask>              - Remove an owner mask
-.listowners                   - List owner masks
-.bnc <start|stop>             - Start or stop the BNC
-
-Type your messages without a prefix to send a message to the default target.
-
-Enjoy your session!
-`
-}
-
-func (dt *DCCTunnel) sendToClient(message string) {
-	dt.conn.Write([]byte(message + "\r\n"))
 }
 
 func (dt *DCCTunnel) WriteToConn(data string) {
@@ -286,96 +154,153 @@ func (dt *DCCTunnel) parseIRCMessage(raw string) string {
 	case "KICK":
 		return dt.formatter.formatKick(event)
 	default:
-		// Handle other message types as needed
-		return ""
+		return dt.formatter.formatOther(event)
 	}
 }
 
-// MessageFormatter formats IRC messages into a user-friendly format
-type MessageFormatter struct {
-	nickname string
+// shouldIgnoreEvent sprawdza czy dane zdarzenie powinno być ignorowane
+func (dt *DCCTunnel) shouldIgnoreEvent(data string) bool {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	// Ignoruj odpowiedzi ISON
+	if strings.Contains(data, " 303 ") {
+		return true
+	}
+
+	for event := range dt.ignoredEvents {
+		if strings.Contains(data, " "+event+" ") {
+			return true
+		}
+	}
+
+	return false
 }
 
-func (mf *MessageFormatter) formatPrivMsg(event *irc.Event) string {
-	timestamp := time.Now().Format("15:04")
-	sender := event.Nick
-	target := ""
-	if len(event.Args) > 0 {
-		target = event.Args[0]
+// sendToClient wysyła wiadomość do klienta DCC
+func (dt *DCCTunnel) sendToClient(message string) {
+	if dt.conn != nil {
+		dt.conn.Write([]byte(message + "\r\n"))
 	}
-	message := event.Message
+}
 
-	if target == mf.nickname {
-		// Private message
-		return fmt.Sprintf("[%s] <%s> %s", timestamp, sender, message)
+// getWelcomeMessage zwraca wiadomość powitalną dla połączenia DCC
+func (dt *DCCTunnel) getWelcomeMessage() string {
+	return `
+                 ___      __             __ <<<<<<[get Nick bot]
+    ____  ____  [ m ]__  / /_  __  __   / /____  ____ _____ ___
+   / __ \/ __ \  / / _ \/ __ \/ / / /  / __/ _ \/ __ ` + "`" + `/ __ ` + "`" + `__ \
+  / /_/ / /_/ / / /  __/ /_/ / /_/ /  / /_/  __/ /_/ / / / / / /
+ / .___/\____/_/ /\___/_.___/\__, /blo\__/\___/\__,_/_/ /_/ /_/
+/_/  ruciu  /___/   dominik /____/                     kofany
+
+Type your IRC commands here using '.' as the prefix.
+
+Type .help to see available commands.
+`
+}
+
+// SetIgnoredEvent dodaje lub usuwa zdarzenie z listy ignorowanych
+func (dt *DCCTunnel) SetIgnoredEvent(event string, ignore bool) {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+	if ignore {
+		dt.ignoredEvents[event] = true
 	} else {
-		// Channel message
-		return fmt.Sprintf("[%s] <%s:%s> %s", timestamp, target, sender, message)
+		delete(dt.ignoredEvents, event)
 	}
 }
 
-func (mf *MessageFormatter) formatNotice(event *irc.Event) string {
-	timestamp := time.Now().Format("15:04")
-	sender := event.Nick
-	message := event.Message
-	return fmt.Sprintf("[%s] -%s- %s", timestamp, sender, message)
+// IsActive zwraca status aktywności tunelu
+func (dt *DCCTunnel) IsActive() bool {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+	return dt.active
 }
 
-func (mf *MessageFormatter) formatJoin(event *irc.Event) string {
-	timestamp := time.Now().Format("15:04")
-	nick := event.Nick
-	channel := ""
-	if len(event.Args) > 0 {
-		channel = event.Args[0]
+// GetBot zwraca referencję do bota
+func (dt *DCCTunnel) GetBot() types.Bot {
+	return dt.bot
+}
+
+// updateFormatter aktualizuje formatter wiadomości (np. po zmianie nicka)
+func (dt *DCCTunnel) updateFormatter(newNick string) {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+	dt.formatter = NewMessageFormatter(newNick)
+}
+
+// Funkcje pomocnicze do debugowania i logowania
+
+// logDebug loguje wiadomość debugowania
+func (dt *DCCTunnel) logDebug(format string, args ...interface{}) {
+	botNick := dt.bot.GetCurrentNick()
+	message := fmt.Sprintf(format, args...)
+	util.Debug("DCC[%s]: %s", botNick, message)
+}
+
+// logError loguje błąd
+func (dt *DCCTunnel) logError(format string, args ...interface{}) {
+	botNick := dt.bot.GetCurrentNick()
+	message := fmt.Sprintf(format, args...)
+	util.Error("DCC[%s]: %s", botNick, message)
+}
+
+// logWarning loguje ostrzeżenie
+func (dt *DCCTunnel) logWarning(format string, args ...interface{}) {
+	botNick := dt.bot.GetCurrentNick()
+	message := fmt.Sprintf(format, args...)
+	util.Warning("DCC[%s]: %s", botNick, message)
+}
+
+// handleConnectionError obsługuje błędy połączenia
+func (dt *DCCTunnel) handleConnectionError(err error) {
+	if err != nil && err != io.EOF {
+		dt.logError("Connection error: %v", err)
 	}
-	return fmt.Sprintf("[%s] *** %s has joined %s", timestamp, nick, channel)
+	dt.Stop()
 }
 
-func (mf *MessageFormatter) formatPart(event *irc.Event) string {
-	timestamp := time.Now().Format("15:04")
-	nick := event.Nick
-	channel := ""
-	if len(event.Args) > 0 {
-		channel = event.Args[0]
+// isValidCommand sprawdza czy komenda jest poprawna
+func (dt *DCCTunnel) isValidCommand(command string) bool {
+	if !strings.HasPrefix(command, ".") {
+		return false
 	}
-	return fmt.Sprintf("[%s] *** %s has left %s", timestamp, nick, channel)
-}
 
-func (mf *MessageFormatter) formatQuit(event *irc.Event) string {
-	timestamp := time.Now().Format("15:04")
-	nick := event.Nick
-	reason := event.Message
-	return fmt.Sprintf("[%s] *** %s has quit (%s)", timestamp, nick, reason)
-}
-
-func (mf *MessageFormatter) formatNick(event *irc.Event) string {
-	timestamp := time.Now().Format("15:04")
-	oldNick := event.Nick
-	newNick := event.Message
-	return fmt.Sprintf("[%s] *** %s is now known as %s", timestamp, oldNick, newNick)
-}
-
-func (mf *MessageFormatter) formatMode(event *irc.Event) string {
-	timestamp := time.Now().Format("15:04")
-	nick := event.Nick
-	target := ""
-	modes := ""
-	if len(event.Args) >= 2 {
-		target = event.Args[0]
-		modes = strings.Join(event.Args[1:], " ")
+	cmd := strings.Fields(command)
+	if len(cmd) == 0 {
+		return false
 	}
-	return fmt.Sprintf("[%s] *** %s sets mode %s on %s", timestamp, nick, modes, target)
+
+	// Usuń prefiks "." i przekonwertuj na wielkie litery
+	cmdName := strings.ToUpper(strings.TrimPrefix(cmd[0], "."))
+
+	// Lista dozwolonych komend
+	validCommands := map[string]bool{
+		"MSG": true, "JOIN": true, "PART": true,
+		"MODE": true, "KICK": true, "QUIT": true,
+		"NICK": true, "RAW": true, "HELP": true,
+		"MJOIN": true, "MPART": true, "MRECONNECT": true,
+		"ADDNICK": true, "DELNICK": true, "LISTNICKS": true,
+		"ADDOWNER": true, "DELOWNER": true, "LISTOWNERS": true,
+		"CFLO": true, "NFLO": true, "INFO": true,
+	}
+
+	return validCommands[cmdName]
 }
 
-func (mf *MessageFormatter) formatKick(event *irc.Event) string {
-	timestamp := time.Now().Format("15:04")
-	nick := event.Nick
-	channel := ""
-	user := ""
-	reason := event.Message
-	if len(event.Args) >= 2 {
-		channel = event.Args[0]
-		user = event.Args[1]
+// validateInput sprawdza i czyści dane wejściowe
+func (dt *DCCTunnel) validateInput(input string) string {
+	// Usuń znaki nowej linii i powrotu karetki
+	input = strings.TrimSpace(input)
+	input = strings.ReplaceAll(input, "\r", "")
+	input = strings.ReplaceAll(input, "\n", "")
+
+	// Ogranicz długość wejścia
+	maxLength := 512 // Standardowe ograniczenie IRC
+	if len(input) > maxLength {
+		input = input[:maxLength]
 	}
-	return fmt.Sprintf("[%s] *** %s has kicked %s from %s (%s)", timestamp, nick, user, channel, reason)
+
+	return input
 }
