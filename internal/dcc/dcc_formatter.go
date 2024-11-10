@@ -9,7 +9,7 @@ import (
 	"github.com/kofany/gNb/internal/irc"
 )
 
-// MessageFormatter formatuje wiadomości IRC do przyjaznego formatu
+// MessageFormatter formats IRC messages to a friendly format
 type MessageFormatter struct {
 	nickname     string
 	timeFormat   string
@@ -17,26 +17,39 @@ type MessageFormatter struct {
 	prefixes     map[string]string
 }
 
-// NewMessageFormatter tworzy nową instancję formatera wiadomości
+// NewMessageFormatter creates a new instance of message formatter
 func NewMessageFormatter(nickname string) *MessageFormatter {
 	return &MessageFormatter{
 		nickname:     nickname,
-		timeFormat:   "15:04",
+		timeFormat:   "15:04:05",
 		colorEnabled: true,
 		prefixes: map[string]string{
-			"PRIVMSG": "<*>",
-			"NOTICE":  "-*-",
-			"JOIN":    ">>>",
-			"PART":    "<<<",
-			"QUIT":    "---",
-			"NICK":    "***",
-			"MODE":    "***",
-			"KICK":    "<!>",
+			"PRIVMSG": colorText("<*>", 9),  // Jasnozielony
+			"NOTICE":  colorText("-*-", 13), // Różowy
+			"JOIN":    colorText(">>>", 10), // Turkusowy
+			"PART":    colorText("<<<", 12), // Niebieski
+			"QUIT":    colorText("---", 5),  // Brązowy
+			"NICK":    colorText("***", 6),  // Fioletowy
+			"MODE":    colorText("***", 3),  // Zielony
+			"KICK":    colorText("<!>", 4),  // Czerwony
 		},
 	}
 }
 
-// FormatMessage formatuje surową wiadomość IRC
+// Helper functions for coloring and styling text
+func colorText(text string, colorCode int) string {
+	return fmt.Sprintf("\x03%02d%s\x03", colorCode, text)
+}
+
+func boldText(text string) string {
+	return fmt.Sprintf("\x02%s\x02", text)
+}
+
+func underlineText(text string) string {
+	return fmt.Sprintf("\x1F%s\x1F", text)
+}
+
+// FormatMessage formats a raw IRC message
 func (mf *MessageFormatter) FormatMessage(raw string) string {
 	event := irc.ParseIRCMessage(raw)
 	if event == nil {
@@ -65,68 +78,69 @@ func (mf *MessageFormatter) FormatMessage(raw string) string {
 	}
 }
 
-// formatPrivMsg formatuje wiadomości prywatne
+// formatPrivMsg formats private messages
 func (mf *MessageFormatter) formatPrivMsg(event *irc.Event) string {
-	timestamp := time.Now().Format(mf.timeFormat)
-	sender := event.Nick
+	timestamp := colorText(time.Now().Format(mf.timeFormat), 14)
+	sender := mf.formatNickname(event.Nick)
 	target := ""
 	if len(event.Args) > 0 {
 		target = event.Args[0]
 	}
-	message := event.Message
+	message := mf.formatText(event.Message)
 
 	if target == mf.nickname {
-		// Wiadomość prywatna
-		return fmt.Sprintf("[%s] <%s> %s",
+		// Private message
+		return fmt.Sprintf("[%s] %s %s",
 			timestamp,
-			mf.formatNickname(sender),
-			mf.formatText(message))
+			sender,
+			message)
 	} else {
-		// Wiadomość na kanał
-		return fmt.Sprintf("[%s] <%s:%s> %s",
+		// Channel message
+		channel := colorText(target, 13)
+		return fmt.Sprintf("[%s] %s %s: %s",
 			timestamp,
-			target,
-			mf.formatNickname(sender),
-			mf.formatText(message))
+			channel,
+			sender,
+			message)
 	}
 }
 
-// formatNotice formatuje powiadomienia
+// formatNotice formats notices
 func (mf *MessageFormatter) formatNotice(event *irc.Event) string {
-	timestamp := time.Now().Format(mf.timeFormat)
-	sender := event.Nick
-	message := event.Message
+	timestamp := colorText(time.Now().Format(mf.timeFormat), 14)
+	sender := mf.formatNickname(event.Nick)
+	message := mf.formatText(event.Message)
 
 	return fmt.Sprintf("[%s] %s %s %s",
 		timestamp,
 		mf.prefixes["NOTICE"],
-		mf.formatNickname(sender),
-		mf.formatText(message))
+		sender,
+		message)
 }
 
-// formatJoin formatuje wiadomości o dołączeniu do kanału
+// formatJoin formats join messages
 func (mf *MessageFormatter) formatJoin(event *irc.Event) string {
-	timestamp := time.Now().Format(mf.timeFormat)
-	nick := event.Nick
+	timestamp := colorText(time.Now().Format(mf.timeFormat), 14)
+	nick := mf.formatNickname(event.Nick)
 	channel := ""
 	if len(event.Args) > 0 {
-		channel = event.Args[0]
+		channel = colorText(event.Args[0], 13)
 	}
 
 	return fmt.Sprintf("[%s] %s %s has joined %s",
 		timestamp,
 		mf.prefixes["JOIN"],
-		mf.formatNickname(nick),
+		nick,
 		channel)
 }
 
-// formatPart formatuje wiadomości o opuszczeniu kanału
+// formatPart formats part messages
 func (mf *MessageFormatter) formatPart(event *irc.Event) string {
-	timestamp := time.Now().Format(mf.timeFormat)
-	nick := event.Nick
+	timestamp := colorText(time.Now().Format(mf.timeFormat), 14)
+	nick := mf.formatNickname(event.Nick)
 	channel := ""
 	if len(event.Args) > 0 {
-		channel = event.Args[0]
+		channel = colorText(event.Args[0], 13)
 	}
 
 	message := event.Message
@@ -134,7 +148,7 @@ func (mf *MessageFormatter) formatPart(event *irc.Event) string {
 		return fmt.Sprintf("[%s] %s %s has left %s (%s)",
 			timestamp,
 			mf.prefixes["PART"],
-			mf.formatNickname(nick),
+			nick,
 			channel,
 			mf.formatText(message))
 	}
@@ -142,144 +156,145 @@ func (mf *MessageFormatter) formatPart(event *irc.Event) string {
 	return fmt.Sprintf("[%s] %s %s has left %s",
 		timestamp,
 		mf.prefixes["PART"],
-		mf.formatNickname(nick),
+		nick,
 		channel)
 }
 
-// formatQuit formatuje wiadomości o wyjściu z sieci
+// formatQuit formats quit messages
 func (mf *MessageFormatter) formatQuit(event *irc.Event) string {
-	timestamp := time.Now().Format(mf.timeFormat)
-	nick := event.Nick
-	reason := event.Message
+	timestamp := colorText(time.Now().Format(mf.timeFormat), 14)
+	nick := mf.formatNickname(event.Nick)
+	reason := mf.formatText(event.Message)
 
 	return fmt.Sprintf("[%s] %s %s has quit (%s)",
 		timestamp,
 		mf.prefixes["QUIT"],
-		mf.formatNickname(nick),
-		mf.formatText(reason))
+		nick,
+		reason)
 }
 
-// formatNick formatuje wiadomości o zmianie nicka
+// formatNick formats nick change messages
 func (mf *MessageFormatter) formatNick(event *irc.Event) string {
-	timestamp := time.Now().Format(mf.timeFormat)
-	oldNick := event.Nick
-	newNick := event.Message
+	timestamp := colorText(time.Now().Format(mf.timeFormat), 14)
+	oldNick := mf.formatNickname(event.Nick)
+	newNick := mf.formatNickname(event.Message)
 
 	return fmt.Sprintf("[%s] %s %s is now known as %s",
 		timestamp,
 		mf.prefixes["NICK"],
-		mf.formatNickname(oldNick),
-		mf.formatNickname(newNick))
+		oldNick,
+		newNick)
 }
 
-// formatMode formatuje zmiany trybów
+// formatMode formats mode changes
 func (mf *MessageFormatter) formatMode(event *irc.Event) string {
-	timestamp := time.Now().Format(mf.timeFormat)
-	nick := event.Nick
+	timestamp := colorText(time.Now().Format(mf.timeFormat), 14)
+	nick := mf.formatNickname(event.Nick)
 	target := ""
 	modes := ""
 	if len(event.Args) >= 2 {
-		target = event.Args[0]
-		modes = strings.Join(event.Args[1:], " ")
+		target = colorText(event.Args[0], 13)
+		modes = colorText(strings.Join(event.Args[1:], " "), 3) // Zielony
 	}
 
 	return fmt.Sprintf("[%s] %s %s sets mode %s on %s",
 		timestamp,
 		mf.prefixes["MODE"],
-		mf.formatNickname(nick),
+		nick,
 		modes,
 		target)
 }
 
-// formatKick formatuje wiadomości o wyrzuceniu z kanału
+// formatKick formats kick messages
 func (mf *MessageFormatter) formatKick(event *irc.Event) string {
-	timestamp := time.Now().Format(mf.timeFormat)
-	nick := event.Nick
+	timestamp := colorText(time.Now().Format(mf.timeFormat), 14)
+	nick := mf.formatNickname(event.Nick)
 	channel := ""
 	user := ""
-	reason := event.Message
+	reason := mf.formatText(event.Message)
 
 	if len(event.Args) >= 2 {
-		channel = event.Args[0]
-		user = event.Args[1]
+		channel = colorText(event.Args[0], 13)
+		user = mf.formatNickname(event.Args[1])
 	}
 
 	return fmt.Sprintf("[%s] %s %s has kicked %s from %s (%s)",
 		timestamp,
 		mf.prefixes["KICK"],
-		mf.formatNickname(nick),
-		mf.formatNickname(user),
+		nick,
+		user,
 		channel,
-		mf.formatText(reason))
+		reason)
 }
 
-// formatOther formatuje pozostałe typy wiadomości
+// formatOther formats other types of messages
 func (mf *MessageFormatter) formatOther(event *irc.Event) string {
-	timestamp := time.Now().Format(mf.timeFormat)
-	cmd := event.Command
-	nick := event.Nick
+	timestamp := colorText(time.Now().Format(mf.timeFormat), 14)
+	cmd := colorText(event.Command, 6) // Fioletowy
+	nick := mf.formatNickname(event.Nick)
 
-	// Podstawowe informacje
+	// Basic info
 	info := fmt.Sprintf("[%s] %s %s", timestamp, cmd, nick)
 
-	// Dodaj argumenty jeśli istnieją
+	// Add arguments if any
 	if len(event.Args) > 0 {
-		info += " " + strings.Join(event.Args, " ")
+		args := colorText(strings.Join(event.Args, " "), 14)
+		info += " " + args
 	}
 
-	// Dodaj message jeśli istnieje
+	// Add message if any
 	if event.Message != "" {
-		info += " :" + mf.formatText(event.Message)
+		message := mf.formatText(event.Message)
+		info += " :" + message
 	}
 
 	return info
 }
 
-// Funkcje pomocnicze do formatowania
+// Helper functions for formatting
 
-// formatNickname formatuje nick użytkownika
+// formatNickname formats user's nickname
 func (mf *MessageFormatter) formatNickname(nick string) string {
 	if !mf.colorEnabled {
 		return nick
 	}
 
-	// Jeśli to nasz własny nick, wyróżnij go
 	if nick == mf.nickname {
-		return fmt.Sprintf("\x02%s\x02", nick) // Pogrubienie
+		return boldText(colorText(nick, 10)) // Turkusowy i pogrubiony
 	}
-	return nick
+	return colorText(nick, 11) // Jasnoniebieski
 }
 
-// formatText formatuje tekst wiadomości
+// formatText formats message text
 func (mf *MessageFormatter) formatText(text string) string {
 	if !mf.colorEnabled {
 		return text
 	}
-	return mf.processIRCFormatting(text)
+	return colorText(mf.processIRCFormatting(text), 14) // Szary
 }
 
-// processIRCFormatting przetwarza kody formatowania IRC
+// processIRCFormatting processes IRC formatting codes
 func (mf *MessageFormatter) processIRCFormatting(text string) string {
 	if !mf.colorEnabled {
-		// Jeśli kolory są wyłączone, usuń wszystkie kody formatowania
+		// If colors are disabled, strip all formatting codes
 		return stripIRCFormatting(text)
 	}
-	return text // Zachowaj oryginalne formatowanie
+	return text // Keep original formatting
 }
 
-// stripIRCFormatting usuwa kody formatowania IRC
+// stripIRCFormatting strips IRC formatting codes
 func stripIRCFormatting(text string) string {
-	// Usuń kody kolorów (łącznie z parametrami)
+	// Remove color codes (including parameters)
 	colorRegex := regexp.MustCompile(`\x03\d{1,2}(?:,\d{1,2})?`)
 	text = colorRegex.ReplaceAllString(text, "")
 
-	// Usuń pozostałe kody formatowania
+	// Remove other formatting codes
 	formatCodes := []string{
-		"\x02", // Pogrubienie
-		"\x1D", // Italiki
-		"\x1F", // Podkreślenie
-		"\x0F", // Reset formatowania
-		"\x16", // Odwrócenie
+		"\x02", // Bold
+		"\x1D", // Italic
+		"\x1F", // Underline
+		"\x0F", // Reset formatting
+		"\x16", // Reverse
 	}
 
 	for _, code := range formatCodes {
@@ -289,37 +304,37 @@ func stripIRCFormatting(text string) string {
 	return text
 }
 
-// Settery i gettery
+// Setters and getters
 
-// SetColorEnabled włącza lub wyłącza kolorowanie wyjścia
+// SetColorEnabled enables or disables color output
 func (mf *MessageFormatter) SetColorEnabled(enabled bool) {
 	mf.colorEnabled = enabled
 }
 
-// SetTimeFormat ustawia format czasu
+// SetTimeFormat sets the time format
 func (mf *MessageFormatter) SetTimeFormat(format string) {
 	mf.timeFormat = format
 }
 
-// SetPrefix ustawia prefix dla danego typu wiadomości
+// SetPrefix sets the prefix for a given message type
 func (mf *MessageFormatter) SetPrefix(msgType string, prefix string) {
 	mf.prefixes[msgType] = prefix
 }
 
-// GetTimeFormat zwraca aktualny format czasu
+// GetTimeFormat returns the current time format
 func (mf *MessageFormatter) GetTimeFormat() string {
 	return mf.timeFormat
 }
 
-// IsColorEnabled sprawdza czy kolorowanie jest włączone
+// IsColorEnabled checks if coloring is enabled
 func (mf *MessageFormatter) IsColorEnabled() bool {
 	return mf.colorEnabled
 }
 
-// GetPrefix zwraca prefix dla danego typu wiadomości
+// GetPrefix returns the prefix for a given message type
 func (mf *MessageFormatter) GetPrefix(msgType string) string {
 	if prefix, ok := mf.prefixes[msgType]; ok {
 		return prefix
 	}
-	return "***" // Domyślny prefix
+	return colorText("***", 6) // Domyślny prefix w kolorze fioletowym
 }

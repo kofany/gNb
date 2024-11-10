@@ -55,6 +55,7 @@ type BotManager interface {
 	GetOwners() []string
 	GetBots() []Bot
 	GetNickManager() NickManager
+	GetTotalCreatedBots() int
 	SetMassCommandCooldown(duration time.Duration)
 	GetMassCommandCooldown() time.Duration
 	CollectReactions(channel, message string, action func() error)

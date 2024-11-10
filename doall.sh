@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Ścieżka do katalogu głównego projektu
-PROJECT_DIR="/Users/kfn/gognb"
+PROJECT_DIR=$(pwd)
 
 # Plik, do którego będą zapisywane wszystkie zawartości
 OUTPUT_FILE="$PROJECT_DIR/all.txt"
@@ -19,7 +19,12 @@ process_files() {
         fi
 
         # Pomiń pliki z rozszerzeniem .log
+
         if [[ "$file" == *.log ]]; then
+            echo "Pomijanie pliku log: $file"
+            continue
+        fi
+        if [[ "$file" == *.md ]]; then
             echo "Pomijanie pliku log: $file"
             continue
         fi

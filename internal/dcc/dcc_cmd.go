@@ -10,12 +10,10 @@ import (
 	"net/http"
 	"os"
 	"os/user"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/kofany/gNb/internal/types"
-	"github.com/kofany/gNb/internal/util"
 )
 
 // processCommand przetwarza komendy od użytkownika
@@ -67,12 +65,55 @@ func (dt *DCCTunnel) processCommand(command string) {
 		dt.handleListOwnersCommand(fields[1:])
 	case "INFO":
 		dt.handleInfoCommand(fields[1:])
+	case "BOTS":
+		dt.handleBotsCommand(fields[1:])
+	case "SERVERS":
+		dt.handleServersCommand(fields[1:])
 	default:
 		dt.sendToClient(fmt.Sprintf("Unknown command: %s", cmd))
 	}
 }
 
 // Handlery podstawowych komend
+
+func (dt *DCCTunnel) handleBotsCommand(args []string) {
+	bm := dt.bot.GetBotManager()
+	if bm == nil {
+		dt.sendToClient("BotManager is not available.")
+		return
+	}
+
+	bots := bm.GetBots()
+	totalCreatedBots := bm.GetTotalCreatedBots() // Dodamy tę metodę w BotManager
+	totalBotsNow := len(bots)
+
+	// Liczymy w pełni połączone boty
+	totalConnectedBots := 0
+	var connectedBotNicks []string
+	for _, bot := range bots {
+		if bot.IsConnected() {
+			totalConnectedBots++
+			connectedBotNicks = append(connectedBotNicks, bot.GetCurrentNick())
+		}
+	}
+
+	if len(args) == 0 {
+		// Bez dodatkowych argumentów, wyświetlamy podsumowanie
+		output := fmt.Sprintf(
+			"Total created bots: %d\nTotal bots now: %d\nTotal fully connected bots: %d",
+			totalCreatedBots, totalBotsNow, totalConnectedBots)
+		dt.sendToClient(output)
+	} else if len(args) == 1 && strings.ToLower(args[0]) == "n" {
+		// Wyświetlamy nicki w pełni połączonych botów
+		if totalConnectedBots == 0 {
+			dt.sendToClient("No bots are currently connected.")
+		} else {
+			dt.sendToClient("Connected bots: " + strings.Join(connectedBotNicks, ", "))
+		}
+	} else {
+		dt.sendToClient("Usage: .bots or .bots n")
+	}
+}
 
 func (dt *DCCTunnel) handleMsgCommand(args []string) {
 	if len(args) >= 2 {
@@ -286,64 +327,6 @@ func (dt *DCCTunnel) handleListOwnersCommand(_ []string) {
 	}
 }
 
-func (dt *DCCTunnel) handleCfloodCommand(args []string) {
-	if len(args) < 3 {
-		dt.sendToClient("Usage: .cflo <#channel> <loops> <message>")
-		return
-	}
-
-	channel := args[0]
-	loops, err := strconv.Atoi(args[1])
-	if err != nil || loops <= 0 {
-		dt.sendToClient("Number of loops must be a positive integer.")
-		return
-	}
-
-	maxLoops := 100
-	if loops > maxLoops {
-		dt.sendToClient(fmt.Sprintf("Maximum number of loops is %d.", maxLoops))
-		return
-	}
-
-	message := strings.Join(args[2:], " ")
-	dt.sendToClient(fmt.Sprintf("Starting flood test with %d loops.", loops))
-
-	if bm := dt.bot.GetBotManager(); bm != nil {
-		for _, bot := range bm.GetBots() {
-			go dt.executeCflood(bot, channel, loops, message)
-		}
-	}
-}
-
-func (dt *DCCTunnel) handleNfloodCommand(args []string) {
-	if len(args) < 3 {
-		dt.sendToClient("Usage: .nflo <nick> <loops> <message>")
-		return
-	}
-
-	targetNick := args[0]
-	loops, err := strconv.Atoi(args[1])
-	if err != nil || loops <= 0 {
-		dt.sendToClient("Number of loops must be a positive integer.")
-		return
-	}
-
-	maxLoops := 100
-	if loops > maxLoops {
-		dt.sendToClient(fmt.Sprintf("Maximum number of loops is %d.", maxLoops))
-		return
-	}
-
-	message := strings.Join(args[2:], " ")
-	dt.sendToClient(fmt.Sprintf("Starting flood test with %d loops.", loops))
-
-	if bm := dt.bot.GetBotManager(); bm != nil {
-		for _, bot := range bm.GetBots() {
-			go dt.executeNflood(bot, targetNick, loops, message)
-		}
-	}
-}
-
 func (dt *DCCTunnel) handleInfoCommand(_ []string) {
 	if bm := dt.bot.GetBotManager(); bm != nil {
 		info := dt.generateSystemInfo()
@@ -438,66 +421,6 @@ func (dt *DCCTunnel) getExternalIP(network string) string {
 	return strings.TrimSpace(string(body))
 }
 
-// Implementacje funkcji flood
-
-func (dt *DCCTunnel) executeCflood(bot types.Bot, channel string, loops int, message string) {
-	// Dołączanie do kanału
-	joinCmd := fmt.Sprintf("JOIN %s", channel)
-	bot.SendRaw(joinCmd)
-	time.Sleep(500 * time.Millisecond)
-
-	for i := 0; i < loops; i++ {
-		// Wysyłanie wiadomości
-		privmsgCmd := fmt.Sprintf("PRIVMSG %s :%s", channel, message)
-		bot.SendRaw(privmsgCmd)
-		time.Sleep(1 * time.Second)
-
-		// Zmiana nicku
-		newNick := dt.generateRandomNick()
-		nickCmd := fmt.Sprintf("NICK %s", newNick)
-		bot.SendRaw(nickCmd)
-		time.Sleep(1 * time.Second)
-
-		// Ponowne wysyłanie wiadomości
-		bot.SendRaw(privmsgCmd)
-		time.Sleep(1 * time.Second)
-
-		// Ponowna zmiana nicku
-		newNick = dt.generateRandomNick()
-		bot.SendRaw(nickCmd)
-	}
-
-	// Wyjście z kanału
-	partCmd := fmt.Sprintf("PART %s", channel)
-	bot.SendRaw(partCmd)
-	time.Sleep(90 * time.Second)
-
-	// Końcowa zmiana nicku
-	newNick := dt.generateRandomNick()
-	util.Info("==================>>> Executing final nick change to ------>>> %s", newNick)
-	bot.ChangeNick(newNick)
-	time.Sleep(3 * time.Second)
-}
-
-func (dt *DCCTunnel) executeNflood(bot types.Bot, targetNick string, loops int, message string) {
-	for i := 0; i < loops; i++ {
-		// Zmiana nicku
-		newNick := dt.generateRandomNick()
-		nickCmd := fmt.Sprintf("NICK %s", newNick)
-		bot.SendRaw(nickCmd)
-		time.Sleep(1 * time.Second)
-
-		// Wysyłanie wiadomości prywatnej
-		privmsgCmd := fmt.Sprintf("PRIVMSG %s :%s", targetNick, message)
-		bot.SendRaw(privmsgCmd)
-	}
-
-	// Końcowa zmiana nicku po zakończeniu flood
-	time.Sleep(10 * time.Second)
-	newNick := dt.generateRandomNick()
-	bot.ChangeNick(newNick)
-}
-
 // Pomocnicza funkcja do generowania losowych nicków
 func (dt *DCCTunnel) generateRandomNick() string {
 	rand.Seed(time.Now().UnixNano())
@@ -533,44 +456,101 @@ func (dt *DCCTunnel) generateRandomNick() string {
 	return fmt.Sprintf("%s%s", string(mainPart), string(suffixPart))
 }
 
+func colorCommand(command, description string) string {
+	return fmt.Sprintf("%s %s", colorText(command, 9), description)
+}
+
 func (dt *DCCTunnel) sendHelpMessage() {
-	helpMessage := `
- Available commands:
- ==================
- 
- Standard IRC commands:
- --------------------
- .msg <target> <message>       - Send a private message
- .join <channel>               - Join a channel
- .part <channel>               - Leave a channel
- .mode <target> [modes] [args] - Change channel or user modes
- .kick <channel> <user> [reason] - Kick a user
- .quit                         - Disconnect the bot
- .nick <newnick>              - Change nickname
- .raw <command>               - Send raw IRC command
- 
- Mass commands:
- ------------
- .mjoin <channel>             - All bots join channel
- .mpart <channel>             - All bots leave channel
- .mreconnect                  - Reconnect all bots
- 
- Admin commands:
- -------------
- .addnick <nick>              - Add nick to catch list
- .delnick <nick>              - Remove nick from catch list
- .listnicks                   - List nicks to catch
- .addowner <mask>             - Add owner mask
- .delowner <mask>             - Remove owner mask
- .listowners                  - List owner masks
- .info                        - Display detailed bot information
- 
- Flood test commands:
- -----------------
- .cflo <#channel> <loops> <message> - Channel flood test
- .nflo <nick> <loops> <message>     - Nick flood test
- 
- Type .help to see this message again.
- `
+	helpMessage := boldText(colorText("\nAvailable commands:\n==================\n", 16)) + "\n" +
+		colorText("[ Standard ] IRC commands:", 10) + "\n" +
+		"--------------------\n" +
+		colorCommand(".msg <target> <message>", "- Send a private message") + "\n" +
+		colorCommand(".join <channel>", "- Join a channel") + "\n" +
+		colorCommand(".part <channel>", "- Leave a channel") + "\n" +
+		colorCommand(".mode <target> [modes] [args]", "- Change channel or user modes") + "\n" +
+		colorCommand(".kick <channel> <user> [reason]", "- Kick a user") + "\n" +
+		colorCommand(".quit", "- Disconnect the bot") + "\n" +
+		colorCommand(".nick <newnick>", "- Change nickname") + "\n" +
+		colorCommand(".raw <command>", "- Send raw IRC command") + "\n\n" +
+		colorText("[ Mass ] commands (all bots on all nodes):", 10) + "\n" +
+		"------------\n" +
+		colorCommand(".mjoin <channel>", "- All bots join channel") + "\n" +
+		colorCommand(".mpart <channel>", "- All bots leave channel") + "\n" +
+		colorCommand(".mreconnect", "- Reconnect all bots (including linked bots)") + "\n\n" +
+		colorText("[ BotNet ] Network commands:", 10) + "\n" +
+		"---------------\n" +
+		colorCommand(".minfo", "- Display info from all connected instances") + "\n\n" +
+		colorCommand(".abots", "- Display all bots status across all nodes") + "\n\n" +
+		colorText("[ Admin ] commands (For now only local node):", 10) + "\n" +
+		"-------------\n" +
+		colorCommand(".addnick <nick>", "- Add nick to catch list") + "\n" +
+		colorCommand(".delnick <nick>", "- Remove nick from catch list") + "\n" +
+		colorCommand(".listnicks", "- List nicks to catch") + "\n" +
+		colorCommand(".addowner <mask>", "- Add owner mask") + "\n" +
+		colorCommand(".delowner <mask>", "- Remove owner mask") + "\n" +
+		colorCommand(".listowners", "- List owner masks") + "\n" +
+		colorCommand(".info", "- Display detailed bot information") + "\n" +
+		colorCommand(".bots", "- Show bot statistics") + "\n" +
+		colorCommand(".bots n", "- Show list of connected bot nicknames") + "\n" +
+		colorCommand(".servers", "- Show server connection statistics") + "\n" +
+		colorCommand(".servers <nick>", "- Show server for specific bot") + "\n\n" +
+		colorText("ISON monitoring:", 10) + "\n" +
+		"--------------\n" +
+		"Type " + boldText(".help") + " to see this message again.\n"
+
 	dt.sendToClient(helpMessage)
+}
+
+func (dt *DCCTunnel) handleServersCommand(args []string) {
+	bm := dt.bot.GetBotManager()
+	if bm == nil {
+		dt.sendToClient("BotManager is not available.")
+		return
+	}
+
+	bots := bm.GetBots()
+	connectedBots := make([]types.Bot, 0)
+	for _, bot := range bots {
+		if bot.IsConnected() {
+			connectedBots = append(connectedBots, bot)
+		}
+	}
+
+	if len(args) == 0 {
+		// Bez argumentów, wyświetlamy statystyki serwerów
+		serverCounts := make(map[string]int)
+		for _, bot := range connectedBots {
+			serverName := bot.GetServerName()
+			serverCounts[serverName]++
+		}
+
+		if len(serverCounts) == 0 {
+			dt.sendToClient("No bots are currently connected.")
+		} else {
+			var outputLines []string
+			for server, count := range serverCounts {
+				outputLines = append(outputLines, fmt.Sprintf("%s: %d", server, count))
+			}
+			dt.sendToClient("Server connections:\n" + strings.Join(outputLines, "\n"))
+		}
+	} else if len(args) == 1 {
+		// Jeśli podano argument, traktujemy go jako nick bota
+		botNick := args[0]
+		var foundBot types.Bot
+		for _, bot := range connectedBots {
+			if strings.EqualFold(bot.GetCurrentNick(), botNick) {
+				foundBot = bot
+				break
+			}
+		}
+
+		if foundBot != nil {
+			serverName := foundBot.GetServerName()
+			dt.sendToClient(fmt.Sprintf("Bot %s is connected to server: %s", botNick, serverName))
+		} else {
+			dt.sendToClient(fmt.Sprintf("Bot with nick '%s' is not found or not connected.", botNick))
+		}
+	} else {
+		dt.sendToClient("Usage: .servers or .servers <bot_nick>")
+	}
 }

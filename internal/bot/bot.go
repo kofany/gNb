@@ -202,13 +202,16 @@ func (b *Bot) addCallbacks() {
 
 	// Callback for nick changes
 	b.Connection.AddCallback("NICK", func(e *irc.Event) {
+		oldNick := b.CurrentNick
 		if e.Nick == b.Connection.GetNick() {
-			oldNick := b.CurrentNick
-			b.CurrentNick = e.Message()
-			util.Info("Bot %s changed nick to %s", oldNick, b.CurrentNick)
-			if b.nickManager != nil {
-				b.nickManager.NotifyNickChange(oldNick, b.CurrentNick)
+			newNick := e.Message()
+			if b.Connection.GetNick() == newNick {
+				if b.nickManager != nil {
+					b.CurrentNick = newNick
+					b.nickManager.NotifyNickChange(oldNick, b.CurrentNick)
+				}
 			}
+
 		}
 	})
 
@@ -216,22 +219,20 @@ func (b *Bot) addCallbacks() {
 	b.Connection.AddCallback("303", b.handleISONResponse)
 
 	// List of nick-related error codes
-	nickErrorCodes := []string{"431", "432", "433", "436", "437", "484"}
-	for _, code := range nickErrorCodes {
-		codeCopy := code
-		b.Connection.AddCallback(codeCopy, func(e *irc.Event) {
-			util.Warning("Bot %s encountered error %s: %s", b.CurrentNick, codeCopy, e.Message())
-			if len(e.Arguments) > 1 {
-				nickInQuestion := e.Arguments[1]
-				if codeCopy == "432" && len(nickInQuestion) == 1 {
-					util.Warning("Server %s does not accept single-letter nick %s. Marking it.", b.ServerName, nickInQuestion)
-					b.nickManager.MarkServerNoLetters(b.ServerName)
-				} else {
-					b.nickManager.MarkNickAsTemporarilyUnavailable(nickInQuestion)
-				}
+	b.Connection.AddCallback("432", func(e *irc.Event) {
+		currentNick := b.Connection.GetNick()
+		util.Warning("Bot %s encountered error 432: %s", currentNick, e.Message())
+		if len(e.Arguments) > 1 {
+			nickInQuestion := e.Arguments[1]
+			if len(nickInQuestion) == 1 {
+				util.Warning("Server %s does not accept single-letter nick %s. Marking it.",
+					b.ServerName, nickInQuestion)
+				b.nickManager.MarkServerNoLetters(b.ServerName)
+			} else {
+				b.nickManager.MarkNickAsTemporarilyUnavailable(nickInQuestion)
 			}
-		})
-	}
+		}
+	})
 
 	// BNC + DCC
 	b.Connection.AddCallback("CTCP", b.handleCTCP)
@@ -524,6 +525,10 @@ func (b *Bot) SetChannels(channels []string) {
 }
 
 func (b *Bot) GetCurrentNick() string {
+	if b.Connection != nil {
+		return b.Connection.GetNick()
+	}
+	// Fallback do lokalnego stanu tylko jeśli nie ma połączenia
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	return b.CurrentNick
@@ -585,7 +590,8 @@ func (b *Bot) ForwardToTunnel(data string) {
 
 // DCC support
 func (b *Bot) handleDCCRequest(e *irc.Event) {
-	util.Debug("DCC: handleDCCRequest called with Event Code: %s | Nick: %s | Args: %v | Message: %s", e.Code, e.Nick, e.Arguments, e.Message())
+	util.Debug("DCC: handleDCCRequest called with Event Code: %s | Nick: %s | Args: %v | Message: %s",
+		e.Code, e.Nick, e.Arguments, e.Message())
 
 	ctcpMessage := e.Message()
 	dccArgs := strings.Fields(ctcpMessage)
@@ -596,7 +602,6 @@ func (b *Bot) handleDCCRequest(e *irc.Event) {
 		return
 	}
 
-	// Adjust argument index based on optional 'chat' token
 	argIndex := 2
 	if strings.ToLower(dccArgs[argIndex]) == "chat" {
 		argIndex++
@@ -610,10 +615,23 @@ func (b *Bot) handleDCCRequest(e *irc.Event) {
 	ipStr := dccArgs[argIndex]
 	portStr := dccArgs[argIndex+1]
 
-	// Handle IPv6 addresses enclosed in brackets
-	ipStr = strings.Trim(ipStr, "[]")
+	// Sprawdź, czy adres IP jest liczbą (dla IPv4)
+	ipNum, err := strconv.ParseUint(ipStr, 10, 64)
+	if err == nil {
+		// Adres IP jest liczbą - konwertuj na IPv4
+		ip := intToIP(uint32(ipNum))
+		ipStr = ip.String()
+		util.Debug("DCC: Converted numeric IP %s to dotted format: %s", dccArgs[argIndex], ipStr)
+	} else {
+		// Adres IP nie jest liczbą - załóż, że to adres tekstowy (IPv6 lub IPv4)
+		util.Debug("DCC: IP address is not numeric, using textual IP: %s", ipStr)
+		parsedIP := net.ParseIP(ipStr)
+		if parsedIP == nil {
+			util.Warning("DCC: Invalid IP address in DCC CHAT request from %s: %s", e.Nick, ipStr)
+			return
+		}
+	}
 
-	// Check if the sender is an owner
 	if !auth.IsOwner(e, b.owners) {
 		util.Debug("DCC: Ignoring DCC CHAT request from non-owner %s", e.Nick)
 		return
@@ -621,7 +639,6 @@ func (b *Bot) handleDCCRequest(e *irc.Event) {
 
 	util.Info("DCC: Accepting DCC CHAT request from owner %s", e.Nick)
 
-	// Parse the port number
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
 		util.Warning("DCC: Invalid port in DCC CHAT request from %s: %v", e.Nick, err)
@@ -631,17 +648,24 @@ func (b *Bot) handleDCCRequest(e *irc.Event) {
 	addr := net.JoinHostPort(ipStr, strconv.Itoa(port))
 	util.Debug("DCC: Connecting to %s for DCC CHAT", addr)
 
-	// Connect to the sender
-	conn, err := net.Dial("tcp", addr)
+	// Wybierz odpowiedni protokół (tcp4 lub tcp6)
+	var network string
+	if strings.Contains(ipStr, ":") {
+		network = "tcp6"
+	} else {
+		network = "tcp4"
+	}
+
+	conn, err := net.Dial(network, addr)
 	if err != nil {
 		util.Error("DCC: Failed to connect to DCC CHAT from %s: %v", e.Nick, err)
 		return
 	}
 
-	// Start the DCC tunnel
-	b.dccTunnel = dcc.NewDCCTunnel(b, func() {
+	b.dccTunnel = dcc.NewDCCTunnel(b, e.Nick, func() {
 		b.dccTunnel = nil
 	})
+
 	util.Debug("DCC: Starting DCC tunnel with %s", e.Nick)
 	b.dccTunnel.Start(conn)
 }

@@ -36,6 +36,7 @@ type BotManager struct {
 	cancel              context.CancelFunc
 	errorHandled        bool       // Dodaj flagę do obsługi błędów
 	errorMutex          sync.Mutex // Mutex do kontrolowania dostępu do errorHandled
+	totalCreatedBots    int
 }
 
 // NewBotManager creates a new BotManager instance
@@ -60,6 +61,7 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 
 	manager := &BotManager{
 		bots:                make([]types.Bot, len(cfg.Bots)),
+		totalCreatedBots:    len(cfg.Bots),
 		owners:              owners,
 		stopChan:            make(chan struct{}),
 		nickManager:         nm,
@@ -332,4 +334,8 @@ func (bm *BotManager) SendSingleMsg(channel, message string) {
 	bot := bm.bots[bm.commandBotIndex]
 	bm.commandBotIndex = (bm.commandBotIndex + 1) % len(bm.bots)
 	bot.SendMessage(channel, message)
+}
+
+func (bm *BotManager) GetTotalCreatedBots() int {
+	return bm.totalCreatedBots
 }
