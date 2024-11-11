@@ -20,7 +20,7 @@ import (
 )
 
 // Globalna zmienna version. Może być nadpisana podczas kompilacji za pomocą -ldflags.
-var version = "v1.1.1"
+var version = "v1.2.0"
 
 var (
 	devMode         = flag.Bool("dev", false, "run in development mode (non-daemon)")

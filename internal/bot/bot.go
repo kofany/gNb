@@ -217,7 +217,12 @@ func (b *Bot) addCallbacks() {
 
 	// Callback for ISON response
 	b.Connection.AddCallback("303", b.handleISONResponse)
+	b.Connection.ClearCallback("CTCP_VERSION")
 
+	b.Connection.AddCallback("CTCP_VERSION", func(e *irc.Event) {
+		response := "\x01VERSION WeeChat 4.4.2\x01"
+		b.Connection.SendRawf("NOTICE %s :%s", e.Nick, response)
+	})
 	// List of nick-related error codes
 	b.Connection.AddCallback("432", func(e *irc.Event) {
 		currentNick := b.Connection.GetNick()

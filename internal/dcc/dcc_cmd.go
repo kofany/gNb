@@ -477,10 +477,6 @@ func (dt *DCCTunnel) sendHelpMessage() {
 		colorCommand(".mjoin <channel>", "- All bots join channel") + "\n" +
 		colorCommand(".mpart <channel>", "- All bots leave channel") + "\n" +
 		colorCommand(".mreconnect", "- Reconnect all bots (including linked bots)") + "\n\n" +
-		colorText("[ BotNet ] Network commands:", 10) + "\n" +
-		"---------------\n" +
-		colorCommand(".minfo", "- Display info from all connected instances") + "\n\n" +
-		colorCommand(".abots", "- Display all bots status across all nodes") + "\n\n" +
 		colorText("[ Admin ] commands (For now only local node):", 10) + "\n" +
 		"-------------\n" +
 		colorCommand(".addnick <nick>", "- Add nick to catch list") + "\n" +
