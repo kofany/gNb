@@ -23,9 +23,3 @@ bots:
 
 channels:
   - "#tahion" #example channel
-
-owner_command_prefixes:
-  - "!"
-  - "."
-  - "@"
-  
