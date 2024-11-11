@@ -89,59 +89,79 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 	return manager
 }
 
-// StartBots starts all bots and connects them to their servers
+// manager.go
+
 func (bm *BotManager) StartBots() {
-	botChannel := make(chan types.Bot, len(bm.bots))
-	for _, bot := range bm.bots {
-		botChannel <- bot
-	}
-
 	var wg sync.WaitGroup
-	for i := 0; i < len(bm.bots); i++ {
+	connectedBots := make([]types.Bot, 0)
+	var connectedBotsMutex sync.Mutex
+
+	// Startujemy wszystkie boty asynchronicznie
+	for _, bot := range bm.bots {
 		wg.Add(1)
-		go func() {
+		go func(bot types.Bot) {
 			defer wg.Done()
-			for bot := range botChannel {
-				bm.startBotWithRetry(bot)
-				time.Sleep(time.Second) // Krótkie opóźnienie przed uruchomieniem kolejnego bota
+
+			// Kanał do monitorowania timeout
+			timeoutChan := time.After(180 * time.Second)
+			connectChan := make(chan bool)
+
+			// Startujemy proces łączenia w osobnej goroutynie
+			go func() {
+				success := bm.startBotWithRetry(bot)
+				connectChan <- success
+			}()
+
+			// Czekamy na rezultat z timeoutem
+			select {
+			case success := <-connectChan:
+				if success {
+					connectedBotsMutex.Lock()
+					connectedBots = append(connectedBots, bot)
+					connectedBotsMutex.Unlock()
+				}
+			case <-timeoutChan:
+				// Bot nie połączył się w wymaganym czasie
+				util.Warning("Bot %s failed to connect within timeout, removing", bot.GetCurrentNick())
+				bot.Quit("Connection timeout")
 			}
-		}()
+		}(bot)
 	}
 
-	close(botChannel)
+	// Czekamy na zakończenie wszystkich prób połączeń
 	wg.Wait()
+
+	// Aktualizujemy listę botów tylko o te połączone
+	bm.mutex.Lock()
+	bm.bots = connectedBots
+	bm.mutex.Unlock()
 }
 
-func (bm *BotManager) startBotWithRetry(bot types.Bot) {
-	maxRetries := 3
-	retryDelay := time.Second * 5
+func (bm *BotManager) startBotWithRetry(bot types.Bot) bool {
+	retryInterval := 5 * time.Second
+	maxTime := 120 * time.Second
+	startTime := time.Now()
 
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		select {
-		case <-bm.ctx.Done():
-			return // Zakończ, jeśli kontekst został anulowany
-		default:
-			err := bot.Connect()
-			if err == nil {
-				util.Info("Bot %s connected successfully", bot.GetCurrentNick())
-				return
-			}
+	for {
+		if time.Since(startTime) > maxTime {
+			return false
+		}
 
-			util.Warning("Failed to connect bot %s (attempt %d/%d): %v",
-				bot.GetCurrentNick(), attempt, maxRetries, err)
-
-			if attempt < maxRetries {
-				select {
-				case <-time.After(retryDelay):
-				case <-bm.ctx.Done():
-					return
+		err := bot.Connect()
+		if err == nil {
+			// Czekamy na pełne połączenie (fully connected)
+			for attempts := 0; attempts < 10; attempts++ { // 10 prób sprawdzenia stanu
+				if bot.IsConnected() {
+					util.Info("Bot %s successfully connected and ready", bot.GetCurrentNick())
+					return true
 				}
+				time.Sleep(1 * time.Second)
 			}
 		}
-	}
 
-	util.Error("Failed to connect bot %s after %d attempts",
-		bot.GetCurrentNick(), maxRetries)
+		util.Warning("Bot %s connection attempt failed: %v", bot.GetCurrentNick(), err)
+		time.Sleep(retryInterval)
+	}
 }
 
 // Stop safely shuts down all bots
