@@ -34,7 +34,7 @@ gNb is a Go-based IRC bot designed to manage and monitor nicknames on IRC networ
 1. **Clone the Repository**
 
    ```bash
-   git clone https://github.com/yourusername/gNb.git
+   git clone https://github.com/kofany/gNb.git
    cd gNb
    ```
 
