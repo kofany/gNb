@@ -9,7 +9,7 @@ IS_ROOT := $(shell if [ $(USERID) = "0" ]; then echo "true"; else echo "false"; 
 .PHONY: all tidy
 
 all: tidy
-	@echo "$(CYAN)Building pNb bot...$(NC)"
+	@echo "$(CYAN)Building gNb bot...$(NC)"
 	@CGO_ENABLED=0 go build -ldflags="-s -w -extldflags=-static" -o gNb cmd/main.go
 	@echo "$(GREEN)Build completed successfully! Binary: gNb$(NC)"
 ifeq ($(IS_ROOT),true)
