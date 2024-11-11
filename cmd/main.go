@@ -95,40 +95,45 @@ func main() {
 
 	color.Blue("Initializing random number generator")
 	rand.Seed(time.Now().UnixNano())
-
-	// Załaduj konfigurację przed inicjalizacją demona
-	color.Blue("Loading initial configuration from YAML file")
+	// Załaduj konfigurację
+	color.Blue("Loading configuration from YAML file")
 	cfg, err := config.LoadConfig("configs/config.yaml")
 	if err != nil {
 		color.Red("Failed to load configuration: %v", err)
 		os.Exit(1)
 	}
+	color.Green("Configuration loaded successfully")
 
+	// Ustawienia loggera
+	var level util.LogLevel
 	if !*devMode {
-		color.Yellow("Starting in daemon mode")
-		cntxt := &daemon.Context{
-			PidFileName: "bot.pid",
-			PidFilePerm: 0644,
-			LogFileName: "bot.log",
-			LogFilePerm: 0640,
-			WorkDir:     "./",
-			Umask:       027,
-		}
-		d, err := cntxt.Reborn()
+		level = util.WARNING
+		color.Yellow("Log level set to WARNING in daemon mode")
+	} else {
+		color.Blue("Parsing log level from config")
+		level, err = util.ParseLogLevel(cfg.Global.LogLevel)
 		if err != nil {
-			color.Red("Unable to run: %v", err)
+			color.Red("Invalid log level in config: %v", err)
 			os.Exit(1)
 		}
-		if d != nil {
-			color.Green("[gNb] get Nick Bot by kofany %s is running in background with pid: %d.", version, d.Pid)
-			return
-		}
-		defer cntxt.Release()
-		log.Print("Daemon started")
-	} else {
-		color.Yellow("Starting in development mode")
+		color.Green("Log level set to %s", logLevelToString(level))
 	}
-	// Dodajmy debug informacji o użytkowniku
+
+	logFile := "bot.log"
+	if *devMode {
+		logFile = "bot_dev.log"
+	}
+	color.Blue("Initializing logger with file: %s", logFile)
+	err = util.InitLogger(level, logFile)
+	if err != nil {
+		color.Red("Failed to initialize logger: %v", err)
+		os.Exit(1)
+	}
+	defer util.CloseLogger()
+
+	util.Info("Logger initialized with level: %s", logLevelToString(level))
+
+	// Sprawdzanie i konfiguracja oidentd
 	uid := os.Geteuid()
 	currentUser, err := user.Current()
 	if err != nil {
@@ -173,34 +178,7 @@ func main() {
 		color.Yellow("Not running as root (UID: %d), oidentd configuration not available", uid)
 	}
 
-	var level util.LogLevel
-	if !*devMode {
-		level = util.WARNING
-		color.Yellow("Log level set to WARNING in daemon mode")
-	} else {
-		color.Blue("Parsing log level from config")
-		level, err = util.ParseLogLevel(cfg.Global.LogLevel)
-		if err != nil {
-			color.Red("Invalid log level in config: %v", err)
-			os.Exit(1)
-		}
-		color.Green("Log level set to %s", logLevelToString(level))
-	}
-
-	logFile := "bot.log"
-	if *devMode {
-		logFile = "bot_dev.log"
-	}
-	color.Blue("Initializing logger with file: %s", logFile)
-	err = util.InitLogger(level, logFile)
-	if err != nil {
-		color.Red("Failed to initialize logger: %v", err)
-		os.Exit(1)
-	}
-	defer util.CloseLogger()
-
-	util.Info("Logger initialized with level: %s", logLevelToString(level))
-
+	// Ładowanie właścicieli i konfiguracja menedżera nicków
 	color.Blue("Loading owners from JSON file")
 	owners, err := auth.LoadOwners("configs/owners.json")
 	if err != nil {
@@ -220,7 +198,45 @@ func main() {
 
 	color.Blue("Creating BotManager")
 	botManager := bot.NewBotManager(cfg, owners, nm)
+	// Daemonizacja (jeśli wymagana)
+	if !*devMode {
+		color.Yellow("Starting in daemon mode")
+		cntxt := &daemon.Context{
+			PidFileName: "bot.pid",
+			PidFilePerm: 0644,
+			LogFileName: "bot.log",
+			LogFilePerm: 0640,
+			WorkDir:     "./",
+			Umask:       027,
+		}
 
+		child, err := cntxt.Reborn()
+		if err != nil {
+			color.Red("Unable to run: %v", err)
+			os.Exit(1)
+		}
+
+		if child != nil {
+			color.Green("[gNb] get Nick Bot by kofany %s is running in background with pid: %d.", version, child.Pid)
+			return
+		}
+		defer cntxt.Release()
+		log.Print("Daemon started")
+	} else {
+		color.Yellow("Running in development mode (foreground)")
+	}
+
+	// Od tego momentu kod wykonuje się albo w demonie, albo w trybie dev
+	if !*devMode {
+		// Reinicjalizacja loggera po daemonizacji
+		err = util.InitLogger(level, logFile)
+		if err != nil {
+			log.Printf("Failed to reinitialize logger after daemonization: %v", err)
+			os.Exit(1)
+		}
+	}
+
+	// Uruchomienie botów
 	color.Blue("Starting bots")
 	go botManager.StartBots()
 
@@ -229,11 +245,16 @@ func main() {
 
 	util.Debug("Configuration loaded: %+v", cfg)
 
+	// Obsługa sygnałów
 	color.Blue("Setting up signal handling for clean shutdown")
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
-	color.Green("Bot is running. Press Ctrl+C to exit.")
+	if !*devMode {
+		util.Info("Bot is running in daemon mode. Use 'kill -SIGTERM %d' to stop.", os.Getpid())
+	} else {
+		color.Green("Bot is running in development mode. Press Ctrl+C to exit.")
+	}
 
 	color.Blue("Waiting for shutdown signal")
 	<-sigs
