@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"fmt" // Dodano import fmt
+	"fmt"
 	"log"
 	"math/rand"
 	"os"
@@ -96,6 +96,14 @@ func main() {
 	color.Blue("Initializing random number generator")
 	rand.Seed(time.Now().UnixNano())
 
+	// Załaduj konfigurację przed inicjalizacją demona
+	color.Blue("Loading initial configuration from YAML file")
+	cfg, err := config.LoadConfig("configs/config.yaml")
+	if err != nil {
+		color.Red("Failed to load configuration: %v", err)
+		os.Exit(1)
+	}
+
 	if !*devMode {
 		color.Yellow("Starting in daemon mode")
 		cntxt := &daemon.Context{
@@ -120,14 +128,50 @@ func main() {
 	} else {
 		color.Yellow("Starting in development mode")
 	}
-
-	color.Blue("Loading configuration from YAML file")
-	cfg, err := config.LoadConfig("configs/config.yaml")
+	// Dodajmy debug informacji o użytkowniku
+	uid := os.Geteuid()
+	currentUser, err := user.Current()
 	if err != nil {
-		color.Red("Failed to load configuration: %v", err)
-		os.Exit(1)
+		color.Red("Failed to get current user info: %v", err)
+	} else {
+		color.Blue("Current process info:")
+		color.Blue("- UID: %d", uid)
+		color.Blue("- Username: %s", currentUser.Username)
+		color.Blue("- Name: %s", currentUser.Name)
+		color.Blue("- Home dir: %s", currentUser.HomeDir)
 	}
-	color.Green("Configuration loaded successfully")
+
+	if uid == 0 {
+		color.Blue("Running as root, oidentd configuration available")
+		fmt.Print("Do you want to update oidentd configuration? [y/N]: ")
+		var response string
+		fmt.Scanln(&response)
+		response = strings.ToLower(strings.TrimSpace(response))
+
+		if response == "y" || response == "yes" {
+			color.Blue("Configuring oidentd...")
+			if err := oidentd.SetupOidentd(cfg); err != nil {
+				color.Red("Failed to setup oidentd: %v", err)
+				util.Error("Oidentd setup failed: %v", err)
+
+				fmt.Print("Do you want to continue despite oidentd configuration failure? [y/N]: ")
+				fmt.Scanln(&response)
+				response = strings.ToLower(strings.TrimSpace(response))
+
+				if response != "y" && response != "yes" {
+					color.Yellow("Exiting by user request")
+					os.Exit(1)
+				}
+				color.Yellow("Continuing with previous oidentd configuration")
+			} else {
+				color.Green("Oidentd configured successfully")
+			}
+		} else {
+			color.Yellow("Skipping oidentd configuration update")
+		}
+	} else {
+		color.Yellow("Not running as root (UID: %d), oidentd configuration not available", uid)
+	}
 
 	var level util.LogLevel
 	if !*devMode {
@@ -176,52 +220,6 @@ func main() {
 
 	color.Blue("Creating BotManager")
 	botManager := bot.NewBotManager(cfg, owners, nm)
-
-	// przed startem botów
-	// Dodajmy debug informacji o użytkowniku
-	uid := os.Geteuid()
-	currentUser, err := user.Current()
-	if err != nil {
-		color.Red("Failed to get current user info: %v", err)
-	} else {
-		color.Blue("Current process info:")
-		color.Blue("- UID: %d", uid)
-		color.Blue("- Username: %s", currentUser.Username)
-		color.Blue("- Name: %s", currentUser.Name)
-		color.Blue("- Home dir: %s", currentUser.HomeDir)
-	}
-
-	if uid == 0 {
-		color.Blue("Running as root, oidentd configuration available")
-		fmt.Print("Do you want to update oidentd configuration? [y/N]: ")
-		var response string
-		fmt.Scanln(&response)
-		response = strings.ToLower(strings.TrimSpace(response))
-
-		if response == "y" || response == "yes" {
-			color.Blue("Configuring oidentd...")
-			if err := oidentd.SetupOidentd(cfg); err != nil {
-				color.Red("Failed to setup oidentd: %v", err)
-				util.Error("Oidentd setup failed: %v", err)
-
-				fmt.Print("Do you want to continue despite oidentd configuration failure? [y/N]: ")
-				fmt.Scanln(&response)
-				response = strings.ToLower(strings.TrimSpace(response))
-
-				if response != "y" && response != "yes" {
-					color.Yellow("Exiting by user request")
-					os.Exit(1)
-				}
-				color.Yellow("Continuing with previous oidentd configuration")
-			} else {
-				color.Green("Oidentd configured successfully")
-			}
-		} else {
-			color.Yellow("Skipping oidentd configuration update")
-		}
-	} else {
-		color.Yellow("Not running as root (UID: %d), oidentd configuration not available", uid)
-	}
 
 	color.Blue("Starting bots")
 	go botManager.StartBots()
