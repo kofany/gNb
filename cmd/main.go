@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"os/signal"
+	"os/user"
 	"strings"
 	"syscall"
 	"time"
@@ -177,7 +178,20 @@ func main() {
 	botManager := bot.NewBotManager(cfg, owners, nm)
 
 	// przed startem botów
-	if os.Geteuid() == 0 {
+	// Dodajmy debug informacji o użytkowniku
+	uid := os.Geteuid()
+	currentUser, err := user.Current()
+	if err != nil {
+		color.Red("Failed to get current user info: %v", err)
+	} else {
+		color.Blue("Current process info:")
+		color.Blue("- UID: %d", uid)
+		color.Blue("- Username: %s", currentUser.Username)
+		color.Blue("- Name: %s", currentUser.Name)
+		color.Blue("- Home dir: %s", currentUser.HomeDir)
+	}
+
+	if uid == 0 {
 		color.Blue("Running as root, oidentd configuration available")
 		fmt.Print("Do you want to update oidentd configuration? [y/N]: ")
 		var response string
@@ -206,7 +220,7 @@ func main() {
 			color.Yellow("Skipping oidentd configuration update")
 		}
 	} else {
-		color.Yellow("Not running as root, oidentd configuration not available")
+		color.Yellow("Not running as root (UID: %d), oidentd configuration not available", uid)
 	}
 
 	color.Blue("Starting bots")
