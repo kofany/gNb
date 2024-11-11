@@ -10,6 +10,7 @@ import (
 
 	"github.com/kofany/gNb/internal/auth"
 	"github.com/kofany/gNb/internal/config"
+	"github.com/kofany/gNb/internal/nickmanager"
 	"github.com/kofany/gNb/internal/types"
 	"github.com/kofany/gNb/internal/util"
 )
@@ -37,6 +38,7 @@ type BotManager struct {
 	errorHandled        bool       // Dodaj flagę do obsługi błędów
 	errorMutex          sync.Mutex // Mutex do kontrolowania dostępu do errorHandled
 	totalCreatedBots    int
+	startTime           time.Time
 }
 
 // NewBotManager creates a new BotManager instance
@@ -72,6 +74,7 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 		reactionRequests:    make(map[string]types.ReactionRequest),
 		ctx:                 ctx,
 		cancel:              cancel,
+		startTime:           time.Now(),
 	}
 
 	// Creating bots
@@ -86,10 +89,64 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 	}
 
 	nm.SetBots(manager.bots)
+	go manager.cleanupDisconnectedBots()
 	return manager
 }
 
-// manager.go
+func (bm *BotManager) cleanupDisconnectedBots() {
+	// Czekamy 240 sekund od startu
+	time.Sleep(240 * time.Second)
+
+	bm.mutex.Lock()
+	defer bm.mutex.Unlock()
+
+	util.Info("Starting cleanup of disconnected bots after startup grace period")
+
+	// Tworzymy nową listę tylko z połączonymi botami
+	connectedBots := make([]types.Bot, 0)
+	removedCount := 0
+
+	for _, bot := range bm.bots {
+		if bot.IsConnected() {
+			connectedBots = append(connectedBots, bot)
+		} else {
+			// Logujemy informację o usuwanym bocie
+			util.Warning("Removing bot %s due to connection failure after startup period", bot.GetCurrentNick())
+
+			// Zwalniamy zasoby bota
+			bot.Quit("Cleanup - connection failure")
+
+			// Jeśli bot miał przypisany nick do złapania, zwracamy go do puli
+			if bm.nickManager != nil {
+				currentNick := bot.GetCurrentNick()
+				bm.nickManager.ReturnNickToPool(currentNick)
+				nm := bm.nickManager.(*nickmanager.NickManager)
+				nm.UnregisterBot(bot)
+			}
+
+			removedCount++
+		}
+	}
+
+	// Aktualizujemy listę botów
+	bm.bots = connectedBots
+
+	// Aktualizujemy indeks dla komend jeśli jest potrzeba
+	if bm.commandBotIndex >= len(bm.bots) {
+		bm.commandBotIndex = 0
+	}
+
+	// Logujemy podsumowanie
+	if removedCount > 0 {
+		util.Info("Cleanup completed: removed %d disconnected bots, %d bots remaining",
+			removedCount, len(bm.bots))
+	} else {
+		util.Info("Cleanup completed: all bots are connected")
+	}
+
+	// Aktualizujemy totalCreatedBots o liczbę usuniętych botów
+	bm.totalCreatedBots -= removedCount
+}
 
 func (bm *BotManager) StartBots() {
 	var wg sync.WaitGroup
@@ -173,6 +230,45 @@ func (bm *BotManager) Stop() {
 		bot.Quit("Shutting down")
 	}
 	util.Info("All bots have been stopped.")
+}
+
+// Dodajemy nową metodę do BotManager
+func (bm *BotManager) RemoveBotFromManager(botToRemove types.Bot) {
+	bm.mutex.Lock()
+	defer bm.mutex.Unlock()
+
+	// Znajdź i usuń bota z listy
+	newBots := make([]types.Bot, 0, len(bm.bots))
+	found := false
+
+	for _, bot := range bm.bots {
+		if bot != botToRemove {
+			newBots = append(newBots, bot)
+		} else {
+			found = true
+		}
+	}
+
+	if !found {
+		return // Bot już został usunięty
+	}
+
+	bm.bots = newBots
+
+	// Aktualizuj indeks dla komend
+	if bm.commandBotIndex >= len(bm.bots) {
+		bm.commandBotIndex = 0
+	}
+
+	// Aktualizuj NickManager
+	if bm.nickManager != nil {
+		currentNick := botToRemove.GetCurrentNick()
+		bm.nickManager.ReturnNickToPool(currentNick)
+		nm := bm.nickManager.(*nickmanager.NickManager)
+		nm.UnregisterBot(botToRemove)
+	}
+
+	util.Info("Bot %s has been removed from BotManager", botToRemove.GetCurrentNick())
 }
 
 // CanExecuteMassCommand checks if a mass command can be executed

@@ -30,6 +30,7 @@ type Bot interface {
 	StartBNC() (int, string, error)
 	StopBNC()
 	SendRaw(message string)
+	RemoveBot()
 }
 
 type NickManager interface {

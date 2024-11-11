@@ -112,7 +112,19 @@ func (b *Bot) setConnected(state bool) {
 }
 
 func (b *Bot) IsConnected() bool {
-	return b.isConnected.Load() && b.Connection != nil && b.Connection.IsFullyConnected()
+	if !b.isConnected.Load() || b.Connection == nil {
+		return false
+	}
+
+	// Sprawdzamy czy bot jest w pełni połączony i czy upłynęło mniej niż 240 sekund od startu
+	if bm := b.GetBotManager(); bm != nil {
+		manager := bm.(*BotManager)
+		if time.Since(manager.startTime) > 240*time.Second && !b.Connection.IsFullyConnected() {
+			return false
+		}
+	}
+
+	return b.Connection.IsFullyConnected()
 }
 
 func (b *Bot) markAsDisconnected() {
@@ -321,6 +333,47 @@ func (b *Bot) addCallbacks() {
 	// Callback for invite handling
 	b.Connection.AddCallback("INVITE", b.handleInvite)
 
+	// Callback dla ERR_YOUREBANNEDCREEP (465)
+	b.Connection.AddCallback("465", func(e *irc.Event) {
+		reason := e.Message()
+		util.Warning("Bot %s banned from server %s: %s", b.GetCurrentNick(), b.ServerName, reason)
+
+		// Zamykamy połączenie
+		b.Quit("Banned from server")
+
+		// Usuwamy bota z managera
+		if b.botManager != nil {
+			b.botManager.(*BotManager).RemoveBotFromManager(b)
+		}
+
+		// Czyścimy referencje
+		b.mutex.Lock()
+		b.Connection = nil
+		b.botManager = nil
+		b.nickManager = nil
+		b.mutex.Unlock()
+	})
+
+	// Callback dla ERR_YOUWILLBEBANNED (466)
+	b.Connection.AddCallback("466", func(e *irc.Event) {
+		util.Warning("Bot %s will be banned from server %s", b.GetCurrentNick(), b.ServerName)
+
+		// Zamykamy połączenie
+		b.Quit("Pre-emptive disconnect due to incoming ban")
+
+		// Usuwamy bota z managera
+		if b.botManager != nil {
+			b.botManager.(*BotManager).RemoveBotFromManager(b)
+		}
+
+		// Czyścimy referencje
+		b.mutex.Lock()
+		b.Connection = nil
+		b.botManager = nil
+		b.nickManager = nil
+		b.mutex.Unlock()
+	})
+
 	// Callback for disconnection
 	b.Connection.AddCallback("DISCONNECTED", func(e *irc.Event) {
 		util.Warning("Bot %s disconnected from server %s", b.CurrentNick, b.ServerName)
@@ -334,6 +387,26 @@ func (b *Bot) addCallbacks() {
 			util.Info("Bot %s was already disconnected from %s", b.CurrentNick, b.ServerName)
 		}
 	})
+}
+
+// RemoveBot implementuje interfejs types.Bot
+func (b *Bot) RemoveBot() {
+	// Zamykamy połączenie
+	b.Quit("Bot removed from system")
+
+	// Usuwamy bota z managera
+	if b.botManager != nil {
+		b.botManager.(*BotManager).RemoveBotFromManager(b)
+	}
+
+	// Czyścimy referencje
+	b.mutex.Lock()
+	b.Connection = nil
+	b.botManager = nil
+	b.nickManager = nil
+	b.mutex.Unlock()
+
+	util.Info("Bot %s has been removed from the system", b.CurrentNick)
 }
 
 func (b *Bot) GetServerName() string {

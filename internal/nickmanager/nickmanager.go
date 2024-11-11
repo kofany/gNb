@@ -73,32 +73,50 @@ func (nm *NickManager) Start() {
 func (nm *NickManager) monitorNicks() {
 	for {
 		nm.mutex.Lock()
-		if len(nm.bots) == 0 {
+		// Filtrujemy tylko połączone boty
+		connectedBots := make([]types.Bot, 0)
+		for _, bot := range nm.bots {
+			if bot.IsConnected() {
+				connectedBots = append(connectedBots, bot)
+			}
+		}
+
+		if len(connectedBots) == 0 {
 			nm.mutex.Unlock()
 			time.Sleep(1 * time.Second)
 			continue
 		}
 
-		// Get the next bot in the queue to send ISON
-		bot := nm.bots[nm.botIndex]
-		nm.botIndex = (nm.botIndex + 1) % len(nm.bots)
+		// Używamy lokalnego indeksu dla połączonych botów
+		localIndex := nm.botIndex % len(connectedBots)
+		bot := connectedBots[localIndex]
+		nm.botIndex = (nm.botIndex + 1) % len(connectedBots)
 		nm.mutex.Unlock()
 
-		if bot.IsConnected() {
-			// Request ISON and wait for response
-			onlineNicks, err := bot.RequestISON(nm.nicksToCatch)
-			if err != nil {
-				util.Error("Error requesting ISON from bot %s: %v", bot.GetCurrentNick(), err)
-				time.Sleep(1 * time.Second)
-				continue
-			}
-			nm.handleISONResponse(onlineNicks)
+		// Request ISON and wait for response
+		onlineNicks, err := bot.RequestISON(nm.nicksToCatch)
+		if err != nil {
+			util.Error("Error requesting ISON from bot %s: %v", bot.GetCurrentNick(), err)
 		} else {
-			util.Debug("Bot %s is not connected; skipping", bot.GetCurrentNick())
+			nm.handleISONResponse(onlineNicks)
 		}
 
-		// Wait before sending the next ISON
+		// Używamy isonInterval z konfiguracji globalnej
 		time.Sleep(1 * time.Second)
+	}
+}
+
+// Dodajemy nową metodę
+func (nm *NickManager) UnregisterBot(botToRemove types.Bot) {
+	nm.mutex.Lock()
+	defer nm.mutex.Unlock()
+
+	// Znajdź i usuń bota z listy
+	for i, bot := range nm.bots {
+		if bot == botToRemove {
+			nm.bots = append(nm.bots[:i], nm.bots[i+1:]...)
+			break
+		}
 	}
 }
 

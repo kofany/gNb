@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"os"
 	"os/signal"
-	"os/user"
 	"strings"
 	"syscall"
 	"time"
@@ -22,22 +21,21 @@ import (
 	"github.com/sevlyar/go-daemon"
 )
 
-// Globalna zmienna version. Może być nadpisana podczas kompilacji za pomocą -ldflags.
 var version = "v1.2.5"
 
 var (
 	devMode         = flag.Bool("dev", false, "run in development mode (non-daemon)")
-	versionFlag     = flag.Bool("v", false, "show version")       // Flaga -v
-	versionFlagLong = flag.Bool("version", false, "show version") // Flaga --version
+	versionFlag     = flag.Bool("v", false, "show version")
+	versionFlagLong = flag.Bool("version", false, "show version")
 )
 
 const banner = `
-                 ___      __             __ <<<<<<[get Nick bot]
-    ____  ____  [ m ]__  / /_  __  __   / /____  ____ _____ ___
-   / __ \/ __ \  / / _ \/ __ \/ / / /  / __/ _ \/ __ ` + "`" + `/ __ ` + "`" + `__ \
-  / /_/ / /_/ / / /  __/ /_/ / /_/ /  / /_/  __/ /_/ / / / / / /
- / .___/\____/_/ /\___/_.___/\__, /blo\__/\___/\__,_/_/ /_/ /_/
-/_/  ruciu  /___/   dominik /____/                     kofany
+                     ___      __             __ <<<<<<[get Nick bot]
+        ____  ____  [ m ]__  / /_  __  __   / /____  ____ _____ ___
+       / __ \/ __ \  / / _ \/ __ \/ / / /  / __/ _ \/ __ \ / __ \ __ \
+      / /_/ / /_/ / / /  __/ /_/ / /_/ /  / /_/  __/ /_/ / / / / / /
+     / .___/\____/_/ /\___/_.___/\__, /blo\__/\___/\__,_/_/ /_/ /_/
+    /_/  ruciu  /___/   dominik /____/                     kofany
 
 `
 
@@ -60,9 +58,7 @@ func printBanner() {
 	color.Cyan(banner)
 }
 
-// Funkcja do wyświetlania wersji
 func printVersion() {
-	// Tworzenie kolorowego ciągu znaków
 	versionText := fmt.Sprintf("%s %s %s.",
 		color.MagentaString("[gNb]"),
 		color.GreenString("get Nick Bot by kofany"),
@@ -71,17 +67,26 @@ func printVersion() {
 	fmt.Println(versionText)
 }
 
+func isDebian() bool {
+	data, err := os.ReadFile("/etc/os-release")
+	if err != nil {
+		return false
+	}
+	content := string(data)
+	if strings.Contains(content, "ID=debian") {
+		return true
+	}
+	return false
+}
+
 func main() {
-	// Definicja flag
 	flag.Parse()
 
-	// Sprawdzenie flagi wersji przed wyświetleniem baneru
 	if *versionFlag || *versionFlagLong {
 		printVersion()
 		os.Exit(0)
 	}
 
-	// Wyświetlenie baneru tylko jeśli flaga wersji nie jest ustawiona
 	printBanner()
 
 	color.Blue("Starting main function")
@@ -93,10 +98,8 @@ func main() {
 	}
 	color.Green("Config files checked and created if necessary")
 
-	color.Blue("Initializing random number generator")
-	rand.Seed(time.Now().UnixNano())
-	// Załaduj konfigurację
-	color.Blue("Loading configuration from YAML file")
+	// Wczytujemy konfigurację wcześnie, bo będzie potrzebna dla oidentd
+	color.Blue("Loading initial configuration from YAML file")
 	cfg, err := config.LoadConfig("configs/config.yaml")
 	if err != nil {
 		color.Red("Failed to load configuration: %v", err)
@@ -104,101 +107,38 @@ func main() {
 	}
 	color.Green("Configuration loaded successfully")
 
-	// Ustawienia loggera
-	var level util.LogLevel
-	if !*devMode {
-		level = util.WARNING
-		color.Yellow("Log level set to WARNING in daemon mode")
-	} else {
-		color.Blue("Parsing log level from config")
-		level, err = util.ParseLogLevel(cfg.Global.LogLevel)
-		if err != nil {
-			color.Red("Invalid log level in config: %v", err)
-			os.Exit(1)
-		}
-		color.Green("Log level set to %s", logLevelToString(level))
-	}
-
-	logFile := "bot.log"
-	if *devMode {
-		logFile = "bot_dev.log"
-	}
-	color.Blue("Initializing logger with file: %s", logFile)
-	err = util.InitLogger(level, logFile)
-	if err != nil {
-		color.Red("Failed to initialize logger: %v", err)
-		os.Exit(1)
-	}
-	defer util.CloseLogger()
-
-	util.Info("Logger initialized with level: %s", logLevelToString(level))
-
-	// Sprawdzanie i konfiguracja oidentd
+	// Wykonujemy logikę oidentd na samym początku
 	uid := os.Geteuid()
-	currentUser, err := user.Current()
-	if err != nil {
-		color.Red("Failed to get current user info: %v", err)
-	} else {
-		color.Blue("Current process info:")
-		color.Blue("- UID: %d", uid)
-		color.Blue("- Username: %s", currentUser.Username)
-		color.Blue("- Name: %s", currentUser.Name)
-		color.Blue("- Home dir: %s", currentUser.HomeDir)
-	}
-
 	if uid == 0 {
-		color.Blue("Running as root, oidentd configuration available")
-		fmt.Print("Do you want to update oidentd configuration? [y/N]: ")
-		var response string
-		fmt.Scanln(&response)
-		response = strings.ToLower(strings.TrimSpace(response))
-
-		if response == "y" || response == "yes" {
-			color.Blue("Configuring oidentd...")
-			if err := oidentd.SetupOidentd(cfg); err != nil {
-				color.Red("Failed to setup oidentd: %v", err)
-				util.Error("Oidentd setup failed: %v", err)
-
-				fmt.Print("Do you want to continue despite oidentd configuration failure? [y/N]: ")
-				fmt.Scanln(&response)
-				response = strings.ToLower(strings.TrimSpace(response))
-
-				if response != "y" && response != "yes" {
-					color.Yellow("Exiting by user request")
-					os.Exit(1)
+		color.Blue("Running as root")
+		// Sprawdzamy, czy plik /etc/oidentd.conf istnieje
+		if _, err := os.Stat("/etc/oidentd.conf"); err == nil {
+			color.Blue("/etc/oidentd.conf exists")
+			// Sprawdzamy, czy system to Debian
+			if isDebian() {
+				color.Blue("System is Debian")
+				// Uruchamiamy logikę oidentd bez pytania użytkownika
+				color.Blue("Configuring oidentd without user interaction...")
+				if err := oidentd.SetupOidentd(cfg); err != nil {
+					color.Red("Failed to setup oidentd: %v", err)
+					color.Yellow("Continuing without oidentd configuration")
+				} else {
+					color.Green("Oidentd configured successfully")
 				}
-				color.Yellow("Continuing with previous oidentd configuration")
 			} else {
-				color.Green("Oidentd configured successfully")
+				color.Yellow("System is not Debian, skipping oidentd configuration")
 			}
 		} else {
-			color.Yellow("Skipping oidentd configuration update")
+			color.Yellow("/etc/oidentd.conf does not exist, skipping oidentd configuration")
 		}
 	} else {
 		color.Yellow("Not running as root (UID: %d), oidentd configuration not available", uid)
 	}
 
-	// Ładowanie właścicieli i konfiguracja menedżera nicków
-	color.Blue("Loading owners from JSON file")
-	owners, err := auth.LoadOwners("configs/owners.json")
-	if err != nil {
-		color.Red("Failed to load owners: %v", err)
-		return
-	}
-	util.Debug("Owners loaded: %+v", owners)
+	color.Blue("Initializing random number generator")
+	rand.Seed(time.Now().UnixNano())
 
-	color.Blue("Creating and initializing NickManager")
-	nm := nickmanager.NewNickManager()
-	err = nm.LoadNicks("data/nicks.json")
-	if err != nil {
-		color.Red("Failed to load nicks: %v", err)
-		return
-	}
-	util.Debug("NickManager initialized with nicks: %+v", nm.GetNicksToCatch())
-
-	color.Blue("Creating BotManager")
-	botManager := bot.NewBotManager(cfg, owners, nm)
-	// Daemonizacja (jeśli wymagana)
+	// Daemonizacja
 	if !*devMode {
 		color.Yellow("Starting in daemon mode")
 		cntxt := &daemon.Context{
@@ -222,19 +162,61 @@ func main() {
 		}
 		defer cntxt.Release()
 		log.Print("Daemon started")
-	} else {
-		color.Yellow("Running in development mode (foreground)")
-	}
 
-	// Od tego momentu kod wykonuje się albo w demonie, albo w trybie dev
-	if !*devMode {
-		// Reinicjalizacja loggera po daemonizacji
+		// Po daemonizacji, inicjalizujemy logger raz
+		// Ustawiamy poziom logowania na WARNING w trybie demona
+		level := util.WARNING
+		logFile := "bot.log"
 		err = util.InitLogger(level, logFile)
 		if err != nil {
-			log.Printf("Failed to reinitialize logger after daemonization: %v", err)
+			log.Printf("Failed to initialize logger after daemonization: %v", err)
 			os.Exit(1)
 		}
+		util.Info("Logger initialized with level: %s", logLevelToString(level))
+	} else {
+		color.Yellow("Running in development mode (foreground)")
+
+		// W trybie deweloperskim, inicjalizujemy logger tutaj
+		color.Blue("Parsing log level from config")
+		level, err := util.ParseLogLevel(cfg.Global.LogLevel)
+		if err != nil {
+			color.Red("Invalid log level in config: %v", err)
+			os.Exit(1)
+		}
+		color.Green("Log level set to %s", logLevelToString(level))
+
+		logFile := "bot_dev.log"
+		color.Blue("Initializing logger with file: %s", logFile)
+		err = util.InitLogger(level, logFile)
+		if err != nil {
+			color.Red("Failed to initialize logger: %v", err)
+			os.Exit(1)
+		}
+		defer util.CloseLogger()
+		util.Info("Logger initialized with level: %s", logLevelToString(level))
 	}
+
+	// Reszta kodu pozostaje bez zmian
+
+	color.Blue("Loading owners from JSON file")
+	owners, err := auth.LoadOwners("configs/owners.json")
+	if err != nil {
+		color.Red("Failed to load owners: %v", err)
+		return
+	}
+	util.Debug("Owners loaded: %+v", owners)
+
+	color.Blue("Creating and initializing NickManager")
+	nm := nickmanager.NewNickManager()
+	err = nm.LoadNicks("data/nicks.json")
+	if err != nil {
+		color.Red("Failed to load nicks: %v", err)
+		return
+	}
+	util.Debug("NickManager initialized with nicks: %+v", nm.GetNicksToCatch())
+
+	color.Blue("Creating BotManager")
+	botManager := bot.NewBotManager(cfg, owners, nm)
 
 	// Uruchomienie botów
 	color.Blue("Starting bots")
@@ -250,6 +232,7 @@ func main() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
+	// Różne komunikaty dla różnych trybów
 	if !*devMode {
 		util.Info("Bot is running in daemon mode. Use 'kill -SIGTERM %d' to stop.", os.Getpid())
 	} else {
@@ -259,6 +242,7 @@ func main() {
 	color.Blue("Waiting for shutdown signal")
 	<-sigs
 
+	// Zamykanie aplikacji
 	color.Yellow("Shutdown signal received")
 	botManager.Stop()
 	util.Info("Application has been shut down.")
