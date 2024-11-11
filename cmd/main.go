@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -15,12 +16,13 @@ import (
 	"github.com/kofany/gNb/internal/bot"
 	"github.com/kofany/gNb/internal/config"
 	"github.com/kofany/gNb/internal/nickmanager"
+	"github.com/kofany/gNb/internal/oidentd"
 	"github.com/kofany/gNb/internal/util"
 	"github.com/sevlyar/go-daemon"
 )
 
 // Globalna zmienna version. Może być nadpisana podczas kompilacji za pomocą -ldflags.
-var version = "v1.2.0"
+var version = "v1.2.5"
 
 var (
 	devMode         = flag.Bool("dev", false, "run in development mode (non-daemon)")
@@ -173,6 +175,39 @@ func main() {
 
 	color.Blue("Creating BotManager")
 	botManager := bot.NewBotManager(cfg, owners, nm)
+
+	// przed startem botów
+	if os.Geteuid() == 0 {
+		color.Blue("Running as root, oidentd configuration available")
+		fmt.Print("Do you want to update oidentd configuration? [y/N]: ")
+		var response string
+		fmt.Scanln(&response)
+		response = strings.ToLower(strings.TrimSpace(response))
+
+		if response == "y" || response == "yes" {
+			color.Blue("Configuring oidentd...")
+			if err := oidentd.SetupOidentd(cfg); err != nil {
+				color.Red("Failed to setup oidentd: %v", err)
+				util.Error("Oidentd setup failed: %v", err)
+
+				fmt.Print("Do you want to continue despite oidentd configuration failure? [y/N]: ")
+				fmt.Scanln(&response)
+				response = strings.ToLower(strings.TrimSpace(response))
+
+				if response != "y" && response != "yes" {
+					color.Yellow("Exiting by user request")
+					os.Exit(1)
+				}
+				color.Yellow("Continuing with previous oidentd configuration")
+			} else {
+				color.Green("Oidentd configured successfully")
+			}
+		} else {
+			color.Yellow("Skipping oidentd configuration update")
+		}
+	} else {
+		color.Yellow("Not running as root, oidentd configuration not available")
+	}
 
 	color.Blue("Starting bots")
 	go botManager.StartBots()
