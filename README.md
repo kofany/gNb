@@ -1,4 +1,4 @@
-# gNb - IRC Nick Management Bot
+# gNb - IRC Nick Management Bot //
 
 gNb is a Go-based IRC bot designed to manage and monitor nicknames on IRC networks. It allows users to automatically track and capture desired nicknames when they become available. Additionally, gNb provides functionalities for bot owners to interact with the bot through commands and supports BNC (bouncer) capabilities via SSH connections.
 
@@ -22,10 +22,11 @@ gNb is a Go-based IRC bot designed to manage and monitor nicknames on IRC networ
 - **BNC Functionality**: Provides BNC capabilities via SSH, allowing owners to connect and send raw IRC commands.
 - **Configurable Logging**: Supports different logging levels and outputs to log files.
 - **Dynamic Configuration**: Reads configurations from YAML and JSON files for flexibility.
+- **Autojoin #literki after letter catch**: To diseble edit NICK callback in bot.go file. 
 
 ## Prerequisites
 
-- **Go Programming Language**: Version 1.18 or higher.
+- **Go Programming Language**: Version 1.23 or higher.
 - **Access to an IRC Server**: Ensure you have the necessary permissions to connect bots to your target IRC server.
 - **Network Configuration**: If using custom vhosts, ensure they are properly configured on your network interface.
 

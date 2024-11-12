@@ -269,6 +269,7 @@ func (b *Bot) addCallbacks() {
 	})
 
 	// Callback for nick changes
+	// Callback for nick changes
 	b.Connection.AddCallback("NICK", func(e *irc.Event) {
 		oldNick := b.CurrentNick
 		if e.Nick == b.Connection.GetNick() {
@@ -277,9 +278,24 @@ func (b *Bot) addCallbacks() {
 				if b.nickManager != nil {
 					b.CurrentNick = newNick
 					b.nickManager.NotifyNickChange(oldNick, b.CurrentNick)
+
+					// Sprawdź zmianę nicka pod kątem #literki
+					wasOneLetter := len(oldNick) == 1
+					isOneLetter := len(newNick) == 1
+
+					// Bot zdobył jednoznakowy nick
+					if !wasOneLetter && isOneLetter {
+						util.Debug("Bot %s got single letter nick, joining #literki", b.CurrentNick)
+						b.JoinChannel("#literki")
+					}
+
+					// Bot stracił jednoznakowy nick
+					if wasOneLetter && !isOneLetter {
+						util.Debug("Bot %s lost single letter nick, leaving #literki", b.CurrentNick)
+						b.PartChannel("#literki")
+					}
 				}
 			}
-
 		}
 	})
 
