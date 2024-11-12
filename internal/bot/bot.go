@@ -15,6 +15,7 @@ import (
 	"github.com/kofany/gNb/internal/bnc"
 	"github.com/kofany/gNb/internal/config"
 	"github.com/kofany/gNb/internal/dcc"
+	"github.com/kofany/gNb/internal/nickmanager"
 	"github.com/kofany/gNb/internal/types"
 	"github.com/kofany/gNb/internal/util"
 	irc "github.com/kofany/go-ircevo"
@@ -324,11 +325,38 @@ func (b *Bot) addCallbacks() {
 		}
 	})
 
+	// Callback for unavailable resource (437)
+	b.Connection.AddCallback("437", func(e *irc.Event) {
+		if !b.IsConnected() {
+			// Jeśli bot nie jest w pełni połączony, pozwól bibliotece go-ircevo obsłużyć to standardowo
+			return
+		}
+
+		if len(e.Arguments) > 1 {
+			unavailableNick := e.Arguments[1]
+
+			// Sprawdź czy to nick z naszej listy do złapania lub literka
+			if b.nickManager != nil {
+				isTargetNick := util.IsTargetNick(unavailableNick, b.nickManager.GetNicksToCatch())
+				isLetter := len(unavailableNick) == 1
+
+				if isTargetNick || isLetter {
+					util.Warning("Nick %s temporarily unavailable on %s - marking for next iteration",
+						unavailableNick, b.ServerName)
+
+					// Oznacz nick jako tymczasowo niedostępny
+					if nm, ok := b.nickManager.(*nickmanager.NickManager); ok {
+						nm.MarkNickAsTemporarilyUnavailable(unavailableNick)
+					}
+				}
+			}
+		}
+	})
+
 	// BNC + DCC
 	b.Connection.AddCallback("CTCP", b.handleCTCP)
 	b.Connection.AddCallback("*", func(e *irc.Event) {
 		// Log all events without the "DCC:" prefix
-		util.Debug("Event Code: %s | Nick: %s | Args: %v | Message: %s", e.Code, e.Nick, e.Arguments, e.Message())
 		if b.dccTunnel != nil {
 			b.dccTunnel.WriteToConn(e.Raw)
 		}

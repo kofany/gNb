@@ -17,24 +17,48 @@ type NickManager struct {
 	priorityNicks        []string
 	secondaryNicks       []string
 	bots                 []types.Bot
+	connectedBots        []types.Bot // Nowe pole dla połączonych botów
 	botIndex             int
 	isonInterval         time.Duration
-	tempUnavailableNicks map[string]time.Time // Mapa do blokowania nicków
-	NoLettersServers     map[string]bool      // Mapa serwerów, które nie akceptują jednoliterowych nicków
-	mutex                sync.Mutex
-	// dodaj pole do przechowywania odwołania do BotManager
-
+	tempUnavailableNicks map[string]time.Time
+	NoLettersServers     map[string]bool
+	mutex                sync.RWMutex  // Zmiana na RWMutex dla lepszej wydajności
+	connectedBotsMutex   sync.RWMutex  // Osobny mutex dla listy połączonych botów
+	lastConnectedUpdate  time.Time     // Timestamp ostatniej aktualizacji listy
+	updateInterval       time.Duration // Interwał odświeżania listy połączonych botów
 }
 
 type NicksData struct {
 	Nicks []string `json:"nicks"`
 }
 
+const tempUnavailableTimeout = time.Duration(60) * time.Second // blokada na 60 sekund
+
 func NewNickManager() *NickManager {
 	return &NickManager{
 		tempUnavailableNicks: make(map[string]time.Time),
 		NoLettersServers:     make(map[string]bool),
+		connectedBots:        make([]types.Bot, 0, 1000), // Prealokacja z przewidywanym rozmiarem
+		updateInterval:       10 * time.Second,           // Aktualizacja co 10 sekund
 	}
+}
+
+func (nm *NickManager) updateConnectedBots() {
+	nm.mutex.RLock()
+	allBots := nm.bots
+	nm.mutex.RUnlock()
+
+	newConnected := make([]types.Bot, 0, len(allBots))
+	for _, bot := range allBots {
+		if bot.IsConnected() {
+			newConnected = append(newConnected, bot)
+		}
+	}
+
+	nm.connectedBotsMutex.Lock()
+	nm.connectedBots = newConnected
+	nm.lastConnectedUpdate = time.Now()
+	nm.connectedBotsMutex.Unlock()
 }
 
 func (nm *NickManager) LoadNicks(filename string) error {
@@ -71,27 +95,29 @@ func (nm *NickManager) Start() {
 }
 
 func (nm *NickManager) monitorNicks() {
-	for {
-		nm.mutex.Lock()
-		// Filtrujemy tylko połączone boty
-		connectedBots := make([]types.Bot, 0)
-		for _, bot := range nm.bots {
-			if bot.IsConnected() {
-				connectedBots = append(connectedBots, bot)
-			}
-		}
+	updateTicker := time.NewTicker(nm.updateInterval)
+	isonTicker := time.NewTicker(1 * time.Second)
 
-		if len(connectedBots) == 0 {
-			nm.mutex.Unlock()
-			time.Sleep(1 * time.Second)
+	go func() {
+		for range updateTicker.C {
+			nm.updateConnectedBots()
+		}
+	}()
+
+	for range isonTicker.C {
+		nm.connectedBotsMutex.RLock()
+		connectedBots := nm.connectedBots
+		botsCount := len(connectedBots)
+		if botsCount == 0 {
+			nm.connectedBotsMutex.RUnlock()
 			continue
 		}
 
 		// Używamy lokalnego indeksu dla połączonych botów
-		localIndex := nm.botIndex % len(connectedBots)
+		localIndex := nm.botIndex % botsCount
 		bot := connectedBots[localIndex]
-		nm.botIndex = (nm.botIndex + 1) % len(connectedBots)
-		nm.mutex.Unlock()
+		nm.botIndex = (nm.botIndex + 1) % botsCount
+		nm.connectedBotsMutex.RUnlock()
 
 		// Request ISON and wait for response
 		onlineNicks, err := bot.RequestISON(nm.nicksToCatch)
@@ -100,24 +126,46 @@ func (nm *NickManager) monitorNicks() {
 		} else {
 			nm.handleISONResponse(onlineNicks)
 		}
-
-		// Używamy isonInterval z konfiguracji globalnej
-		time.Sleep(1 * time.Second)
 	}
 }
 
-// Dodajemy nową metodę
-func (nm *NickManager) UnregisterBot(botToRemove types.Bot) {
+// Zmodyfikowana funkcja do rejestracji bota
+func (nm *NickManager) RegisterBot(bot types.Bot) {
 	nm.mutex.Lock()
-	defer nm.mutex.Unlock()
+	nm.bots = append(nm.bots, bot)
+	nm.mutex.Unlock()
 
-	// Znajdź i usuń bota z listy
-	for i, bot := range nm.bots {
-		if bot == botToRemove {
-			nm.bots = append(nm.bots[:i], nm.bots[i+1:]...)
-			break
+	// Jeśli bot jest połączony, dodaj go do listy połączonych
+	if bot.IsConnected() {
+		nm.connectedBotsMutex.Lock()
+		nm.connectedBots = append(nm.connectedBots, bot)
+		nm.connectedBotsMutex.Unlock()
+	}
+}
+
+// Zmodyfikowana funkcja do wyrejestrowania bota
+func (nm *NickManager) UnregisterBot(botToRemove types.Bot) {
+	// Usuń z głównej listy botów
+	nm.mutex.Lock()
+	newBots := make([]types.Bot, 0, len(nm.bots)-1)
+	for _, bot := range nm.bots {
+		if bot != botToRemove {
+			newBots = append(newBots, bot)
 		}
 	}
+	nm.bots = newBots
+	nm.mutex.Unlock()
+
+	// Usuń z listy połączonych botów
+	nm.connectedBotsMutex.Lock()
+	newConnected := make([]types.Bot, 0, len(nm.connectedBots))
+	for _, bot := range nm.connectedBots {
+		if bot != botToRemove {
+			newConnected = append(newConnected, bot)
+		}
+	}
+	nm.connectedBots = newConnected
+	nm.connectedBotsMutex.Unlock()
 }
 
 func (nm *NickManager) handleISONResponse(onlineNicks []string) {
@@ -174,12 +222,6 @@ func (nm *NickManager) handleISONResponse(onlineNicks []string) {
 		util.Debug("Assigning secondary nick %s to bot %s on server %s", nick, bot.GetCurrentNick(), bot.GetServerName())
 		go bot.AttemptNickChange(nick)
 	}
-}
-
-func (nm *NickManager) RegisterBot(bot types.Bot) {
-	nm.mutex.Lock()
-	defer nm.mutex.Unlock()
-	nm.bots = append(nm.bots, bot)
 }
 
 func (nm *NickManager) SetBots(bots []types.Bot) {
@@ -308,12 +350,23 @@ func (nm *NickManager) cleanupTempUnavailableNicks(currentTime time.Time) {
 }
 
 func (nm *NickManager) filterAvailableNicks(nicks []string, onlineNicks []string) []string {
+	currentTime := time.Now()
 	var available []string
+
 	for _, nick := range nicks {
 		lowerNick := strings.ToLower(nick)
 		if !util.ContainsIgnoreCase(onlineNicks, nick) {
-			// Sprawdź, czy nick nie jest tymczasowo niedostępny
-			if _, exists := nm.tempUnavailableNicks[lowerNick]; !exists {
+			// Sprawdź czy nick nie jest zablokowany
+			if blockTime, exists := nm.tempUnavailableNicks[lowerNick]; exists {
+				if currentTime.After(blockTime) {
+					// Blokada wygasła, usuń ją
+					delete(nm.tempUnavailableNicks, lowerNick)
+					available = append(available, nick)
+					util.Debug("Nick %s block expired, removing block", nick)
+				} else {
+					util.Debug("Nick %s still blocked for %v", nick, blockTime.Sub(currentTime))
+				}
+			} else {
 				available = append(available, nick)
 			}
 		}
@@ -325,7 +378,10 @@ func (nm *NickManager) MarkNickAsTemporarilyUnavailable(nick string) {
 	nm.mutex.Lock()
 	defer nm.mutex.Unlock()
 
-	nm.tempUnavailableNicks[strings.ToLower(nick)] = time.Now().Add(1 * time.Minute)
+	// Ustaw czas wygaśnięcia blokady
+	nm.tempUnavailableNicks[strings.ToLower(nick)] = time.Now().Add(tempUnavailableTimeout)
+	util.Debug("Nick %s marked as temporarily unavailable until %v",
+		nick, time.Now().Add(tempUnavailableTimeout))
 }
 
 func (nm *NickManager) NotifyNickChange(oldNick, newNick string) {
