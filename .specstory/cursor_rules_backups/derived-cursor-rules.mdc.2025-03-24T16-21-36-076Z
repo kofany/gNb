@@ -1,0 +1,115 @@
+
+## PROJECT OVERVIEW
+
+This project, gNb, aims to [Insert Project Goal Here].  The project structure is detailed below.  Version: 1.0
+
+## CODE STYLE
+
+- Consistent indentation using tabs or spaces (4 spaces recommended).
+- Meaningful variable and function names.
+- Concise and well-commented code.
+- Adherence to Go's standard coding style guidelines.
+
+
+## FOLDER ORGANIZATION
+
+The project follows a standard Go module structure:
+
+- `cmd`: Contains the main application entry point.
+- `configs`: Holds configuration files (e.g., `config.example.yaml`, `owners.json`).
+- `data`: Stores persistent data (e.g., `nicks.json`, `words.gob`).
+- `internal`: Contains internal packages.
+  - Subfolders are organized by functionality (e.g., `auth`, `bnc`, `bot`, etc.).
+- `scripts`: Contains build and deployment scripts (e.g., `run.sh`, `doall.sh`).
+
+
+## TECH STACK
+
+- Go programming language
+- YAML for configuration files
+- JSON for data storage
+- [Add any other relevant technologies]
+
+
+## PROJECT-SPECIFIC STANDARDS
+
+- All error handling must be explicit and comprehensive.
+- Logging must be implemented using a structured logging library (e.g., logrus).
+- Use of mutexes should be minimized and optimized to prevent deadlocks and performance issues.  See NickManager improvements below for examples of optimized mutex usage.
+
+
+## WORKFLOW & RELEASE RULES
+
+- Use Git for version control.
+- Follow a structured branching strategy (e.g., Gitflow).
+- Implement a CI/CD pipeline for automated builds and deployments.
+- Regular code reviews are mandatory.
+
+
+## REFERENCE EXAMPLES
+
+- [Add links to relevant examples or documentation]
+
+
+## PROJECT DOCUMENTATION & CONTEXT SYSTEM
+
+- Documentation should be written in Markdown.
+- Use consistent naming conventions for files and directories.
+- Maintain a README file in the root directory.
+- Version: 1.0
+
+
+## DEBUGGING
+
+- Use a debugger (e.g., Delve) for effective debugging.
+- Implement comprehensive logging to track application behavior.
+- Utilize monitoring tools to identify performance bottlenecks and errors.  Implement watchdog mechanisms for critical goroutines (see NickManager and Bot examples below).
+
+
+## FINAL DOs AND DON'Ts
+
+- **DO:** Write clean, efficient, and well-documented code.
+- **DO:** Follow the project's coding standards and guidelines.
+- **DO:** Conduct thorough testing before releasing new features or updates.
+- **DO:** Use version control (Git) effectively.
+- **DON'T:** Introduce unnecessary complexity.
+- **DON'T:** Neglect error handling.
+- **DON'T:** Commit broken code.
+
+
+## NickManager Improvements (2025-03-23)
+
+This section details improvements to the NickManager to enhance stability and efficiency.  These updates address potential deadlocks and optimize mutex usage.
+
+**Improved `handleISONResponse` function:** This revised function minimizes mutex lock time by copying necessary data before processing.  See the AI interaction for detailed code example.
+
+**Deadlock Prevention:** A watchdog mechanism is implemented to detect and recover from potential deadlocks in the nick monitoring goroutine. See the AI interaction for a detailed code example.
+
+
+## BotManager Improvements (2025-03-23)
+
+This section outlines improvements to the BotManager for increased stability and efficiency.
+
+**Periodic Bot Maintenance:** A periodic cleanup mechanism is implemented to regularly check and disconnect unhealthy bots, preventing resource leaks.  See the AI interaction for detailed code example.
+
+
+## Bot Improvements (2025-03-23)
+
+This section describes improvements to the Bot for better stability and efficiency.
+
+**Enhanced Nick Change Logic:** The logic for changing nicks has been improved to consider various conditions like connection status and time since last attempt. See the AI interaction for detailed code example.
+
+**Connection Health Check:** A ping-pong mechanism is implemented to reliably verify the connection status of the bots, triggering reconnections when necessary. See the AI interaction for detailed code example.
+
+**Improved Error Handling:** A more sophisticated mechanism is introduced to manage nick errors, including temporary unavailability and invalid nicks. See the AI interaction for detailed code example.
+
+
+## Additional Improvements (2025-03-23)
+
+**Watchdog Mechanism:** A generic watchdog mechanism is implemented for critical goroutines to prevent them from hanging indefinitely. See the AI interaction for detailed code example.
+
+**Retry Mechanism with Exponential Backoff:** A helper function is implemented to retry network operations with exponential backoff, enhancing resilience to temporary network issues. See the AI interaction for detailed code example.
+
+**Adaptive Network Event Detection:** A mechanism is implemented for detecting botnets or large IRC events, allowing the system to adapt its behavior accordingly.  See the AI interaction for detailed code example.
+
+**ISON Result Caching:**  A caching mechanism is introduced to reduce the load on the IRC servers by storing and reusing recent ISON results. See the AI interaction for detailed code example.
