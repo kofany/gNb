@@ -184,13 +184,17 @@ func handleSayCommand(b *Bot, e *irc.Event, args []string) {
 	if len(args) >= 2 {
 		targetChannel := args[0]
 		msg := strings.Join(args[1:], " ")
-		if strings.HasPrefix(targetChannel, "#") {
-			b.GetBotManager().CollectReactions(targetChannel, msg, nil)
-		} else {
-			b.SendMessage(targetChannel, msg)
-		}
+
+		// Send the message directly without using CollectReactions
+		b.SendMessage(targetChannel, msg)
 	} else {
-		b.sendReply(isChannelMsg, target, sender, "Usage: say <channel/nick> <message>")
+		// Determine the destination for the message
+		destination := sender
+		if isChannelMsg {
+			destination = target
+		}
+
+		b.SendMessage(destination, "Usage: say <channel/nick> <message>")
 	}
 }
 
@@ -202,18 +206,25 @@ func handleJoinCommand(b *Bot, e *irc.Event, args []string) {
 	if len(args) >= 1 {
 		channel := args[0]
 		if isChannelMsg {
-			b.GetBotManager().CollectReactions(target, fmt.Sprintf("All bots are joining channel %s", channel), func() error {
-				for _, bot := range b.GetBotManager().GetBots() {
-					bot.JoinChannel(channel)
-				}
-				return nil
-			})
+			// Send a message to the channel first
+			b.SendMessage(target, fmt.Sprintf("All bots are joining channel %s", channel))
+
+			// Then make all bots join the channel
+			for _, bot := range b.GetBotManager().GetBots() {
+				bot.JoinChannel(channel)
+			}
 		} else {
 			b.JoinChannel(channel)
-			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Joined channel %s", channel))
+			b.SendMessage(sender, fmt.Sprintf("Joined channel %s", channel))
 		}
 	} else {
-		b.sendReply(isChannelMsg, target, sender, "Usage: join <channel>")
+		// Determine the destination for the message
+		destination := sender
+		if isChannelMsg {
+			destination = target
+		}
+
+		b.SendMessage(destination, "Usage: join <channel>")
 	}
 }
 
@@ -225,18 +236,25 @@ func handlePartCommand(b *Bot, e *irc.Event, args []string) {
 	if len(args) >= 1 {
 		channel := args[0]
 		if isChannelMsg {
-			b.GetBotManager().CollectReactions(target, fmt.Sprintf("All bots are leaving channel %s", channel), func() error {
-				for _, bot := range b.GetBotManager().GetBots() {
-					bot.PartChannel(channel)
-				}
-				return nil
-			})
+			// Send a message to the channel first
+			b.SendMessage(target, fmt.Sprintf("All bots are leaving channel %s", channel))
+
+			// Then make all bots leave the channel
+			for _, bot := range b.GetBotManager().GetBots() {
+				bot.PartChannel(channel)
+			}
 		} else {
 			b.PartChannel(channel)
-			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Left channel %s", channel))
+			b.SendMessage(sender, fmt.Sprintf("Left channel %s", channel))
 		}
 	} else {
-		b.sendReply(isChannelMsg, target, sender, "Usage: part <channel>")
+		// Determine the destination for the message
+		destination := sender
+		if isChannelMsg {
+			destination = target
+		}
+
+		b.SendMessage(destination, "Usage: part <channel>")
 	}
 }
 
@@ -246,14 +264,15 @@ func handleReconnectCommand(b *Bot, e *irc.Event, args []string) {
 	isChannelMsg := strings.HasPrefix(target, "#")
 
 	if isChannelMsg {
-		b.GetBotManager().CollectReactions(target, "All bots are reconnecting with new nicks...", func() error {
-			for _, bot := range b.GetBotManager().GetBots() {
-				go bot.Reconnect()
-			}
-			return nil
-		})
+		// Send a message to the channel first
+		b.SendMessage(target, "All bots are reconnecting with new nicks...")
+
+		// Then make all bots reconnect
+		for _, bot := range b.GetBotManager().GetBots() {
+			go bot.Reconnect()
+		}
 	} else {
-		b.sendReply(isChannelMsg, target, sender, "Reconnecting with a new nick...")
+		b.SendMessage(sender, "Reconnecting with a new nick...")
 		b.Reconnect()
 	}
 }
@@ -265,13 +284,30 @@ func handleAddNickCommand(b *Bot, e *irc.Event, args []string) {
 
 	if len(args) >= 1 {
 		nick := args[0]
-		b.GetBotManager().CollectReactions(
-			target,
-			fmt.Sprintf("Nick '%s' has been added.", nick),
-			func() error { return b.GetNickManager().AddNick(nick) },
-		)
+
+		// Add the nick
+		err := b.GetNickManager().AddNick(nick)
+
+		// Determine the destination for the message
+		destination := sender
+		if isChannelMsg {
+			destination = target
+		}
+
+		// Send a response message
+		if err != nil {
+			b.SendMessage(destination, fmt.Sprintf("Error adding nick '%s': %v", nick, err))
+		} else {
+			b.SendMessage(destination, fmt.Sprintf("Nick '%s' has been added.", nick))
+		}
 	} else {
-		b.sendReply(isChannelMsg, target, sender, "Usage: addnick <nick>")
+		// Determine the destination for the message
+		destination := sender
+		if isChannelMsg {
+			destination = target
+		}
+
+		b.SendMessage(destination, "Usage: addnick <nick>")
 	}
 }
 
@@ -282,13 +318,30 @@ func handleDelNickCommand(b *Bot, e *irc.Event, args []string) {
 
 	if len(args) >= 1 {
 		nick := args[0]
-		b.GetBotManager().CollectReactions(
-			target,
-			fmt.Sprintf("Nick '%s' has been removed.", nick),
-			func() error { return b.GetNickManager().RemoveNick(nick) },
-		)
+
+		// Remove the nick
+		err := b.GetNickManager().RemoveNick(nick)
+
+		// Determine the destination for the message
+		destination := sender
+		if isChannelMsg {
+			destination = target
+		}
+
+		// Send a response message
+		if err != nil {
+			b.SendMessage(destination, fmt.Sprintf("Error removing nick '%s': %v", nick, err))
+		} else {
+			b.SendMessage(destination, fmt.Sprintf("Nick '%s' has been removed.", nick))
+		}
 	} else {
-		b.sendReply(isChannelMsg, target, sender, "Usage: delnick <nick>")
+		// Determine the destination for the message
+		destination := sender
+		if isChannelMsg {
+			destination = target
+		}
+
+		b.SendMessage(destination, "Usage: delnick <nick>")
 	}
 }
 
@@ -297,20 +350,15 @@ func handleListNicksCommand(b *Bot, e *irc.Event, args []string) {
 	target := e.Arguments[0]
 	isChannelMsg := strings.HasPrefix(target, "#")
 
+	// Get the nicks
+	nicks := b.GetNickManager().GetNicks()
+	message := fmt.Sprintf("Current nicks: %s", strings.Join(nicks, ", "))
+
+	// Send the reply directly without using CollectReactions
 	if isChannelMsg {
-		b.GetBotManager().CollectReactions(
-			target,
-			"",
-			func() error {
-				nicks := b.GetNickManager().GetNicks()
-				message := fmt.Sprintf("Current nicks: %s", strings.Join(nicks, ", "))
-				b.GetBotManager().SendSingleMsg(target, message)
-				return nil
-			},
-		)
+		b.SendMessage(target, message)
 	} else {
-		nicks := b.GetNickManager().GetNicks()
-		b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Current nicks: %s", strings.Join(nicks, ", ")))
+		b.SendMessage(sender, message)
 	}
 }
 
@@ -321,13 +369,30 @@ func handleAddOwnerCommand(b *Bot, e *irc.Event, args []string) {
 
 	if len(args) >= 1 {
 		ownerMask := args[0]
-		b.GetBotManager().CollectReactions(
-			target,
-			fmt.Sprintf("Owner '%s' has been added.", ownerMask),
-			func() error { return b.GetBotManager().AddOwner(ownerMask) },
-		)
+
+		// Add the owner
+		err := b.GetBotManager().AddOwner(ownerMask)
+
+		// Determine the destination for the message
+		destination := sender
+		if isChannelMsg {
+			destination = target
+		}
+
+		// Send a response message
+		if err != nil {
+			b.SendMessage(destination, fmt.Sprintf("Error adding owner '%s': %v", ownerMask, err))
+		} else {
+			b.SendMessage(destination, fmt.Sprintf("Owner '%s' has been added.", ownerMask))
+		}
 	} else {
-		b.sendReply(isChannelMsg, target, sender, "Usage: addowner <mask>")
+		// Determine the destination for the message
+		destination := sender
+		if isChannelMsg {
+			destination = target
+		}
+
+		b.SendMessage(destination, "Usage: addowner <mask>")
 	}
 }
 
@@ -338,13 +403,30 @@ func handleDelOwnerCommand(b *Bot, e *irc.Event, args []string) {
 
 	if len(args) >= 1 {
 		ownerMask := args[0]
-		b.GetBotManager().CollectReactions(
-			target,
-			fmt.Sprintf("Owner '%s' has been removed.", ownerMask),
-			func() error { return b.GetBotManager().RemoveOwner(ownerMask) },
-		)
+
+		// Remove the owner
+		err := b.GetBotManager().RemoveOwner(ownerMask)
+
+		// Determine the destination for the message
+		destination := sender
+		if isChannelMsg {
+			destination = target
+		}
+
+		// Send a response message
+		if err != nil {
+			b.SendMessage(destination, fmt.Sprintf("Error removing owner '%s': %v", ownerMask, err))
+		} else {
+			b.SendMessage(destination, fmt.Sprintf("Owner '%s' has been removed.", ownerMask))
+		}
 	} else {
-		b.sendReply(isChannelMsg, target, sender, "Usage: delowner <mask>")
+		// Determine the destination for the message
+		destination := sender
+		if isChannelMsg {
+			destination = target
+		}
+
+		b.SendMessage(destination, "Usage: delowner <mask>")
 	}
 }
 
@@ -353,20 +435,15 @@ func handleListOwnersCommand(b *Bot, e *irc.Event, args []string) {
 	target := e.Arguments[0]
 	isChannelMsg := strings.HasPrefix(target, "#")
 
+	// Get the owners
+	owners := b.GetBotManager().GetOwners()
+	message := fmt.Sprintf("Current owners: %s", strings.Join(owners, ", "))
+
+	// Send the reply directly without using CollectReactions
 	if isChannelMsg {
-		b.GetBotManager().CollectReactions(
-			target,
-			"",
-			func() error {
-				owners := b.GetBotManager().GetOwners()
-				message := fmt.Sprintf("Current owners: %s", strings.Join(owners, ", "))
-				b.GetBotManager().SendSingleMsg(target, message)
-				return nil
-			},
-		)
+		b.SendMessage(target, message)
 	} else {
-		owners := b.GetBotManager().GetOwners()
-		b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Current owners: %s", strings.Join(owners, ", ")))
+		b.SendMessage(sender, message)
 	}
 }
 
