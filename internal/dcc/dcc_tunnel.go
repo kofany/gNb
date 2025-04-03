@@ -20,7 +20,6 @@ type DCCTunnel struct {
 	bot           types.Bot
 	active        bool
 	mu            sync.Mutex
-	commandMu     sync.Mutex // Mutex for command processing per tunnel
 	ignoredEvents map[string]bool
 	onStop        func()
 	formatter     *MessageFormatter
@@ -286,7 +285,8 @@ func (dt *DCCTunnel) handleUserInput(input string) {
 			// Command processing is already protected with timeouts in processCommand
 			dt.processCommand(input)
 		} else {
-			// Regular message to party line
+			// Regular message to party line - don't use the global mutex for this
+			// to avoid blocking party line messages when commands are being processed
 			timestamp := colorText(time.Now().Format("15:04:05"), 14)
 			formattedMsg := fmt.Sprintf("[%s] %s%s%s %s",
 				timestamp,
@@ -297,6 +297,7 @@ func (dt *DCCTunnel) handleUserInput(input string) {
 
 			// Check if partyLine is available
 			if dt.partyLine != nil {
+				util.Debug("DCC: Broadcasting party line message from %s on bot %s", dt.ownerNick, dt.bot.GetCurrentNick())
 				dt.partyLine.broadcast(formattedMsg, dt.sessionID)
 			} else {
 				util.Warning("DCC: PartyLine is nil, cannot broadcast message")
@@ -428,24 +429,32 @@ func (dt *DCCTunnel) shouldIgnoreEvent(data string) bool {
 
 // sendToClient wysyła wiadomość do klienta DCC
 func (dt *DCCTunnel) sendToClient(message string) {
-	dt.mu.Lock()
-	if !dt.active || dt.conn == nil {
-		dt.mu.Unlock()
+	// Quick check without lock first
+	if !dt.active {
 		return
 	}
 
-	// Set a deadline for the write operation
-	dt.conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
-	_, err := dt.conn.Write([]byte(message + "\r\n"))
-	dt.conn.SetWriteDeadline(time.Time{}) // Reset deadline
-	dt.mu.Unlock()
+	// Use a separate goroutine to avoid blocking
+	go func(msg string) {
+		dt.mu.Lock()
+		if !dt.active || dt.conn == nil {
+			dt.mu.Unlock()
+			return
+		}
 
-	if err != nil {
-		util.Warning("DCC: Error sending message to client: %v", err)
-		// Don't call Stop() here to avoid potential deadlocks
-		// Instead, schedule a stop
-		go dt.Stop()
-	}
+		// Set a deadline for the write operation
+		dt.conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+		_, err := dt.conn.Write([]byte(msg + "\r\n"))
+		dt.conn.SetWriteDeadline(time.Time{}) // Reset deadline
+		dt.mu.Unlock()
+
+		if err != nil {
+			util.Warning("DCC: Error sending message to client: %v", err)
+			// Don't call Stop() here to avoid potential deadlocks
+			// Instead, schedule a stop
+			go dt.Stop()
+		}
+	}(message)
 }
 
 // getWelcomeMessage zwraca wiadomość powitalną dla połączenia DCC
@@ -650,6 +659,9 @@ func (pl *PartyLine) broadcast(message string, excludeSessionID string) {
 	// Sanitize input
 	message = strings.TrimSpace(message)
 
+	// Log the broadcast operation
+	util.Debug("PartyLine: Broadcasting message: %s (excluding session: %s)", message, excludeSessionID)
+
 	// Acquire lock to safely access sessions
 	pl.mutex.Lock()
 
@@ -659,6 +671,7 @@ func (pl *PartyLine) broadcast(message string, excludeSessionID string) {
 		if tunnel, exists := pl.sessions[excludeSessionID]; exists && tunnel != nil {
 			if tunnel.bot != nil {
 				senderNick = tunnel.bot.GetCurrentNick()
+				util.Debug("PartyLine: Message sender is %s on bot %s", tunnel.ownerNick, senderNick)
 			}
 		}
 	}
@@ -668,6 +681,7 @@ func (pl *PartyLine) broadcast(message string, excludeSessionID string) {
 	for id, tunnel := range pl.sessions {
 		if id != excludeSessionID && id != "" && tunnel != nil {
 			sessionsCopy[id] = tunnel
+			util.Debug("PartyLine: Will send to session %s (bot: %s, owner: %s)", id, tunnel.bot.GetCurrentNick(), tunnel.ownerNick)
 		}
 	}
 	pl.mutex.Unlock()

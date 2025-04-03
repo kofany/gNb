@@ -14,8 +14,8 @@ import (
 	"github.com/kofany/gNb/internal/util"
 )
 
-// Note: We previously used a global mutex here, but now we use per-tunnel mutexes
-// to allow commands to be processed independently on different bots
+// dccCommandMutex is a global mutex to ensure only one DCC command is processed at a time
+var dccCommandMutex sync.Mutex
 
 // processCommand przetwarza komendy od użytkownika
 func (dt *DCCTunnel) processCommand(command string) {
@@ -72,14 +72,14 @@ func (dt *DCCTunnel) processCommand(command string) {
 		return
 	}
 
-	// Use a per-tunnel mutex to ensure only one command is processed at a time per bot
-	// This allows commands on different bots to be processed independently
+	// Use a global mutex to ensure only one DCC command is processed at a time
+	// This is important to prevent race conditions and resource contention
 	util.Debug("DCC: Acquiring command mutex for %s on bot %s for command %s", dt.ownerNick, dt.bot.GetCurrentNick(), cmd)
-	dt.commandMu.Lock()
+	dccCommandMutex.Lock()
 	util.Debug("DCC: Acquired command mutex for %s on bot %s for command %s", dt.ownerNick, dt.bot.GetCurrentNick(), cmd)
 	defer func() {
 		util.Debug("DCC: Releasing command mutex for %s on bot %s for command %s", dt.ownerNick, dt.bot.GetCurrentNick(), cmd)
-		dt.commandMu.Unlock()
+		dccCommandMutex.Unlock()
 	}()
 
 	// Execute the command with a longer timeout
