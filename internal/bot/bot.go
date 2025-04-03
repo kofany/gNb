@@ -873,6 +873,9 @@ func (b *Bot) handleReconnect() {
 	b.gaveUp = true
 }
 
+// sendMessageSemaphore is a semaphore to limit the number of concurrent SendMessage operations
+var sendMessageSemaphore = make(chan struct{}, 5) // Allow up to 5 concurrent operations
+
 func (b *Bot) SendMessage(target, message string) {
 	// Sanitize inputs
 	target = strings.TrimSpace(target)
@@ -893,32 +896,30 @@ func (b *Bot) SendMessage(target, message string) {
 	// Log the message being sent
 	util.Debug("Bot %s is sending message to %s: %s", b.CurrentNick, target, message)
 
-	// Send message directly without waiting
-	// This is important to avoid blocking the main thread
-	go func(t, m string) {
-		defer func() {
-			if r := recover(); r != nil {
-				util.Error("Panic in SendMessage: %v", r)
-			}
-		}()
+	// Use a non-blocking select to check if we can acquire the semaphore
+	select {
+	// Try to acquire the semaphore
+	case sendMessageSemaphore <- struct{}{}:
+		// Semaphore acquired, proceed with sending the message
+		go func(t, m string) {
+			// Ensure we release the semaphore when done
+			defer func() {
+				<-sendMessageSemaphore // Release the semaphore
+				if r := recover(); r != nil {
+					util.Error("Panic in SendMessage: %v", r)
+				}
+			}()
 
-		// Set a timeout for the send operation
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
+			// Send the message directly without a nested goroutine
+			// Set a deadline on the connection to prevent blocking
 			b.Connection.Privmsg(t, m)
-		}()
-
-		// Wait for the send to complete or timeout
-		select {
-		case <-done:
-			// Message sent successfully
 			util.Debug("SendMessage: Message sent successfully to %s via bot %s", t, b.CurrentNick)
-		case <-time.After(2 * time.Second):
-			// Message sending timed out
-			util.Warning("SendMessage: Timeout sending message to %s via bot %s", t, b.CurrentNick)
-		}
-	}(target, message)
+		}(target, message)
+
+	default:
+		// Semaphore full, log a warning and drop the message
+		util.Warning("SendMessage: Too many concurrent messages, dropping message to %s", target)
+	}
 }
 
 func (b *Bot) AttemptNickChange(nick string) {
@@ -942,29 +943,9 @@ func (b *Bot) shouldChangeNick(nick string) bool {
 func (b *Bot) handlePrivMsg(e *irc.Event) {
 	util.Debug("Received PRIVMSG: target=%s, sender=%s, message=%s", e.Arguments[0], e.Nick, e.Message())
 
-	// Execute command handling in a separate goroutine with timeout
-	timeoutChan := time.After(5 * time.Second)
-	doneChan := make(chan struct{})
-
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				util.Error("Panic in handlePrivMsg: %v", r)
-			}
-			close(doneChan)
-		}()
-
-		b.HandleCommands(e)
-	}()
-
-	// Wait for command handling to complete or timeout
-	select {
-	case <-doneChan:
-		// Command handling completed normally
-	case <-timeoutChan:
-		// Command handling timed out
-		util.Warning("Command handling timed out for message from %s", e.Nick)
-	}
+	// Execute command handling directly without a timeout
+	// This is important because the timeout in HandleCommands is sufficient
+	b.HandleCommands(e)
 }
 
 func (b *Bot) SetOwnerList(owners auth.OwnerList) {

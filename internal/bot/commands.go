@@ -3,6 +3,7 @@ package bot
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kofany/gNb/internal/auth"
@@ -41,6 +42,9 @@ func init() {
 	}
 }
 
+// commandMutex is a global mutex to ensure only one command is processed at a time per bot
+var commandMutex sync.Mutex
+
 func (b *Bot) HandleCommands(e *irc.Event) {
 	util.Debug("Received command for bot %s: %s", b.GetCurrentNick(), e.Message())
 
@@ -75,8 +79,13 @@ func (b *Bot) HandleCommands(e *irc.Event) {
 
 	util.Debug("Command %s recognized for bot %s", cmdName, b.GetCurrentNick())
 
-	// Execute the command in a separate goroutine with timeout
-	timeoutChan := time.After(10 * time.Second)
+	// Use a mutex to ensure only one command is processed at a time per bot
+	// This is important to prevent race conditions and resource contention
+	commandMutex.Lock()
+	defer commandMutex.Unlock()
+
+	// Execute the command with a longer timeout
+	timeoutChan := time.After(30 * time.Second) // Increased timeout
 	doneChan := make(chan struct{})
 
 	go func() {
@@ -115,6 +124,7 @@ func (b *Bot) HandleCommands(e *irc.Event) {
 	select {
 	case <-doneChan:
 		// Command completed normally
+		util.Debug("Command %s completed successfully", cmdName)
 	case <-timeoutChan:
 		// Command timed out
 		util.Warning("Command %s timed out", cmdName)

@@ -18,6 +18,9 @@ import (
 	"github.com/kofany/gNb/internal/util"
 )
 
+// dccCommandMutex is a global mutex to ensure only one DCC command is processed at a time
+var dccCommandMutex sync.Mutex
+
 // processCommand przetwarza komendy od użytkownika
 func (dt *DCCTunnel) processCommand(command string) {
 	// Sanitize input
@@ -66,8 +69,13 @@ func (dt *DCCTunnel) processCommand(command string) {
 		return
 	}
 
-	// Execute the command with a timeout
-	timeoutChan := time.After(10 * time.Second)
+	// Use a mutex to ensure only one DCC command is processed at a time
+	// This is important to prevent race conditions and resource contention
+	dccCommandMutex.Lock()
+	defer dccCommandMutex.Unlock()
+
+	// Execute the command with a longer timeout
+	timeoutChan := time.After(30 * time.Second) // Increased timeout
 	doneChan := make(chan struct{})
 
 	go func() {
@@ -87,8 +95,10 @@ func (dt *DCCTunnel) processCommand(command string) {
 	select {
 	case <-doneChan:
 		// Command completed normally
+		util.Debug("DCC: Command %s completed successfully", cmd)
 	case <-timeoutChan:
 		// Command timed out
+		util.Warning("DCC: Command %s timed out", cmd)
 		dt.sendToClient(fmt.Sprintf("Command %s timed out. Please try again later.", cmd))
 	}
 }
@@ -491,22 +501,42 @@ Parent Process ID: %d`,
 		os.Getppid())
 }
 
+// getExternalIPSemaphore is a semaphore to limit the number of concurrent getExternalIP operations
+var getExternalIPSemaphore = make(chan struct{}, 2) // Allow up to 2 concurrent operations
+
 func (dt *DCCTunnel) getExternalIP(network string) string {
+	// Try to acquire the semaphore with a very short timeout
+	select {
+	case getExternalIPSemaphore <- struct{}{}:
+		// Semaphore acquired, proceed with the request
+		defer func() { <-getExternalIPSemaphore }() // Release the semaphore when done
+	case <-time.After(100 * time.Millisecond):
+		// Couldn't acquire the semaphore quickly, return unavailable
+		return "unavailable (busy)"
+	}
+
 	// Create a channel to receive the result
 	resultChan := make(chan string, 1)
 
 	// Execute the HTTP request in a separate goroutine
 	go func() {
-		// Set up a client with short timeouts
+		defer func() {
+			if r := recover(); r != nil {
+				util.Error("Panic in getExternalIP: %v", r)
+				resultChan <- "unavailable (error)"
+			}
+		}()
+
+		// Set up a client with very short timeouts
 		client := &http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 				DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {
-					d := net.Dialer{Timeout: 2 * time.Second}
+					d := net.Dialer{Timeout: 1 * time.Second}
 					return d.DialContext(ctx, network, addr)
 				},
 			},
-			Timeout: 3 * time.Second, // Shorter timeout
+			Timeout: 2 * time.Second, // Very short timeout
 		}
 
 		// Try to get the IP
@@ -529,11 +559,11 @@ func (dt *DCCTunnel) getExternalIP(network string) string {
 		resultChan <- strings.TrimSpace(string(bodyBytes[:n]))
 	}()
 
-	// Wait for the result with a timeout
+	// Wait for the result with a very short timeout
 	select {
 	case result := <-resultChan:
 		return result
-	case <-time.After(4 * time.Second): // Overall timeout
+	case <-time.After(2 * time.Second): // Very short overall timeout
 		return "unavailable (timeout)"
 	}
 }
