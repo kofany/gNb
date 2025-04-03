@@ -407,9 +407,36 @@ func (bm *BotManager) CollectReactions(channel, message string, action func() er
 	}
 	bm.reactionMutex.Unlock()
 
-	// Execute action outside the lock
+	// Execute action with timeout if provided
 	if action != nil {
-		err := action()
+		// Use a timeout to prevent hanging
+		timeoutChan := time.After(10 * time.Second)
+		actionDone := make(chan error, 1)
+
+		// Execute the action in a separate goroutine
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					util.Error("Panic in CollectReactions action: %v", r)
+					actionDone <- fmt.Errorf("internal error: %v", r)
+				}
+			}()
+
+			// Execute the action and send the result
+			actionDone <- action()
+		}()
+
+		// Wait for the action to complete or timeout
+		var err error
+		select {
+		case err = <-actionDone:
+			// Action completed
+		case <-timeoutChan:
+			// Action timed out
+			err = fmt.Errorf("action timed out")
+			util.Warning("CollectReactions action timed out for channel %s", channel)
+		}
+
 		if err != nil {
 			// Handle error
 			bm.reactionMutex.Lock()
@@ -453,14 +480,65 @@ func (bm *BotManager) cleanupReactionRequest(key string) {
 
 func (bm *BotManager) SendSingleMsg(channel, message string) {
 	bm.mutex.Lock()
-	defer bm.mutex.Unlock()
-
 	if len(bm.bots) == 0 {
+		bm.mutex.Unlock()
+		util.Warning("SendSingleMsg: No bots available to send message to %s", channel)
 		return
 	}
+
+	// Find a connected bot to send the message
 	bot := bm.bots[bm.commandBotIndex]
 	bm.commandBotIndex = (bm.commandBotIndex + 1) % len(bm.bots)
-	bot.SendMessage(channel, message)
+	bm.mutex.Unlock()
+
+	// Try to find a connected bot if the current one is not connected
+	if !bot.IsConnected() {
+		util.Debug("SendSingleMsg: Bot %s is not connected, trying to find another bot", bot.GetCurrentNick())
+
+		bm.mutex.Lock()
+		triedBots := 1
+		for triedBots < len(bm.bots) {
+			bot = bm.bots[bm.commandBotIndex]
+			bm.commandBotIndex = (bm.commandBotIndex + 1) % len(bm.bots)
+
+			if bot.IsConnected() {
+				util.Debug("SendSingleMsg: Found connected bot %s", bot.GetCurrentNick())
+				bm.mutex.Unlock()
+				break
+			}
+
+			triedBots++
+			if triedBots >= len(bm.bots) {
+				util.Warning("SendSingleMsg: No connected bots available to send message to %s", channel)
+				bm.mutex.Unlock()
+				return
+			}
+		}
+	}
+
+	// Send the message with a timeout
+	timeoutChan := time.After(5 * time.Second)
+	doneChan := make(chan struct{})
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				util.Error("Panic in SendSingleMsg: %v", r)
+			}
+			close(doneChan)
+		}()
+
+		bot.SendMessage(channel, message)
+	}()
+
+	// Wait for the message to be sent or timeout
+	select {
+	case <-doneChan:
+		// Message sent successfully
+	case <-timeoutChan:
+		// Message sending timed out
+		util.Warning("SendSingleMsg: Timeout sending message to %s via bot %s", channel, bot.GetCurrentNick())
+	}
 }
 
 func (bm *BotManager) GetTotalCreatedBots() int {

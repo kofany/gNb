@@ -874,11 +874,35 @@ func (b *Bot) handleReconnect() {
 }
 
 func (b *Bot) SendMessage(target, message string) {
-	if b.IsConnected() {
-		util.Debug("Bot %s is sending message to %s: %s", b.CurrentNick, target, message)
-		b.Connection.Privmsg(target, message)
-	} else {
+	if !b.IsConnected() {
 		util.Debug("Bot %s is not connected; cannot send message to %s", b.CurrentNick, target)
+		return
+	}
+
+	util.Debug("Bot %s is sending message to %s: %s", b.CurrentNick, target, message)
+
+	// Send message in a separate goroutine with timeout
+	timeoutChan := time.After(3 * time.Second)
+	doneChan := make(chan struct{})
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				util.Error("Panic in SendMessage: %v", r)
+			}
+			close(doneChan)
+		}()
+
+		b.Connection.Privmsg(target, message)
+	}()
+
+	// Wait for the message to be sent or timeout
+	select {
+	case <-doneChan:
+		// Message sent successfully
+	case <-timeoutChan:
+		// Message sending timed out
+		util.Warning("SendMessage: Timeout sending message to %s via bot %s", target, b.CurrentNick)
 	}
 }
 
@@ -902,7 +926,30 @@ func (b *Bot) shouldChangeNick(nick string) bool {
 
 func (b *Bot) handlePrivMsg(e *irc.Event) {
 	util.Debug("Received PRIVMSG: target=%s, sender=%s, message=%s", e.Arguments[0], e.Nick, e.Message())
-	b.HandleCommands(e)
+
+	// Execute command handling in a separate goroutine with timeout
+	timeoutChan := time.After(5 * time.Second)
+	doneChan := make(chan struct{})
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				util.Error("Panic in handlePrivMsg: %v", r)
+			}
+			close(doneChan)
+		}()
+
+		b.HandleCommands(e)
+	}()
+
+	// Wait for command handling to complete or timeout
+	select {
+	case <-doneChan:
+		// Command handling completed normally
+	case <-timeoutChan:
+		// Command handling timed out
+		util.Warning("Command handling timed out for message from %s", e.Nick)
+	}
 }
 
 func (b *Bot) SetOwnerList(owners auth.OwnerList) {

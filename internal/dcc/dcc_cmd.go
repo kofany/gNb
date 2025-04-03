@@ -11,9 +11,11 @@ import (
 	"os"
 	"os/user"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kofany/gNb/internal/types"
+	"github.com/kofany/gNb/internal/util"
 )
 
 // processCommand przetwarza komendy od użytkownika
@@ -30,103 +32,155 @@ func (dt *DCCTunnel) processCommand(command string) {
 
 	// Usuń prefiks '.' i przekonwertuj na wielkie litery
 	cmd := strings.ToUpper(strings.TrimPrefix(fields[0], "."))
+	args := fields[1:]
 
-	// Execute the command in a separate goroutine to prevent blocking
-	go func(cmd string, args []string) {
+	// Create a map of command handlers for better organization and maintainability
+	commandHandlers := map[string]func([]string){
+		"MSG":        dt.handleMsgCommand,
+		"JOIN":       dt.handleJoinCommand,
+		"PART":       dt.handlePartCommand,
+		"MODE":       dt.handleModeCommand,
+		"KICK":       dt.handleKickCommand,
+		"QUIT":       dt.handleQuitCommand,
+		"NICK":       dt.handleNickCommand,
+		"RAW":        dt.handleRawCommand,
+		"HELP":       func([]string) { dt.sendHelpMessage() },
+		"MJOIN":      dt.handleMassJoinCommand,
+		"MPART":      dt.handleMassPartCommand,
+		"MRECONNECT": dt.handleMassReconnectCommand,
+		"ADDNICK":    dt.handleAddNickCommand,
+		"DELNICK":    dt.handleDelNickCommand,
+		"LISTNICKS":  dt.handleListNicksCommand,
+		"ADDOWNER":   dt.handleAddOwnerCommand,
+		"DELOWNER":   dt.handleDelOwnerCommand,
+		"LISTOWNERS": dt.handleListOwnersCommand,
+		"INFO":       dt.handleInfoCommand,
+		"BOTS":       dt.handleBotsCommand,
+		"SERVERS":    dt.handleServersCommand,
+	}
+
+	// Find the handler for the command
+	handler, exists := commandHandlers[cmd]
+	if !exists {
+		dt.sendToClient(fmt.Sprintf("Unknown command: %s", cmd))
+		return
+	}
+
+	// Execute the command with a timeout
+	timeoutChan := time.After(10 * time.Second)
+	doneChan := make(chan struct{})
+
+	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				fmt.Printf("DCC: Panic in command handler: %v\n", r)
+				util.Error("DCC: Panic in command handler for %s: %v", cmd, r)
 				dt.sendToClient(fmt.Sprintf("Error executing command: %v", r))
 			}
+			close(doneChan)
 		}()
 
-		switch cmd {
-		case "MSG":
-			dt.handleMsgCommand(args)
-		case "JOIN":
-			dt.handleJoinCommand(args)
-		case "PART":
-			dt.handlePartCommand(args)
-		case "MODE":
-			dt.handleModeCommand(args)
-		case "KICK":
-			dt.handleKickCommand(args)
-		case "QUIT":
-			dt.handleQuitCommand(args)
-		case "NICK":
-			dt.handleNickCommand(args)
-		case "RAW":
-			dt.handleRawCommand(args)
-		case "HELP":
-			dt.sendHelpMessage()
-		case "MJOIN":
-			dt.handleMassJoinCommand(args)
-		case "MPART":
-			dt.handleMassPartCommand(args)
-		case "MRECONNECT":
-			dt.handleMassReconnectCommand(args)
-		case "ADDNICK":
-			dt.handleAddNickCommand(args)
-		case "DELNICK":
-			dt.handleDelNickCommand(args)
-		case "LISTNICKS":
-			dt.handleListNicksCommand(args)
-		case "ADDOWNER":
-			dt.handleAddOwnerCommand(args)
-		case "DELOWNER":
-			dt.handleDelOwnerCommand(args)
-		case "LISTOWNERS":
-			dt.handleListOwnersCommand(args)
-		case "INFO":
-			dt.handleInfoCommand(args)
-		case "BOTS":
-			dt.handleBotsCommand(args)
-		case "SERVERS":
-			dt.handleServersCommand(args)
-		default:
-			dt.sendToClient(fmt.Sprintf("Unknown command: %s", cmd))
-		}
-	}(cmd, fields[1:])
+		// Execute the command handler
+		handler(args)
+	}()
+
+	// Wait for the command to complete or timeout
+	select {
+	case <-doneChan:
+		// Command completed normally
+	case <-timeoutChan:
+		// Command timed out
+		dt.sendToClient(fmt.Sprintf("Command %s timed out. Please try again later.", cmd))
+	}
 }
 
 // Handlery podstawowych komend
 
 func (dt *DCCTunnel) handleBotsCommand(args []string) {
-	bm := dt.bot.GetBotManager()
-	if bm == nil {
-		dt.sendToClient("BotManager is not available.")
-		return
-	}
+	// Use a timeout to prevent hanging
+	timeoutChan := time.After(5 * time.Second)
+	doneChan := make(chan struct{})
 
-	bots := bm.GetBots()
-	totalCreatedBots := bm.GetTotalCreatedBots() // Dodamy tę metodę w BotManager
-	totalBotsNow := len(bots)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				util.Error("DCC: Panic in handleBotsCommand: %v", r)
+				dt.sendToClient(fmt.Sprintf("Error executing command: %v", r))
+			}
+			close(doneChan)
+		}()
 
-	// Liczymy w pełni połączone boty
-	totalConnectedBots := 0
-	var connectedBotNicks []string
-	for _, bot := range bots {
-		if bot.IsConnected() {
-			totalConnectedBots++
-			connectedBotNicks = append(connectedBotNicks, bot.GetCurrentNick())
+		bm := dt.bot.GetBotManager()
+		if bm == nil {
+			dt.sendToClient("BotManager is not available.")
+			return
 		}
-	}
 
-	if len(args) == 0 {
-		// Bez dodatkowych argumentów, wyświetlamy podsumowanie
-		output := fmt.Sprintf(
-			"Total created bots: %d\nTotal bots now: %d\nTotal fully connected bots: %d",
-			totalCreatedBots, totalBotsNow, totalConnectedBots)
-		dt.sendToClient(output)
-	} else if len(args) == 1 && strings.ToLower(args[0]) == "n" {
-		// Wyświetlamy nicki w pełni połączonych botów
-		if totalConnectedBots == 0 {
-			dt.sendToClient("No bots are currently connected.")
+		// Make a safe copy of the bots slice to avoid concurrent access issues
+		bots := bm.GetBots()
+		totalCreatedBots := bm.GetTotalCreatedBots()
+		totalBotsNow := len(bots)
+
+		// Liczymy w pełni połączone boty
+		totalConnectedBots := 0
+		var connectedBotNicks []string
+
+		// Use a separate goroutine for each bot check to avoid blocking
+		var wg sync.WaitGroup
+		var mu sync.Mutex // To protect connectedBotNicks
+
+		for _, bot := range bots {
+			wg.Add(1)
+			go func(b types.Bot) {
+				defer wg.Done()
+				if b.IsConnected() {
+					mu.Lock()
+					totalConnectedBots++
+					connectedBotNicks = append(connectedBotNicks, b.GetCurrentNick())
+					mu.Unlock()
+				}
+			}(bot)
+		}
+
+		// Wait for all bot checks to complete with a timeout
+		done := make(chan struct{})
+		go func() {
+			wg.Wait()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			// All checks completed
+		case <-time.After(3 * time.Second):
+			// Timeout occurred, continue with what we have
+			util.Warning("DCC: Timeout while checking bot connections")
+		}
+
+		if len(args) == 0 {
+			// Bez dodatkowych argumentów, wyświetlamy podsumowanie
+			output := fmt.Sprintf(
+				"Total created bots: %d\nTotal bots now: %d\nTotal fully connected bots: %d",
+				totalCreatedBots, totalBotsNow, totalConnectedBots)
+			dt.sendToClient(output)
+		} else if len(args) == 1 && strings.ToLower(args[0]) == "n" {
+			// Wyświetlamy nicki w pełni połączonych botów
+			if totalConnectedBots == 0 {
+				dt.sendToClient("No bots are currently connected.")
+			} else {
+				dt.sendToClient("Connected bots: " + strings.Join(connectedBotNicks, ", "))
+			}
 		} else {
-			dt.sendToClient("Connected bots: " + strings.Join(connectedBotNicks, ", "))
+			dt.sendToClient("Usage: .bots or .bots n")
 		}
-	} else {
-		dt.sendToClient("Usage: .bots or .bots n")
+	}()
+
+	// Wait for the command to complete or timeout
+	select {
+	case <-doneChan:
+		// Command completed normally
+	case <-timeoutChan:
+		// Command timed out
+		dt.sendToClient("Command timed out. Please try again later.")
 	}
 }
 

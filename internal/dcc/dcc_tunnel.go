@@ -94,6 +94,12 @@ func (dt *DCCTunnel) Start(conn net.Conn) {
 
 func (dt *DCCTunnel) readLoop() {
 	defer func() {
+		// Recover from any panics
+		if r := recover(); r != nil {
+			util.Error("DCC: Panic in readLoop: %v", r)
+		}
+
+		// Clean up resources
 		dt.mu.Lock()
 		dt.active = false
 		if dt.readDone != nil {
@@ -103,15 +109,98 @@ func (dt *DCCTunnel) readLoop() {
 		dt.Stop()
 	}()
 
-	scanner := bufio.NewScanner(dt.conn)
-	for scanner.Scan() {
-		line := scanner.Text()
-		util.Debug("DCC: Received from DCC connection: %s", line)
-		dt.handleUserInput(line)
+	// Set a read deadline to prevent blocking forever
+	dt.mu.Lock()
+	if dt.conn != nil {
+		dt.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 	}
+	dt.mu.Unlock()
 
-	if err := scanner.Err(); err != nil {
-		util.Error("DCC: Error reading from DCC Chat connection: %v", err)
+	scanner := bufio.NewScanner(dt.conn)
+	scanner.Buffer(make([]byte, 4096), 1024*1024) // Increase buffer size to handle larger messages
+
+	readTimeoutTicker := time.NewTicker(30 * time.Second)
+	defer readTimeoutTicker.Stop()
+
+	// Use a separate goroutine to read from the scanner
+	readChan := make(chan string, 10)
+	errChan := make(chan error, 1)
+	quitChan := make(chan struct{})
+
+	go func() {
+		defer close(readChan)
+		defer close(errChan)
+
+		for {
+			select {
+			case <-quitChan:
+				return
+			default:
+				// Check if scanner can read more
+				if !scanner.Scan() {
+					if err := scanner.Err(); err != nil {
+						errChan <- err
+					}
+					return
+				}
+
+				// Send the line to the read channel
+				readChan <- scanner.Text()
+
+				// Reset the read deadline
+				dt.mu.Lock()
+				if dt.conn != nil {
+					dt.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+				}
+				dt.mu.Unlock()
+			}
+		}
+	}()
+
+	// Main loop to process read lines
+	for {
+		select {
+		case line, ok := <-readChan:
+			if !ok {
+				// Channel closed, exit the loop
+				return
+			}
+
+			util.Debug("DCC: Received from DCC connection: %s", line)
+
+			// Process the line in a separate goroutine to avoid blocking
+			go func(input string) {
+				defer func() {
+					if r := recover(); r != nil {
+						util.Error("DCC: Panic in handleUserInput: %v", r)
+					}
+				}()
+
+				dt.handleUserInput(input)
+			}(line)
+
+		case err := <-errChan:
+			util.Error("DCC: Error reading from DCC Chat connection: %v", err)
+			return
+
+		case <-readTimeoutTicker.C:
+			// Check if the connection is still active
+			dt.mu.Lock()
+			isActive := dt.active
+			dt.mu.Unlock()
+
+			if !isActive {
+				close(quitChan)
+				return
+			}
+
+			// Reset the read deadline
+			dt.mu.Lock()
+			if dt.conn != nil {
+				dt.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+			}
+			dt.mu.Unlock()
+		}
 	}
 }
 
@@ -170,17 +259,56 @@ func (dt *DCCTunnel) readFromConn() {
 
 // handleUserInput przetwarza dane wejściowe od użytkownika
 func (dt *DCCTunnel) handleUserInput(input string) {
-	if strings.HasPrefix(input, ".") {
-		dt.processCommand(input)
-	} else {
-		timestamp := colorText(time.Now().Format("15:04:05"), 14)
-		formattedMsg := fmt.Sprintf("[%s] %s%s%s %s",
-			timestamp,
-			colorText("<", 13),
-			colorText(dt.ownerNick, 14),
-			colorText(">", 13),
-			input)
-		dt.partyLine.broadcast(formattedMsg, dt.sessionID)
+	// Sanitize input
+	input = strings.TrimSpace(input)
+	input = strings.ReplaceAll(input, "\r", "")
+	input = strings.ReplaceAll(input, "\n", "")
+
+	// Check if the tunnel is still active
+	dt.mu.Lock()
+	isActive := dt.active
+	dt.mu.Unlock()
+
+	if !isActive {
+		util.Debug("DCC: Ignoring input from inactive tunnel: %s", input)
+		return
+	}
+
+	// Process the input with timeout protection
+	timeoutChan := time.After(5 * time.Second)
+	doneChan := make(chan struct{})
+
+	go func() {
+		defer close(doneChan)
+
+		if strings.HasPrefix(input, ".") {
+			// Command processing is already protected with timeouts in processCommand
+			dt.processCommand(input)
+		} else {
+			// Regular message to party line
+			timestamp := colorText(time.Now().Format("15:04:05"), 14)
+			formattedMsg := fmt.Sprintf("[%s] %s%s%s %s",
+				timestamp,
+				colorText("<", 13),
+				colorText(dt.ownerNick, 14),
+				colorText(">", 13),
+				input)
+
+			// Check if partyLine is available
+			if dt.partyLine != nil {
+				dt.partyLine.broadcast(formattedMsg, dt.sessionID)
+			} else {
+				util.Warning("DCC: PartyLine is nil, cannot broadcast message")
+			}
+		}
+	}()
+
+	// Wait for processing to complete or timeout
+	select {
+	case <-doneChan:
+		// Processing completed
+	case <-timeoutChan:
+		util.Warning("DCC: Timeout processing user input: %s", input)
 	}
 }
 
@@ -518,22 +646,83 @@ func (pl *PartyLine) RemoveSession(sessionID string) {
 }
 
 func (pl *PartyLine) broadcast(message string, excludeSessionID string) {
+	// Sanitize input
+	message = strings.TrimSpace(message)
+
+	// Acquire lock to safely access sessions
+	pl.mutex.Lock()
+
 	// First, safely get the sender's nick if this is a user message
 	var senderNick string
 	if !strings.HasPrefix(message, "***") && excludeSessionID != "" {
-		if tunnel, exists := pl.sessions[excludeSessionID]; exists {
-			senderNick = tunnel.bot.GetCurrentNick()
+		if tunnel, exists := pl.sessions[excludeSessionID]; exists && tunnel != nil {
+			if tunnel.bot != nil {
+				senderNick = tunnel.bot.GetCurrentNick()
+			}
 		}
 	}
 
-	// Then broadcast to all other sessions
+	// Create a safe copy of sessions to avoid holding the lock while sending
+	sessionsCopy := make(map[string]*DCCTunnel)
 	for id, tunnel := range pl.sessions {
-		if id != excludeSessionID {
-			// Use a goroutine to prevent blocking if one client is slow
-			go func(t *DCCTunnel, msg string) {
-				t.sendToClient(msg)
-			}(tunnel, message)
+		if id != excludeSessionID && id != "" && tunnel != nil {
+			sessionsCopy[id] = tunnel
 		}
+	}
+	pl.mutex.Unlock()
+
+	// Then broadcast to all other sessions
+	var wg sync.WaitGroup
+	for _, tunnel := range sessionsCopy {
+		// Skip nil tunnels
+		if tunnel == nil {
+			continue
+		}
+
+		// Use a goroutine with timeout to prevent blocking if one client is slow
+		wg.Add(1)
+		go func(t *DCCTunnel, msg string) {
+			defer wg.Done()
+
+			// Use a timeout to prevent hanging
+			timeoutChan := time.After(2 * time.Second)
+			doneChan := make(chan struct{})
+
+			go func() {
+				defer close(doneChan)
+				defer func() {
+					if r := recover(); r != nil {
+						util.Error("DCC: Panic in broadcast sendToClient: %v", r)
+					}
+				}()
+
+				t.sendToClient(msg)
+			}()
+
+			// Wait for the message to be sent or timeout
+			select {
+			case <-doneChan:
+				// Message sent successfully
+			case <-timeoutChan:
+				// Message sending timed out
+				util.Warning("DCC: Timeout sending broadcast message to client")
+			}
+		}(tunnel, message)
+	}
+
+	// Wait for all broadcasts to complete with a timeout
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// All broadcasts completed
+	case <-time.After(5 * time.Second):
+		// Timeout occurred
+		util.Warning("DCC: Timeout waiting for all broadcast messages to complete")
 	}
 
 	// Dodajemy do historii tylko wiadomości od użytkowników (nie systemowe)

@@ -75,16 +75,53 @@ func (b *Bot) HandleCommands(e *irc.Event) {
 
 	util.Debug("Command %s recognized for bot %s", cmdName, b.GetCurrentNick())
 
-	switch cmd.Type {
-	case SingleCommand:
-		util.Debug("Executing command %s for bot %s", cmdName, b.GetCurrentNick())
-		cmd.Handler(b, e, args[1:])
-	case MassCommand:
-		if b.GetBotManager().CanExecuteMassCommand(cmdName) {
-			util.Debug("Executing mass command %s for bot %s", cmdName, b.GetCurrentNick())
+	// Execute the command in a separate goroutine with timeout
+	timeoutChan := time.After(10 * time.Second)
+	doneChan := make(chan struct{})
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				util.Error("Panic in command handler for %s: %v", cmdName, r)
+				if isChannelMsg {
+					b.GetBotManager().SendSingleMsg(target, fmt.Sprintf("Error executing command: %v", r))
+				} else {
+					b.SendMessage(sender, fmt.Sprintf("Error executing command: %v", r))
+				}
+			}
+			close(doneChan)
+		}()
+
+		switch cmd.Type {
+		case SingleCommand:
+			util.Debug("Executing command %s for bot %s", cmdName, b.GetCurrentNick())
 			cmd.Handler(b, e, args[1:])
+		case MassCommand:
+			if b.GetBotManager().CanExecuteMassCommand(cmdName) {
+				util.Debug("Executing mass command %s for bot %s", cmdName, b.GetCurrentNick())
+				cmd.Handler(b, e, args[1:])
+			} else {
+				util.Debug("Mass command %s not executed due to cooldown", cmdName)
+				if isChannelMsg {
+					b.GetBotManager().SendSingleMsg(target, fmt.Sprintf("Command %s is on cooldown. Please try again later.", cmdName))
+				} else {
+					b.SendMessage(sender, fmt.Sprintf("Command %s is on cooldown. Please try again later.", cmdName))
+				}
+			}
+		}
+	}()
+
+	// Wait for the command to complete or timeout
+	select {
+	case <-doneChan:
+		// Command completed normally
+	case <-timeoutChan:
+		// Command timed out
+		util.Warning("Command %s timed out", cmdName)
+		if isChannelMsg {
+			b.GetBotManager().SendSingleMsg(target, fmt.Sprintf("Command %s timed out. Please try again later.", cmdName))
 		} else {
-			util.Debug("Mass command %s not executed due to cooldown", cmdName)
+			b.SendMessage(sender, fmt.Sprintf("Command %s timed out. Please try again later.", cmdName))
 		}
 	}
 }
