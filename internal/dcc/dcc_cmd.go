@@ -1,6 +1,7 @@
 package dcc
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -13,11 +14,16 @@ import (
 	"github.com/kofany/gNb/internal/util"
 )
 
-// dccCommandMutex is a global mutex to ensure only one DCC command is processed at a time
-var dccCommandMutex sync.Mutex
+// Note: We previously used a global mutex here, but now we use per-tunnel mutexes
+// to allow commands to be processed independently on different bots
 
 // processCommand przetwarza komendy od użytkownika
 func (dt *DCCTunnel) processCommand(command string) {
+	// Log the command being processed
+	botNick := dt.bot.GetCurrentNick()
+	ownerNick := dt.ownerNick
+	util.Debug("DCC: Processing command from %s on bot %s: %s", ownerNick, botNick, command)
+
 	// Sanitize input
 	command = strings.TrimSpace(command)
 	command = strings.ReplaceAll(command, "\r", "")
@@ -31,6 +37,8 @@ func (dt *DCCTunnel) processCommand(command string) {
 	// Usuń prefiks '.' i przekonwertuj na wielkie litery
 	cmd := strings.ToUpper(strings.TrimPrefix(fields[0], "."))
 	args := fields[1:]
+
+	util.Debug("DCC: Parsed command %s with %d args from %s on bot %s", cmd, len(args), ownerNick, botNick)
 
 	// Create a map of command handlers for better organization and maintainability
 	commandHandlers := map[string]func([]string){
@@ -64,14 +72,22 @@ func (dt *DCCTunnel) processCommand(command string) {
 		return
 	}
 
-	// Use a mutex to ensure only one DCC command is processed at a time
-	// This is important to prevent race conditions and resource contention
-	dccCommandMutex.Lock()
-	defer dccCommandMutex.Unlock()
+	// Use a per-tunnel mutex to ensure only one command is processed at a time per bot
+	// This allows commands on different bots to be processed independently
+	util.Debug("DCC: Acquiring command mutex for %s on bot %s for command %s", dt.ownerNick, dt.bot.GetCurrentNick(), cmd)
+	dt.commandMu.Lock()
+	util.Debug("DCC: Acquired command mutex for %s on bot %s for command %s", dt.ownerNick, dt.bot.GetCurrentNick(), cmd)
+	defer func() {
+		util.Debug("DCC: Releasing command mutex for %s on bot %s for command %s", dt.ownerNick, dt.bot.GetCurrentNick(), cmd)
+		dt.commandMu.Unlock()
+	}()
 
 	// Execute the command with a longer timeout
-	timeoutChan := time.After(30 * time.Second) // Increased timeout
 	doneChan := make(chan struct{})
+
+	// Create a context with timeout for better control
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel() // Ensure resources are freed
 
 	go func() {
 		defer func() {
@@ -87,13 +103,14 @@ func (dt *DCCTunnel) processCommand(command string) {
 	}()
 
 	// Wait for the command to complete or timeout
+	util.Debug("DCC: Waiting for command %s to complete for %s on bot %s", cmd, dt.ownerNick, dt.bot.GetCurrentNick())
 	select {
 	case <-doneChan:
 		// Command completed normally
-		util.Debug("DCC: Command %s completed successfully", cmd)
-	case <-timeoutChan:
+		util.Debug("DCC: Command %s completed successfully for %s on bot %s", cmd, dt.ownerNick, dt.bot.GetCurrentNick())
+	case <-ctx.Done():
 		// Command timed out
-		util.Warning("DCC: Command %s timed out", cmd)
+		util.Warning("DCC: Command %s timed out for %s on bot %s", cmd, dt.ownerNick, dt.bot.GetCurrentNick())
 		dt.sendToClient(fmt.Sprintf("Command %s timed out. Please try again later.", cmd))
 	}
 }
@@ -102,8 +119,11 @@ func (dt *DCCTunnel) processCommand(command string) {
 
 func (dt *DCCTunnel) handleBotsCommand(args []string) {
 	// Use a timeout to prevent hanging
-	timeoutChan := time.After(5 * time.Second)
 	doneChan := make(chan struct{})
+
+	// Create a context with timeout for better control
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel() // Ensure resources are freed
 
 	go func() {
 		defer func() {
@@ -153,10 +173,14 @@ func (dt *DCCTunnel) handleBotsCommand(args []string) {
 			close(done)
 		}()
 
+		// Use a shorter context for the internal operation
+		innerCtx, innerCancel := context.WithTimeout(ctx, 3*time.Second)
+		defer innerCancel()
+
 		select {
 		case <-done:
 			// All checks completed
-		case <-time.After(3 * time.Second):
+		case <-innerCtx.Done():
 			// Timeout occurred, continue with what we have
 			util.Warning("DCC: Timeout while checking bot connections")
 		}
@@ -183,7 +207,7 @@ func (dt *DCCTunnel) handleBotsCommand(args []string) {
 	select {
 	case <-doneChan:
 		// Command completed normally
-	case <-timeoutChan:
+	case <-ctx.Done():
 		// Command timed out
 		dt.sendToClient("Command timed out. Please try again later.")
 	}
@@ -403,8 +427,11 @@ func (dt *DCCTunnel) handleListOwnersCommand(_ []string) {
 
 func (dt *DCCTunnel) handleInfoCommand(_ []string) {
 	// Use a timeout to prevent hanging
-	timeoutChan := time.After(15 * time.Second) // Longer timeout for this command
 	doneChan := make(chan struct{})
+
+	// Create a context with timeout for better control
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel() // Ensure resources are freed
 
 	dt.sendToClient("Gathering system information, please wait...")
 
@@ -429,7 +456,7 @@ func (dt *DCCTunnel) handleInfoCommand(_ []string) {
 	select {
 	case <-doneChan:
 		// Command completed normally
-	case <-timeoutChan:
+	case <-ctx.Done():
 		// Command timed out
 		dt.sendToClient("Command timed out while gathering system information. Some data may be incomplete.")
 	}

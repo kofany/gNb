@@ -20,6 +20,7 @@ type DCCTunnel struct {
 	bot           types.Bot
 	active        bool
 	mu            sync.Mutex
+	commandMu     sync.Mutex // Mutex for command processing per tunnel
 	ignoredEvents map[string]bool
 	onStop        func()
 	formatter     *MessageFormatter
