@@ -28,6 +28,7 @@ type Bot struct {
 	GlobalConfig       *config.GlobalConfig
 	Connection         *irc.Connection
 	CurrentNick        string
+	PreviousNick       string // Store the previous nick for recovery during reconnection
 	Username           string
 	Realname           string
 	isConnected        atomic.Bool
@@ -240,6 +241,15 @@ func (b *Bot) Connect() error {
 func (b *Bot) Quit(message string) {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
+
+	// Store current nick as previous nick for potential recovery
+	if b.Connection != nil && b.Connection.GetNick() != "" {
+		b.PreviousNick = b.Connection.GetNick()
+		util.Debug("Stored previous nick %s for potential recovery", b.PreviousNick)
+	} else if b.CurrentNick != "" {
+		b.PreviousNick = b.CurrentNick
+		util.Debug("Stored previous nick %s for potential recovery", b.PreviousNick)
+	}
 
 	// Stop channel checker if running
 	if b.channelCheckTicker != nil {
@@ -512,6 +522,17 @@ func (b *Bot) addCallbacks() {
 	b.Connection.AddCallback("DISCONNECTED", func(e *irc.Event) {
 		util.Warning("Bot %s disconnected from server %s", b.CurrentNick, b.ServerName)
 
+		// Store current nick for potential recovery
+		b.mutex.Lock()
+		if b.Connection != nil && b.Connection.GetNick() != "" {
+			b.PreviousNick = b.Connection.GetNick()
+			util.Debug("Stored previous nick %s for potential recovery during disconnect", b.PreviousNick)
+		} else if b.CurrentNick != "" {
+			b.PreviousNick = b.CurrentNick
+			util.Debug("Stored previous nick %s for potential recovery during disconnect", b.PreviousNick)
+		}
+		b.mutex.Unlock()
+
 		wasConnected := b.isConnected.Swap(false)
 		b.markAsDisconnected()
 
@@ -693,10 +714,9 @@ func (b *Bot) Reconnect() {
 	if b.IsConnected() {
 		oldNick := b.CurrentNick
 
-		newNick, err := util.GenerateRandomNick(b.GlobalConfig.NickAPI.URL, b.GlobalConfig.NickAPI.MaxWordLength, b.GlobalConfig.NickAPI.Timeout)
-		if err != nil {
-			newNick = util.GenerateFallbackNick()
-		}
+		// Store the current nick as previous nick for potential recovery
+		b.PreviousNick = oldNick
+		util.Debug("Stored previous nick %s for potential recovery", b.PreviousNick)
 
 		b.Quit("Reconnecting")
 
@@ -704,14 +724,32 @@ func (b *Bot) Reconnect() {
 			b.nickManager.ReturnNickToPool(oldNick)
 		}
 
-		b.CurrentNick = newNick
-
 		time.Sleep(5 * time.Second)
+
+		// First try to reconnect with the same nick
+		util.Info("Attempting to reconnect with the same nick: %s", oldNick)
+		b.CurrentNick = oldNick
+		err := b.connectWithNewNick(oldNick)
+		if err == nil {
+			util.Info("Bot successfully reconnected with the same nick: %s", oldNick)
+			return
+		}
+		util.Warning("Failed to reconnect with the same nick %s: %v", oldNick, err)
+
+		// If that fails, try with a new random nick
+		newNick, err := util.GenerateRandomNick(b.GlobalConfig.NickAPI.URL, b.GlobalConfig.NickAPI.MaxWordLength, b.GlobalConfig.NickAPI.Timeout)
+		if err != nil {
+			newNick = util.GenerateFallbackNick()
+		}
+
+		b.CurrentNick = newNick
+		util.Info("Attempting to reconnect with new nick: %s", newNick)
 
 		err = b.connectWithNewNick(newNick)
 		if err != nil {
 			util.Error("Failed to reconnect bot %s (new nick: %s): %v", oldNick, newNick, err)
 
+			// If that also fails, try with a shuffled version of the original nick
 			shuffledNick := shuffleNick(oldNick)
 			util.Info("Attempting to reconnect with shuffled nick: %s", shuffledNick)
 
@@ -768,6 +806,32 @@ func (b *Bot) handleReconnect() {
 	maxRetries := b.GlobalConfig.ReconnectRetries
 	baseRetryInterval := time.Duration(b.GlobalConfig.ReconnectInterval) * time.Second
 
+	// First, try to reconnect with the previous nick if available
+	if b.PreviousNick != "" && b.PreviousNick != b.CurrentNick {
+		util.Info("Attempting to reconnect with previous nick: %s", b.PreviousNick)
+
+		// Save current nick temporarily
+		currentNick := b.CurrentNick
+
+		// Try with previous nick
+		b.CurrentNick = b.PreviousNick
+		err := b.connectWithRetry()
+		if err == nil {
+			util.Info("Successfully reconnected with previous nick: %s", b.CurrentNick)
+
+			// Ensure we rejoin all channels
+			time.Sleep(5 * time.Second) // Give the server a moment
+			b.checkAndRejoinChannels()
+			return
+		}
+
+		util.Warning("Failed to reconnect with previous nick %s: %v", b.PreviousNick, err)
+
+		// Restore current nick for further attempts
+		b.CurrentNick = currentNick
+	}
+
+	// If reconnecting with previous nick failed or wasn't possible, try with current nick or new nicks
 	for attempts := range maxRetries {
 		// Exponential backoff with jitter for reconnection
 		retryInterval := baseRetryInterval * time.Duration(1<<uint(attempts))
@@ -777,6 +841,17 @@ func (b *Bot) handleReconnect() {
 
 		// Cap the retry interval at 5 minutes
 		retryInterval = min(retryInterval, 5*time.Minute)
+
+		// For the first attempt, try with current nick
+		// For subsequent attempts, try with new random nicks
+		if attempts > 0 {
+			newNick, err := util.GenerateRandomNick(b.GlobalConfig.NickAPI.URL, b.GlobalConfig.NickAPI.MaxWordLength, b.GlobalConfig.NickAPI.Timeout)
+			if err != nil {
+				newNick = util.GenerateFallbackNick()
+			}
+			b.CurrentNick = newNick
+			util.Info("Using new random nick for reconnection attempt %d: %s", attempts+1, b.CurrentNick)
+		}
 
 		util.Info("Bot %s is attempting to reconnect (attempt %d/%d, retry interval: %v)",
 			b.CurrentNick, attempts+1, maxRetries, retryInterval)
