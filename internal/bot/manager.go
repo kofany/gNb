@@ -383,21 +383,27 @@ func (bm *BotManager) GetMassCommandCooldown() time.Duration {
 }
 
 func (bm *BotManager) CollectReactions(channel, message string, action func() error) {
+	// Sanitize inputs to prevent issues
+	channel = strings.TrimSpace(channel)
+	message = strings.TrimSpace(message)
+
+	// Skip empty channels or messages
+	if channel == "" || message == "" {
+		util.Warning("CollectReactions called with empty channel or message")
+		return
+	}
+
 	// Generate a unique key for this reaction
 	key := channel + ":" + message + ":" + fmt.Sprintf("%d", time.Now().UnixNano())
 	now := time.Now()
 
-	// Check for duplicates with a short lock
-	bm.reactionMutex.Lock()
-	for existingKey, req := range bm.reactionRequests {
-		// If we find a similar request (same channel and message) that's recent, ignore this one
-		if strings.HasPrefix(existingKey, channel+":"+message) && now.Sub(req.Timestamp) < 5*time.Second {
-			bm.reactionMutex.Unlock()
-			return // Ignore duplicates within 5 seconds
-		}
+	// Use a separate function to check for duplicates to limit lock scope
+	if bm.isDuplicateReaction(channel, message, now) {
+		return // Ignore duplicates within 5 seconds
 	}
 
-	// Register this request immediately to prevent duplicates
+	// Register this request with a short lock
+	bm.reactionMutex.Lock()
 	bm.reactionRequests[key] = types.ReactionRequest{
 		Channel:      channel,
 		Message:      message,
@@ -406,6 +412,9 @@ func (bm *BotManager) CollectReactions(channel, message string, action func() er
 		ErrorHandled: false, // Add a per-request error flag
 	}
 	bm.reactionMutex.Unlock()
+
+	// Log the reaction request
+	util.Debug("CollectReactions: Registered reaction request %s for channel %s", key, channel)
 
 	// Execute action with timeout if provided
 	if action != nil {
@@ -431,27 +440,19 @@ func (bm *BotManager) CollectReactions(channel, message string, action func() er
 		select {
 		case err = <-actionDone:
 			// Action completed
+			util.Debug("CollectReactions: Action completed for %s", key)
 		case <-timeoutChan:
 			// Action timed out
 			err = fmt.Errorf("action timed out")
-			util.Warning("CollectReactions action timed out for channel %s", channel)
+			util.Warning("CollectReactions: Action timed out for channel %s, key %s", channel, key)
 		}
 
 		if err != nil {
-			// Handle error
-			bm.reactionMutex.Lock()
-			req, exists := bm.reactionRequests[key]
-			if exists && !req.ErrorHandled {
-				// Update the error handled flag
-				req.ErrorHandled = true
-				bm.reactionRequests[key] = req
-				bm.reactionMutex.Unlock()
+			// Handle error with a short lock
+			bm.markErrorHandled(key)
 
-				// Send error message
-				bm.SendSingleMsg(channel, fmt.Sprintf("Error: %v", err))
-			} else {
-				bm.reactionMutex.Unlock()
-			}
+			// Send error message
+			bm.SendSingleMsg(channel, fmt.Sprintf("Error: %v", err))
 
 			// Schedule cleanup
 			go bm.cleanupReactionRequest(key)
@@ -468,17 +469,69 @@ func (bm *BotManager) CollectReactions(channel, message string, action func() er
 	go bm.cleanupReactionRequest(key)
 }
 
-// cleanupReactionRequest removes a reaction request after a delay
-func (bm *BotManager) cleanupReactionRequest(key string) {
-	time.Sleep(5 * time.Second)
+// isDuplicateReaction checks if a similar reaction request exists within the last 5 seconds
+func (bm *BotManager) isDuplicateReaction(channel, message string, now time.Time) bool {
 	bm.reactionMutex.Lock()
 	defer bm.reactionMutex.Unlock()
 
-	// Just remove the reaction request - error handling is now per-request
-	delete(bm.reactionRequests, key)
+	for existingKey, req := range bm.reactionRequests {
+		// If we find a similar request (same channel and message) that's recent, ignore this one
+		if strings.HasPrefix(existingKey, channel+":"+message) && now.Sub(req.Timestamp) < 5*time.Second {
+			util.Debug("Duplicate reaction request detected: %s", existingKey)
+			return true
+		}
+	}
+
+	return false
+}
+
+// markErrorHandled marks a reaction request as having its error handled
+func (bm *BotManager) markErrorHandled(key string) {
+	bm.reactionMutex.Lock()
+	defer bm.reactionMutex.Unlock()
+
+	req, exists := bm.reactionRequests[key]
+	if exists && !req.ErrorHandled {
+		// Update the error handled flag
+		req.ErrorHandled = true
+		bm.reactionRequests[key] = req
+		util.Debug("Marked error as handled for reaction request: %s", key)
+	}
+}
+
+// cleanupReactionRequest removes a reaction request after a delay
+func (bm *BotManager) cleanupReactionRequest(key string) {
+	time.Sleep(5 * time.Second)
+
+	// Use a shorter lock scope to avoid potential deadlocks
+	bm.reactionMutex.Lock()
+	// Check if the key exists before deleting
+	_, exists := bm.reactionRequests[key]
+	if exists {
+		// Just remove the reaction request - error handling is now per-request
+		delete(bm.reactionRequests, key)
+		util.Debug("Cleaned up reaction request: %s", key)
+	} else {
+		util.Debug("Reaction request not found for cleanup: %s", key)
+	}
+	bm.reactionMutex.Unlock()
 }
 
 func (bm *BotManager) SendSingleMsg(channel, message string) {
+	// Sanitize inputs
+	channel = strings.TrimSpace(channel)
+	message = strings.TrimSpace(message)
+
+	// Skip empty messages or channels
+	if channel == "" || message == "" {
+		util.Warning("SendSingleMsg: Empty channel or message")
+		return
+	}
+
+	// Find a connected bot with a short lock
+	var bot types.Bot
+	var botFound bool
+
 	bm.mutex.Lock()
 	if len(bm.bots) == 0 {
 		bm.mutex.Unlock()
@@ -486,35 +539,30 @@ func (bm *BotManager) SendSingleMsg(channel, message string) {
 		return
 	}
 
-	// Find a connected bot to send the message
-	bot := bm.bots[bm.commandBotIndex]
-	bm.commandBotIndex = (bm.commandBotIndex + 1) % len(bm.bots)
+	// Try to find a connected bot
+	triedBots := 0
+
+	for triedBots < len(bm.bots) {
+		bot = bm.bots[bm.commandBotIndex]
+		bm.commandBotIndex = (bm.commandBotIndex + 1) % len(bm.bots)
+
+		if bot != nil && bot.IsConnected() {
+			botFound = true
+			break
+		}
+
+		triedBots++
+	}
 	bm.mutex.Unlock()
 
-	// Try to find a connected bot if the current one is not connected
-	if !bot.IsConnected() {
-		util.Debug("SendSingleMsg: Bot %s is not connected, trying to find another bot", bot.GetCurrentNick())
-
-		bm.mutex.Lock()
-		triedBots := 1
-		for triedBots < len(bm.bots) {
-			bot = bm.bots[bm.commandBotIndex]
-			bm.commandBotIndex = (bm.commandBotIndex + 1) % len(bm.bots)
-
-			if bot.IsConnected() {
-				util.Debug("SendSingleMsg: Found connected bot %s", bot.GetCurrentNick())
-				bm.mutex.Unlock()
-				break
-			}
-
-			triedBots++
-			if triedBots >= len(bm.bots) {
-				util.Warning("SendSingleMsg: No connected bots available to send message to %s", channel)
-				bm.mutex.Unlock()
-				return
-			}
-		}
+	if !botFound {
+		util.Warning("SendSingleMsg: No connected bots available to send message to %s", channel)
+		return
 	}
+
+	// Log the message being sent
+	util.Debug("SendSingleMsg: Sending message to %s via bot %s: %s",
+		channel, bot.GetCurrentNick(), message)
 
 	// Send the message with a timeout
 	timeoutChan := time.After(5 * time.Second)
@@ -535,9 +583,12 @@ func (bm *BotManager) SendSingleMsg(channel, message string) {
 	select {
 	case <-doneChan:
 		// Message sent successfully
+		util.Debug("SendSingleMsg: Message sent successfully to %s via bot %s",
+			channel, bot.GetCurrentNick())
 	case <-timeoutChan:
 		// Message sending timed out
-		util.Warning("SendSingleMsg: Timeout sending message to %s via bot %s", channel, bot.GetCurrentNick())
+		util.Warning("SendSingleMsg: Timeout sending message to %s via bot %s",
+			channel, bot.GetCurrentNick())
 	}
 }
 

@@ -127,11 +127,58 @@ func (b *Bot) HandleCommands(e *irc.Event) {
 }
 
 func (b *Bot) sendReply(isChannelMsg bool, target, sender, message string) {
-	if isChannelMsg {
-		b.GetBotManager().CollectReactions(target, message, nil)
-	} else {
-		util.Debug("SendReply reciver: sender: %s, message: %s", sender, message)
-		b.SendMessage(sender, message)
+	// Sanitize inputs
+	target = strings.TrimSpace(target)
+	sender = strings.TrimSpace(sender)
+	message = strings.TrimSpace(message)
+
+	// Skip empty messages
+	if message == "" {
+		util.Warning("sendReply: Empty message")
+		return
+	}
+
+	// Skip if target or sender is empty
+	if (isChannelMsg && target == "") || (!isChannelMsg && sender == "") {
+		util.Warning("sendReply: Empty target or sender")
+		return
+	}
+
+	// Log the reply
+	util.Debug("sendReply: isChannelMsg=%v, target=%s, sender=%s, message=%s",
+		isChannelMsg, target, sender, message)
+
+	// Send the reply with timeout protection
+	timeoutChan := time.After(5 * time.Second)
+	doneChan := make(chan struct{})
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				util.Error("Panic in sendReply: %v", r)
+			}
+			close(doneChan)
+		}()
+
+		if isChannelMsg {
+			b.GetBotManager().CollectReactions(target, message, nil)
+		} else {
+			util.Debug("SendReply receiver: sender: %s, message: %s", sender, message)
+			b.SendMessage(sender, message)
+		}
+	}()
+
+	// Wait for the reply to be sent or timeout
+	select {
+	case <-doneChan:
+		// Reply sent successfully
+	case <-timeoutChan:
+		// Reply sending timed out
+		if isChannelMsg {
+			util.Warning("sendReply: Timeout sending reply to channel %s", target)
+		} else {
+			util.Warning("sendReply: Timeout sending reply to user %s", sender)
+		}
 	}
 }
 
