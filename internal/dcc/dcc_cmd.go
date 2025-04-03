@@ -1,13 +1,8 @@
 package dcc
 
 import (
-	"context"
-	"crypto/tls"
 	"fmt"
-	"io"
-	"math/rand"
 	"net"
-	"net/http"
 	"os"
 	"os/user"
 	"strings"
@@ -464,8 +459,8 @@ func (dt *DCCTunnel) generateSystemInfo() string {
 		}
 	}
 
-	externalIPv4 := dt.getExternalIP("tcp4")
-	externalIPv6 := dt.getExternalIP("tcp6")
+	// Get external IPs from network interfaces
+	externalIPs := dt.getNetworkInterfaceIPs()
 
 	return fmt.Sprintf(`
 Bot Information:
@@ -482,8 +477,7 @@ Server IPv6: %s
 
 External IP Information:
 ----------------------
-External IPv4: %s
-External IPv6: %s
+%s
 
 Process Information:
 ------------------
@@ -495,112 +489,157 @@ Parent Process ID: %d`,
 		serverHost,
 		ipv4,
 		ipv6,
-		externalIPv4,
-		externalIPv6,
+		externalIPs,
 		os.Getpid(),
 		os.Getppid())
 }
 
-// getExternalIPSemaphore is a semaphore to limit the number of concurrent getExternalIP operations
-var getExternalIPSemaphore = make(chan struct{}, 2) // Allow up to 2 concurrent operations
+// getNetworkInterfaceIPs returns a formatted string with IP addresses from network interfaces
+func (dt *DCCTunnel) getNetworkInterfaceIPs() string {
+	var publicIPv4s []string
+	var publicIPv6s []string
+	var privateIPv4s []string
+	var privateIPv6s []string
+	var linkLocalIPv6s []string
 
-func (dt *DCCTunnel) getExternalIP(network string) string {
-	// Try to acquire the semaphore with a very short timeout
-	select {
-	case getExternalIPSemaphore <- struct{}{}:
-		// Semaphore acquired, proceed with the request
-		defer func() { <-getExternalIPSemaphore }() // Release the semaphore when done
-	case <-time.After(100 * time.Millisecond):
-		// Couldn't acquire the semaphore quickly, return unavailable
-		return "unavailable (busy)"
+	// Get all network interfaces
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return "Failed to get network interfaces: " + err.Error()
 	}
 
-	// Create a channel to receive the result
-	resultChan := make(chan string, 1)
-
-	// Execute the HTTP request in a separate goroutine
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				util.Error("Panic in getExternalIP: %v", r)
-				resultChan <- "unavailable (error)"
-			}
-		}()
-
-		// Set up a client with very short timeouts
-		client := &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-				DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {
-					d := net.Dialer{Timeout: 1 * time.Second}
-					return d.DialContext(ctx, network, addr)
-				},
-			},
-			Timeout: 2 * time.Second, // Very short timeout
+	// Loop through all interfaces
+	for _, iface := range ifaces {
+		// Skip loopback, down, and unspecified interfaces
+		if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
+			continue
 		}
 
-		// Try to get the IP
-		resp, err := client.Get("https://ip.shr.al")
+		// Get addresses for this interface
+		addrs, err := iface.Addrs()
 		if err != nil {
-			resultChan <- "unavailable"
-			return
-		}
-		defer resp.Body.Close()
-
-		// Read with a timeout
-		bodyBytes := make([]byte, 64) // IP addresses are short
-		n, err := resp.Body.Read(bodyBytes)
-		if err != nil && err != io.EOF {
-			resultChan <- "unavailable"
-			return
+			continue
 		}
 
-		// Return the result
-		resultChan <- strings.TrimSpace(string(bodyBytes[:n]))
-	}()
+		// Process each address
+		for _, addr := range addrs {
+			var ip net.IP
 
-	// Wait for the result with a very short timeout
-	select {
-	case result := <-resultChan:
-		return result
-	case <-time.After(2 * time.Second): // Very short overall timeout
-		return "unavailable (timeout)"
-	}
-}
+			// Extract the IP address
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			default:
+				continue
+			}
 
-// Pomocnicza funkcja do generowania losowych nicków
-func (dt *DCCTunnel) generateRandomNick() string {
-	rand.Seed(time.Now().UnixNano())
+			// Skip loopback IPs
+			if ip.IsLoopback() {
+				continue
+			}
 
-	// Generowanie głównej części nicka (4-7 znaków)
-	mainLength := rand.Intn(4) + 4
-	mainPart := make([]byte, mainLength)
-
-	for i := range mainPart {
-		if rand.Intn(2) == 0 {
-			mainPart[i] = byte('A' + rand.Intn(26))
-		} else {
-			mainPart[i] = byte('a' + rand.Intn(26))
-		}
-	}
-
-	// Generowanie końcówki (1-4 znaki)
-	suffixLength := rand.Intn(4) + 1
-	suffixPart := make([]byte, suffixLength)
-
-	for i := range suffixPart {
-		choice := rand.Intn(3)
-		if choice == 0 {
-			suffixPart[i] = byte('A' + rand.Intn(26))
-		} else if choice == 1 {
-			suffixPart[i] = byte('a' + rand.Intn(26))
-		} else {
-			suffixPart[i] = byte('0' + rand.Intn(10))
+			// Categorize IPs
+			if ipv4 := ip.To4(); ipv4 != nil {
+				// IPv4 address
+				if util.IsPrivateIP(ip.String()) {
+					privateIPv4s = append(privateIPv4s, ipv4.String())
+				} else {
+					publicIPv4s = append(publicIPv4s, ipv4.String())
+				}
+			} else {
+				// IPv6 address
+				if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+					linkLocalIPv6s = append(linkLocalIPv6s, ip.String())
+				} else if util.IsPrivateIP(ip.String()) {
+					privateIPv6s = append(privateIPv6s, ip.String())
+				} else {
+					publicIPv6s = append(publicIPv6s, ip.String())
+				}
+			}
 		}
 	}
 
-	// Łączenie części nicka
-	return fmt.Sprintf("%s%s", string(mainPart), string(suffixPart))
+	// Format the results
+	var result strings.Builder
+
+	// Add IPv4 addresses section
+	result.WriteString("IPv4 Addresses:\n")
+
+	// Add public IPv4 addresses
+	if len(publicIPv4s) > 0 {
+		result.WriteString("  Public:\n")
+		for i, ip := range publicIPv4s {
+			result.WriteString(fmt.Sprintf("    %d. %s\n", i+1, ip))
+		}
+	} else {
+		result.WriteString("  Public: None found\n")
+	}
+
+	// Add private IPv4 addresses
+	if len(privateIPv4s) > 0 {
+		result.WriteString("  Private:\n")
+		for i, ip := range privateIPv4s {
+			result.WriteString(fmt.Sprintf("    %d. %s\n", i+1, ip))
+		}
+	} else {
+		result.WriteString("  Private: None found\n")
+	}
+
+	// Add IPv6 addresses section
+	result.WriteString("\nIPv6 Addresses:\n")
+
+	// Add public IPv6 addresses
+	if len(publicIPv6s) > 0 {
+		result.WriteString("  Public:\n")
+		for i, ip := range publicIPv6s {
+			result.WriteString(fmt.Sprintf("    %d. %s\n", i+1, ip))
+		}
+	} else {
+		result.WriteString("  Public: None found\n")
+	}
+
+	// Add private IPv6 addresses
+	if len(privateIPv6s) > 0 {
+		result.WriteString("  Private:\n")
+		for i, ip := range privateIPv6s {
+			result.WriteString(fmt.Sprintf("    %d. %s\n", i+1, ip))
+		}
+	} else {
+		result.WriteString("  Private: None found\n")
+	}
+
+	// Add link-local IPv6 addresses (optional, can be commented out if not needed)
+	if len(linkLocalIPv6s) > 0 {
+		result.WriteString("  Link-local:\n")
+		for i, ip := range linkLocalIPv6s {
+			result.WriteString(fmt.Sprintf("    %d. %s\n", i+1, ip))
+		}
+	}
+
+	// Add network interfaces section
+	result.WriteString("\nNetwork Interfaces:\n")
+	var interfaceCount int
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+
+		addrs, err := iface.Addrs()
+		if err != nil || len(addrs) == 0 {
+			continue
+		}
+
+		interfaceCount++
+		result.WriteString(fmt.Sprintf("  %d. %s (%s)\n", interfaceCount, iface.Name, iface.Flags.String()))
+	}
+
+	if interfaceCount == 0 {
+		result.WriteString("  No active network interfaces found\n")
+	}
+
+	return result.String()
 }
 
 func colorCommand(command, description string) string {
