@@ -397,19 +397,24 @@ func (bm *BotManager) CollectReactions(channel, message string, action func() er
 	key := channel + ":" + message + ":" + fmt.Sprintf("%d", time.Now().UnixNano())
 	now := time.Now()
 
-	// Use a separate function to check for duplicates to limit lock scope
-	if bm.isDuplicateReaction(channel, message, now) {
-		return // Ignore duplicates within 5 seconds
+	// Check for duplicates (simplified to avoid potential deadlocks)
+	bm.reactionMutex.Lock()
+	for existingKey, req := range bm.reactionRequests {
+		// If we find a similar request (same channel and message) that's recent, ignore this one
+		if strings.HasPrefix(existingKey, channel+":"+message) && now.Sub(req.Timestamp) < 5*time.Second {
+			util.Debug("Duplicate reaction request detected: %s", existingKey)
+			bm.reactionMutex.Unlock()
+			return // Ignore duplicates within 5 seconds
+		}
 	}
 
-	// Register this request with a short lock
-	bm.reactionMutex.Lock()
+	// Register this request
 	bm.reactionRequests[key] = types.ReactionRequest{
 		Channel:      channel,
 		Message:      message,
 		Timestamp:    now,
 		Action:       action,
-		ErrorHandled: false, // Add a per-request error flag
+		ErrorHandled: false,
 	}
 	bm.reactionMutex.Unlock()
 
@@ -448,8 +453,13 @@ func (bm *BotManager) CollectReactions(channel, message string, action func() er
 		}
 
 		if err != nil {
-			// Handle error with a short lock
-			bm.markErrorHandled(key)
+			// Handle error (simplified to avoid potential deadlocks)
+			bm.reactionMutex.Lock()
+			if req, exists := bm.reactionRequests[key]; exists && !req.ErrorHandled {
+				req.ErrorHandled = true
+				bm.reactionRequests[key] = req
+			}
+			bm.reactionMutex.Unlock()
 
 			// Send error message
 			bm.SendSingleMsg(channel, fmt.Sprintf("Error: %v", err))
@@ -462,41 +472,17 @@ func (bm *BotManager) CollectReactions(channel, message string, action func() er
 
 	// Send success message if provided
 	if message != "" {
-		bm.SendSingleMsg(channel, message)
+		// Send the message directly to avoid potential issues
+		for _, bot := range bm.GetBots() {
+			if bot.IsConnected() {
+				bot.SendMessage(channel, message)
+				break // Only need one bot to send the message
+			}
+		}
 	}
 
 	// Schedule cleanup
 	go bm.cleanupReactionRequest(key)
-}
-
-// isDuplicateReaction checks if a similar reaction request exists within the last 5 seconds
-func (bm *BotManager) isDuplicateReaction(channel, message string, now time.Time) bool {
-	bm.reactionMutex.Lock()
-	defer bm.reactionMutex.Unlock()
-
-	for existingKey, req := range bm.reactionRequests {
-		// If we find a similar request (same channel and message) that's recent, ignore this one
-		if strings.HasPrefix(existingKey, channel+":"+message) && now.Sub(req.Timestamp) < 5*time.Second {
-			util.Debug("Duplicate reaction request detected: %s", existingKey)
-			return true
-		}
-	}
-
-	return false
-}
-
-// markErrorHandled marks a reaction request as having its error handled
-func (bm *BotManager) markErrorHandled(key string) {
-	bm.reactionMutex.Lock()
-	defer bm.reactionMutex.Unlock()
-
-	req, exists := bm.reactionRequests[key]
-	if exists && !req.ErrorHandled {
-		// Update the error handled flag
-		req.ErrorHandled = true
-		bm.reactionRequests[key] = req
-		util.Debug("Marked error as handled for reaction request: %s", key)
-	}
 }
 
 // cleanupReactionRequest removes a reaction request after a delay

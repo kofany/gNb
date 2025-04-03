@@ -148,38 +148,14 @@ func (b *Bot) sendReply(isChannelMsg bool, target, sender, message string) {
 	util.Debug("sendReply: isChannelMsg=%v, target=%s, sender=%s, message=%s",
 		isChannelMsg, target, sender, message)
 
-	// Send the reply with timeout protection
-	timeoutChan := time.After(5 * time.Second)
-	doneChan := make(chan struct{})
-
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				util.Error("Panic in sendReply: %v", r)
-			}
-			close(doneChan)
-		}()
-
-		if isChannelMsg {
-			b.GetBotManager().CollectReactions(target, message, nil)
-		} else {
-			util.Debug("SendReply receiver: sender: %s, message: %s", sender, message)
-			b.SendMessage(sender, message)
-		}
-	}()
-
-	// Wait for the reply to be sent or timeout
-	select {
-	case <-doneChan:
-		// Reply sent successfully
-	case <-timeoutChan:
-		// Reply sending timed out
-		if isChannelMsg {
-			util.Warning("sendReply: Timeout sending reply to channel %s", target)
-		} else {
-			util.Warning("sendReply: Timeout sending reply to user %s", sender)
-		}
+	// Determine the destination for the message
+	destination := sender
+	if isChannelMsg {
+		destination = target
 	}
+
+	// Send the message directly without using CollectReactions
+	b.SendMessage(destination, message)
 }
 
 func startsWithAny(s string, prefixes []string) bool {

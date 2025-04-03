@@ -397,9 +397,36 @@ func (dt *DCCTunnel) handleListOwnersCommand(_ []string) {
 }
 
 func (dt *DCCTunnel) handleInfoCommand(_ []string) {
-	if bm := dt.bot.GetBotManager(); bm != nil {
-		info := dt.generateSystemInfo()
-		dt.sendToClient(info)
+	// Use a timeout to prevent hanging
+	timeoutChan := time.After(15 * time.Second) // Longer timeout for this command
+	doneChan := make(chan struct{})
+
+	dt.sendToClient("Gathering system information, please wait...")
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				util.Error("DCC: Panic in handleInfoCommand: %v", r)
+				dt.sendToClient(fmt.Sprintf("Error gathering system information: %v", r))
+			}
+			close(doneChan)
+		}()
+
+		if bm := dt.bot.GetBotManager(); bm != nil {
+			info := dt.generateSystemInfo()
+			dt.sendToClient(info)
+		} else {
+			dt.sendToClient("BotManager is not available.")
+		}
+	}()
+
+	// Wait for the command to complete or timeout
+	select {
+	case <-doneChan:
+		// Command completed normally
+	case <-timeoutChan:
+		// Command timed out
+		dt.sendToClient("Command timed out while gathering system information. Some data may be incomplete.")
 	}
 }
 
@@ -465,29 +492,50 @@ Parent Process ID: %d`,
 }
 
 func (dt *DCCTunnel) getExternalIP(network string) string {
-	client := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {
-				d := net.Dialer{Timeout: 5 * time.Second}
-				return d.DialContext(ctx, network, addr)
+	// Create a channel to receive the result
+	resultChan := make(chan string, 1)
+
+	// Execute the HTTP request in a separate goroutine
+	go func() {
+		// Set up a client with short timeouts
+		client := &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+				DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {
+					d := net.Dialer{Timeout: 2 * time.Second}
+					return d.DialContext(ctx, network, addr)
+				},
 			},
-		},
-		Timeout: 5 * time.Second,
-	}
+			Timeout: 3 * time.Second, // Shorter timeout
+		}
 
-	resp, err := client.Get("https://ip.shr.al")
-	if err != nil {
-		return "unavailable"
-	}
-	defer resp.Body.Close()
+		// Try to get the IP
+		resp, err := client.Get("https://ip.shr.al")
+		if err != nil {
+			resultChan <- "unavailable"
+			return
+		}
+		defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "unavailable"
-	}
+		// Read with a timeout
+		bodyBytes := make([]byte, 64) // IP addresses are short
+		n, err := resp.Body.Read(bodyBytes)
+		if err != nil && err != io.EOF {
+			resultChan <- "unavailable"
+			return
+		}
 
-	return strings.TrimSpace(string(body))
+		// Return the result
+		resultChan <- strings.TrimSpace(string(bodyBytes[:n]))
+	}()
+
+	// Wait for the result with a timeout
+	select {
+	case result := <-resultChan:
+		return result
+	case <-time.After(4 * time.Second): // Overall timeout
+		return "unavailable (timeout)"
+	}
 }
 
 // Pomocnicza funkcja do generowania losowych nicków

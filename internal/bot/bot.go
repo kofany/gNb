@@ -874,36 +874,51 @@ func (b *Bot) handleReconnect() {
 }
 
 func (b *Bot) SendMessage(target, message string) {
+	// Sanitize inputs
+	target = strings.TrimSpace(target)
+	message = strings.TrimSpace(message)
+
+	// Skip empty messages or targets
+	if target == "" || message == "" {
+		util.Warning("SendMessage: Empty target or message")
+		return
+	}
+
+	// Check if the bot is connected
 	if !b.IsConnected() {
 		util.Debug("Bot %s is not connected; cannot send message to %s", b.CurrentNick, target)
 		return
 	}
 
+	// Log the message being sent
 	util.Debug("Bot %s is sending message to %s: %s", b.CurrentNick, target, message)
 
-	// Send message in a separate goroutine with timeout
-	timeoutChan := time.After(3 * time.Second)
-	doneChan := make(chan struct{})
-
-	go func() {
+	// Send message directly without waiting
+	// This is important to avoid blocking the main thread
+	go func(t, m string) {
 		defer func() {
 			if r := recover(); r != nil {
 				util.Error("Panic in SendMessage: %v", r)
 			}
-			close(doneChan)
 		}()
 
-		b.Connection.Privmsg(target, message)
-	}()
+		// Set a timeout for the send operation
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			b.Connection.Privmsg(t, m)
+		}()
 
-	// Wait for the message to be sent or timeout
-	select {
-	case <-doneChan:
-		// Message sent successfully
-	case <-timeoutChan:
-		// Message sending timed out
-		util.Warning("SendMessage: Timeout sending message to %s via bot %s", target, b.CurrentNick)
-	}
+		// Wait for the send to complete or timeout
+		select {
+		case <-done:
+			// Message sent successfully
+			util.Debug("SendMessage: Message sent successfully to %s via bot %s", t, b.CurrentNick)
+		case <-time.After(2 * time.Second):
+			// Message sending timed out
+			util.Warning("SendMessage: Timeout sending message to %s via bot %s", t, b.CurrentNick)
+		}
+	}(target, message)
 }
 
 func (b *Bot) AttemptNickChange(nick string) {
