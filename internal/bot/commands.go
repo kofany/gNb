@@ -185,8 +185,16 @@ func handleSayCommand(b *Bot, e *irc.Event, args []string) {
 		targetChannel := args[0]
 		msg := strings.Join(args[1:], " ")
 
-		// Send the message directly without using CollectReactions
-		b.SendMessage(targetChannel, msg)
+		// For channel messages, use the coordination mechanism
+		if strings.HasPrefix(targetChannel, "#") {
+			// Check if this bot should respond
+			if b.GetBotManager().CoordinateChannelCommand(b, sender, targetChannel, "say", args) {
+				b.SendMessage(targetChannel, msg)
+			}
+		} else {
+			// For private messages, always respond
+			b.SendMessage(targetChannel, msg)
+		}
 	} else {
 		// Determine the destination for the message
 		destination := sender
@@ -206,10 +214,13 @@ func handleJoinCommand(b *Bot, e *irc.Event, args []string) {
 	if len(args) >= 1 {
 		channel := args[0]
 		if isChannelMsg {
-			// Send a message to the channel first
-			b.SendMessage(target, fmt.Sprintf("All bots are joining channel %s", channel))
+			// For channel messages, use the coordination mechanism
+			if b.GetBotManager().CoordinateChannelCommand(b, sender, target, "join", args) {
+				// Send a message to the channel first
+				b.SendMessage(target, fmt.Sprintf("All bots are joining channel %s", channel))
+			}
 
-			// Then make all bots join the channel
+			// All bots should join the channel regardless of who responds
 			for _, bot := range b.GetBotManager().GetBots() {
 				bot.JoinChannel(channel)
 			}
@@ -221,7 +232,13 @@ func handleJoinCommand(b *Bot, e *irc.Event, args []string) {
 		// Determine the destination for the message
 		destination := sender
 		if isChannelMsg {
-			destination = target
+			// For channel messages, use the coordination mechanism
+			if b.GetBotManager().CoordinateChannelCommand(b, sender, target, "join", args) {
+				destination = target
+			} else {
+				// If this bot shouldn't respond, return
+				return
+			}
 		}
 
 		b.SendMessage(destination, "Usage: join <channel>")
@@ -236,10 +253,13 @@ func handlePartCommand(b *Bot, e *irc.Event, args []string) {
 	if len(args) >= 1 {
 		channel := args[0]
 		if isChannelMsg {
-			// Send a message to the channel first
-			b.SendMessage(target, fmt.Sprintf("All bots are leaving channel %s", channel))
+			// For channel messages, use the coordination mechanism
+			if b.GetBotManager().CoordinateChannelCommand(b, sender, target, "part", args) {
+				// Send a message to the channel first
+				b.SendMessage(target, fmt.Sprintf("All bots are leaving channel %s", channel))
+			}
 
-			// Then make all bots leave the channel
+			// All bots should leave the channel regardless of who responds
 			for _, bot := range b.GetBotManager().GetBots() {
 				bot.PartChannel(channel)
 			}
@@ -251,7 +271,13 @@ func handlePartCommand(b *Bot, e *irc.Event, args []string) {
 		// Determine the destination for the message
 		destination := sender
 		if isChannelMsg {
-			destination = target
+			// For channel messages, use the coordination mechanism
+			if b.GetBotManager().CoordinateChannelCommand(b, sender, target, "part", args) {
+				destination = target
+			} else {
+				// If this bot shouldn't respond, return
+				return
+			}
 		}
 
 		b.SendMessage(destination, "Usage: part <channel>")
@@ -264,10 +290,13 @@ func handleReconnectCommand(b *Bot, e *irc.Event, args []string) {
 	isChannelMsg := strings.HasPrefix(target, "#")
 
 	if isChannelMsg {
-		// Send a message to the channel first
-		b.SendMessage(target, "All bots are reconnecting with new nicks...")
+		// For channel messages, use the coordination mechanism
+		if b.GetBotManager().CoordinateChannelCommand(b, sender, target, "reconnect", args) {
+			// Send a message to the channel first
+			b.SendMessage(target, "All bots are reconnecting with new nicks...")
+		}
 
-		// Then make all bots reconnect
+		// All bots should reconnect regardless of who responds
 		for _, bot := range b.GetBotManager().GetBots() {
 			go bot.Reconnect()
 		}
@@ -291,7 +320,13 @@ func handleAddNickCommand(b *Bot, e *irc.Event, args []string) {
 		// Determine the destination for the message
 		destination := sender
 		if isChannelMsg {
-			destination = target
+			// For channel messages, use the coordination mechanism
+			if b.GetBotManager().CoordinateChannelCommand(b, sender, target, "addnick", args) {
+				destination = target
+			} else {
+				// If this bot shouldn't respond, return
+				return
+			}
 		}
 
 		// Send a response message
@@ -304,7 +339,13 @@ func handleAddNickCommand(b *Bot, e *irc.Event, args []string) {
 		// Determine the destination for the message
 		destination := sender
 		if isChannelMsg {
-			destination = target
+			// For channel messages, use the coordination mechanism
+			if b.GetBotManager().CoordinateChannelCommand(b, sender, target, "addnick", args) {
+				destination = target
+			} else {
+				// If this bot shouldn't respond, return
+				return
+			}
 		}
 
 		b.SendMessage(destination, "Usage: addnick <nick>")
@@ -325,7 +366,13 @@ func handleDelNickCommand(b *Bot, e *irc.Event, args []string) {
 		// Determine the destination for the message
 		destination := sender
 		if isChannelMsg {
-			destination = target
+			// For channel messages, use the coordination mechanism
+			if b.GetBotManager().CoordinateChannelCommand(b, sender, target, "delnick", args) {
+				destination = target
+			} else {
+				// If this bot shouldn't respond, return
+				return
+			}
 		}
 
 		// Send a response message
@@ -338,7 +385,13 @@ func handleDelNickCommand(b *Bot, e *irc.Event, args []string) {
 		// Determine the destination for the message
 		destination := sender
 		if isChannelMsg {
-			destination = target
+			// For channel messages, use the coordination mechanism
+			if b.GetBotManager().CoordinateChannelCommand(b, sender, target, "delnick", args) {
+				destination = target
+			} else {
+				// If this bot shouldn't respond, return
+				return
+			}
 		}
 
 		b.SendMessage(destination, "Usage: delnick <nick>")
@@ -354,10 +407,14 @@ func handleListNicksCommand(b *Bot, e *irc.Event, args []string) {
 	nicks := b.GetNickManager().GetNicks()
 	message := fmt.Sprintf("Current nicks: %s", strings.Join(nicks, ", "))
 
-	// Send the reply directly without using CollectReactions
+	// For channel messages, use the coordination mechanism
 	if isChannelMsg {
-		b.SendMessage(target, message)
+		// Check if this bot should respond
+		if b.GetBotManager().CoordinateChannelCommand(b, sender, target, "listnicks", args) {
+			b.SendMessage(target, message)
+		}
 	} else {
+		// For private messages, always respond
 		b.SendMessage(sender, message)
 	}
 }
@@ -376,7 +433,13 @@ func handleAddOwnerCommand(b *Bot, e *irc.Event, args []string) {
 		// Determine the destination for the message
 		destination := sender
 		if isChannelMsg {
-			destination = target
+			// For channel messages, use the coordination mechanism
+			if b.GetBotManager().CoordinateChannelCommand(b, sender, target, "addowner", args) {
+				destination = target
+			} else {
+				// If this bot shouldn't respond, return
+				return
+			}
 		}
 
 		// Send a response message
@@ -389,7 +452,13 @@ func handleAddOwnerCommand(b *Bot, e *irc.Event, args []string) {
 		// Determine the destination for the message
 		destination := sender
 		if isChannelMsg {
-			destination = target
+			// For channel messages, use the coordination mechanism
+			if b.GetBotManager().CoordinateChannelCommand(b, sender, target, "addowner", args) {
+				destination = target
+			} else {
+				// If this bot shouldn't respond, return
+				return
+			}
 		}
 
 		b.SendMessage(destination, "Usage: addowner <mask>")
@@ -410,7 +479,13 @@ func handleDelOwnerCommand(b *Bot, e *irc.Event, args []string) {
 		// Determine the destination for the message
 		destination := sender
 		if isChannelMsg {
-			destination = target
+			// For channel messages, use the coordination mechanism
+			if b.GetBotManager().CoordinateChannelCommand(b, sender, target, "delowner", args) {
+				destination = target
+			} else {
+				// If this bot shouldn't respond, return
+				return
+			}
 		}
 
 		// Send a response message
@@ -423,7 +498,13 @@ func handleDelOwnerCommand(b *Bot, e *irc.Event, args []string) {
 		// Determine the destination for the message
 		destination := sender
 		if isChannelMsg {
-			destination = target
+			// For channel messages, use the coordination mechanism
+			if b.GetBotManager().CoordinateChannelCommand(b, sender, target, "delowner", args) {
+				destination = target
+			} else {
+				// If this bot shouldn't respond, return
+				return
+			}
 		}
 
 		b.SendMessage(destination, "Usage: delowner <mask>")
@@ -439,10 +520,14 @@ func handleListOwnersCommand(b *Bot, e *irc.Event, args []string) {
 	owners := b.GetBotManager().GetOwners()
 	message := fmt.Sprintf("Current owners: %s", strings.Join(owners, ", "))
 
-	// Send the reply directly without using CollectReactions
+	// For channel messages, use the coordination mechanism
 	if isChannelMsg {
-		b.SendMessage(target, message)
+		// Check if this bot should respond
+		if b.GetBotManager().CoordinateChannelCommand(b, sender, target, "listowners", args) {
+			b.SendMessage(target, message)
+		}
 	} else {
+		// For private messages, always respond
 		b.SendMessage(sender, message)
 	}
 }

@@ -61,6 +61,7 @@ type BotManager interface {
 	GetMassCommandCooldown() time.Duration
 	CollectReactions(channel, message string, action func() error)
 	SendSingleMsg(channel, message string)
+	CoordinateChannelCommand(bot Bot, sender, channel, command string, args []string) bool
 }
 
 type ReactionRequest struct {

@@ -19,6 +19,16 @@ import (
 // Ensure BotManager implements types.BotManager
 var _ types.BotManager = (*BotManager)(nil)
 
+// ChannelCommand represents a command issued on a channel
+type ChannelCommand struct {
+	Sender    string    // The nick of the sender
+	Channel   string    // The channel where the command was issued
+	Command   string    // The command name
+	Args      []string  // The command arguments
+	Timestamp time.Time // When the command was issued
+	Handled   bool      // Whether the command has been handled
+}
+
 // BotManager manages multiple IRC bots
 type BotManager struct {
 	bots                []types.Bot
@@ -38,6 +48,10 @@ type BotManager struct {
 	cancel              context.CancelFunc
 	totalCreatedBots    int
 	startTime           time.Time
+
+	// New fields for command coordination
+	channelCommands map[string]*ChannelCommand // Map of command IDs to commands
+	commandMutex    sync.Mutex                 // Mutex for channelCommands
 }
 
 // NewBotManager creates a new BotManager instance
@@ -74,6 +88,7 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 		ctx:                 ctx,
 		cancel:              cancel,
 		startTime:           time.Now(),
+		channelCommands:     make(map[string]*ChannelCommand),
 	}
 
 	// Creating bots
@@ -580,4 +595,81 @@ func (bm *BotManager) SendSingleMsg(channel, message string) {
 
 func (bm *BotManager) GetTotalCreatedBots() int {
 	return bm.totalCreatedBots
+}
+
+// CoordinateChannelCommand coordinates commands issued on a channel to prevent flooding
+// Returns true if this bot should respond to the command, false otherwise
+func (bm *BotManager) CoordinateChannelCommand(bot types.Bot, sender, channel, command string, args []string) bool {
+	// Generate a unique command ID based on sender, channel, command, and args
+	commandStr := command
+	if len(args) > 0 {
+		commandStr += " " + strings.Join(args, " ")
+	}
+	commandID := fmt.Sprintf("%s:%s:%s", sender, channel, commandStr)
+
+	// Get the current time
+	now := time.Now()
+
+	// Lock the command mutex
+	bm.commandMutex.Lock()
+	defer bm.commandMutex.Unlock()
+
+	// Check if we've seen this command before
+	cmd, exists := bm.channelCommands[commandID]
+	if exists {
+		// If the command is recent (within 2 seconds) and has been handled, don't respond
+		if now.Sub(cmd.Timestamp) < 2*time.Second && cmd.Handled {
+			return false
+		}
+
+		// If the command is older than 2 seconds, treat it as a new command
+		if now.Sub(cmd.Timestamp) >= 2*time.Second {
+			// Update the command with the new timestamp and mark it as handled
+			cmd.Timestamp = now
+			cmd.Handled = true
+			bm.channelCommands[commandID] = cmd
+
+			// Schedule cleanup
+			go bm.cleanupChannelCommand(commandID)
+
+			// This bot should respond
+			return true
+		}
+
+		// If the command is recent but not handled, mark it as handled
+		cmd.Handled = true
+		bm.channelCommands[commandID] = cmd
+
+		// This bot should respond
+		return true
+	}
+
+	// This is a new command, register it
+	bm.channelCommands[commandID] = &ChannelCommand{
+		Sender:    sender,
+		Channel:   channel,
+		Command:   command,
+		Args:      args,
+		Timestamp: now,
+		Handled:   true, // Mark as handled immediately
+	}
+
+	// Schedule cleanup
+	go bm.cleanupChannelCommand(commandID)
+
+	// This bot should respond
+	return true
+}
+
+// cleanupChannelCommand removes a channel command after a delay
+func (bm *BotManager) cleanupChannelCommand(commandID string) {
+	// Wait for 5 seconds
+	time.Sleep(5 * time.Second)
+
+	// Lock the command mutex
+	bm.commandMutex.Lock()
+	defer bm.commandMutex.Unlock()
+
+	// Remove the command
+	delete(bm.channelCommands, commandID)
 }
