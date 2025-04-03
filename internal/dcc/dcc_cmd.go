@@ -18,6 +18,11 @@ import (
 
 // processCommand przetwarza komendy od użytkownika
 func (dt *DCCTunnel) processCommand(command string) {
+	// Sanitize input
+	command = strings.TrimSpace(command)
+	command = strings.ReplaceAll(command, "\r", "")
+	command = strings.ReplaceAll(command, "\n", "")
+
 	fields := strings.Fields(command)
 	if len(fields) == 0 {
 		return
@@ -26,52 +31,62 @@ func (dt *DCCTunnel) processCommand(command string) {
 	// Usuń prefiks '.' i przekonwertuj na wielkie litery
 	cmd := strings.ToUpper(strings.TrimPrefix(fields[0], "."))
 
-	switch cmd {
-	case "MSG":
-		dt.handleMsgCommand(fields[1:])
-	case "JOIN":
-		dt.handleJoinCommand(fields[1:])
-	case "PART":
-		dt.handlePartCommand(fields[1:])
-	case "MODE":
-		dt.handleModeCommand(fields[1:])
-	case "KICK":
-		dt.handleKickCommand(fields[1:])
-	case "QUIT":
-		dt.handleQuitCommand(fields[1:])
-	case "NICK":
-		dt.handleNickCommand(fields[1:])
-	case "RAW":
-		dt.handleRawCommand(fields[1:])
-	case "HELP":
-		dt.sendHelpMessage()
-	case "MJOIN":
-		dt.handleMassJoinCommand(fields[1:])
-	case "MPART":
-		dt.handleMassPartCommand(fields[1:])
-	case "MRECONNECT":
-		dt.handleMassReconnectCommand(fields[1:])
-	case "ADDNICK":
-		dt.handleAddNickCommand(fields[1:])
-	case "DELNICK":
-		dt.handleDelNickCommand(fields[1:])
-	case "LISTNICKS":
-		dt.handleListNicksCommand(fields[1:])
-	case "ADDOWNER":
-		dt.handleAddOwnerCommand(fields[1:])
-	case "DELOWNER":
-		dt.handleDelOwnerCommand(fields[1:])
-	case "LISTOWNERS":
-		dt.handleListOwnersCommand(fields[1:])
-	case "INFO":
-		dt.handleInfoCommand(fields[1:])
-	case "BOTS":
-		dt.handleBotsCommand(fields[1:])
-	case "SERVERS":
-		dt.handleServersCommand(fields[1:])
-	default:
-		dt.sendToClient(fmt.Sprintf("Unknown command: %s", cmd))
-	}
+	// Execute the command in a separate goroutine to prevent blocking
+	go func(cmd string, args []string) {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("DCC: Panic in command handler: %v\n", r)
+				dt.sendToClient(fmt.Sprintf("Error executing command: %v", r))
+			}
+		}()
+
+		switch cmd {
+		case "MSG":
+			dt.handleMsgCommand(args)
+		case "JOIN":
+			dt.handleJoinCommand(args)
+		case "PART":
+			dt.handlePartCommand(args)
+		case "MODE":
+			dt.handleModeCommand(args)
+		case "KICK":
+			dt.handleKickCommand(args)
+		case "QUIT":
+			dt.handleQuitCommand(args)
+		case "NICK":
+			dt.handleNickCommand(args)
+		case "RAW":
+			dt.handleRawCommand(args)
+		case "HELP":
+			dt.sendHelpMessage()
+		case "MJOIN":
+			dt.handleMassJoinCommand(args)
+		case "MPART":
+			dt.handleMassPartCommand(args)
+		case "MRECONNECT":
+			dt.handleMassReconnectCommand(args)
+		case "ADDNICK":
+			dt.handleAddNickCommand(args)
+		case "DELNICK":
+			dt.handleDelNickCommand(args)
+		case "LISTNICKS":
+			dt.handleListNicksCommand(args)
+		case "ADDOWNER":
+			dt.handleAddOwnerCommand(args)
+		case "DELOWNER":
+			dt.handleDelOwnerCommand(args)
+		case "LISTOWNERS":
+			dt.handleListOwnersCommand(args)
+		case "INFO":
+			dt.handleInfoCommand(args)
+		case "BOTS":
+			dt.handleBotsCommand(args)
+		case "SERVERS":
+			dt.handleServersCommand(args)
+		default:
+			dt.sendToClient(fmt.Sprintf("Unknown command: %s", cmd))
+		}
+	}(cmd, fields[1:])
 }
 
 // Handlery podstawowych komend

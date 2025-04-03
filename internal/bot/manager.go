@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,8 +36,6 @@ type BotManager struct {
 	reactionMutex       sync.Mutex
 	ctx                 context.Context
 	cancel              context.CancelFunc
-	errorHandled        bool       // Dodaj flagę do obsługi błędów
-	errorMutex          sync.Mutex // Mutex do kontrolowania dostępu do errorHandled
 	totalCreatedBots    int
 	startTime           time.Time
 }
@@ -384,60 +383,72 @@ func (bm *BotManager) GetMassCommandCooldown() time.Duration {
 }
 
 func (bm *BotManager) CollectReactions(channel, message string, action func() error) {
-	bm.reactionMutex.Lock()
-	defer bm.reactionMutex.Unlock()
-
-	key := channel + ":" + message
+	// Generate a unique key for this reaction
+	key := channel + ":" + message + ":" + fmt.Sprintf("%d", time.Now().UnixNano())
 	now := time.Now()
 
-	if req, exists := bm.reactionRequests[key]; exists && now.Sub(req.Timestamp) < 5*time.Second {
-		return // Ignore duplicates within 5 seconds
+	// Check for duplicates with a short lock
+	bm.reactionMutex.Lock()
+	for existingKey, req := range bm.reactionRequests {
+		// If we find a similar request (same channel and message) that's recent, ignore this one
+		if strings.HasPrefix(existingKey, channel+":"+message) && now.Sub(req.Timestamp) < 5*time.Second {
+			bm.reactionMutex.Unlock()
+			return // Ignore duplicates within 5 seconds
+		}
 	}
 
-	// Execute action
+	// Register this request immediately to prevent duplicates
+	bm.reactionRequests[key] = types.ReactionRequest{
+		Channel:      channel,
+		Message:      message,
+		Timestamp:    now,
+		Action:       action,
+		ErrorHandled: false, // Add a per-request error flag
+	}
+	bm.reactionMutex.Unlock()
+
+	// Execute action outside the lock
 	if action != nil {
 		err := action()
 		if err != nil {
-			bm.errorMutex.Lock()
-			if !bm.errorHandled {
+			// Handle error
+			bm.reactionMutex.Lock()
+			req, exists := bm.reactionRequests[key]
+			if exists && !req.ErrorHandled {
+				// Update the error handled flag
+				req.ErrorHandled = true
+				bm.reactionRequests[key] = req
+				bm.reactionMutex.Unlock()
+
+				// Send error message
 				bm.SendSingleMsg(channel, fmt.Sprintf("Error: %v", err))
-				bm.errorHandled = true            // Ustaw flagę po obsłużeniu błędu
-				go bm.cleanupReactionRequest(key) // Wywołaj cleanup po błędzie
+			} else {
+				bm.reactionMutex.Unlock()
 			}
-			bm.errorMutex.Unlock()
+
+			// Schedule cleanup
+			go bm.cleanupReactionRequest(key)
 			return
 		}
 	}
 
+	// Send success message if provided
 	if message != "" {
 		bm.SendSingleMsg(channel, message)
 	}
 
-	// Save request to ignore duplicates for the next 5 seconds
-	bm.reactionRequests[key] = types.ReactionRequest{
-		Channel:   channel,
-		Message:   message,
-		Timestamp: now,
-		Action:    action,
-	}
-
-	// Run cleanup after 5 seconds for successful command
+	// Schedule cleanup
 	go bm.cleanupReactionRequest(key)
 }
 
-// Zaktualizowana funkcja cleanupReactionRequest
+// cleanupReactionRequest removes a reaction request after a delay
 func (bm *BotManager) cleanupReactionRequest(key string) {
 	time.Sleep(5 * time.Second)
 	bm.reactionMutex.Lock()
 	defer bm.reactionMutex.Unlock()
 
-	// Usuń zapis reakcji
+	// Just remove the reaction request - error handling is now per-request
 	delete(bm.reactionRequests, key)
-
-	// Resetuj flagę błędu po zakończeniu reakcji
-	bm.errorMutex.Lock()
-	bm.errorHandled = false
-	bm.errorMutex.Unlock()
 }
 
 func (bm *BotManager) SendSingleMsg(channel, message string) {

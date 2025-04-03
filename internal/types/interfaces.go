@@ -64,8 +64,9 @@ type BotManager interface {
 }
 
 type ReactionRequest struct {
-	Channel   string
-	Message   string
-	Timestamp time.Time
-	Action    func() error
+	Channel      string
+	Message      string
+	Timestamp    time.Time
+	Action       func() error
+	ErrorHandled bool // Flag to track if an error has been handled for this request
 }

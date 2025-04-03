@@ -124,17 +124,32 @@ func (dt *DCCTunnel) Stop() {
 	}
 
 	dt.active = false
+
+	// Close the connection with proper error handling
 	if dt.conn != nil {
-		dt.conn.Close()
+		// Set a short deadline to avoid blocking on close
+		dt.conn.SetDeadline(time.Now().Add(1 * time.Second))
+		err := dt.conn.Close()
+		if err != nil {
+			util.Warning("DCC: Error closing connection: %v", err)
+		}
+		dt.conn = nil
 	}
 
-	// Opuszczamy PartyLine
-	dt.partyLine.RemoveSession(dt.sessionID)
+	// Opuszczamy PartyLine - do this outside the lock to avoid deadlocks
+	partyLine := dt.partyLine
+	sessionID := dt.sessionID
+	dt.mu.Unlock()
 
+	// Remove from party line
+	if partyLine != nil {
+		partyLine.RemoveSession(sessionID)
+	}
+
+	// Call the onStop callback
 	if dt.onStop != nil {
 		dt.onStop()
 	}
-	dt.mu.Unlock()
 }
 
 // readFromConn obsługuje odczyt danych z połączenia
@@ -170,37 +185,67 @@ func (dt *DCCTunnel) handleUserInput(input string) {
 }
 
 func (dt *DCCTunnel) WriteToConn(data string) {
-	dt.mu.Lock()
-	defer dt.mu.Unlock()
-
-	if !dt.active || dt.conn == nil {
+	// Quick check without lock first
+	if !dt.active {
 		return
 	}
 
 	// Ignorowanie określonych zdarzeń
-	if strings.Contains(data, " 303 ") {
+	if strings.Contains(data, " 303 ") || strings.Contains(data, "PING") {
 		return
 	}
 
+	// Parse the message outside the lock
 	parsedMessage := dt.parseIRCMessage(data)
 	if parsedMessage == "" {
 		return
 	}
 
-	// Nieblokujące wysyłanie z timeoutem
-	done := make(chan bool, 1)
-	go func() {
-		dt.conn.Write([]byte(parsedMessage + "\r\n"))
-		done <- true
-	}()
+	// Use a separate goroutine to avoid blocking the main thread
+	go func(msg string) {
+		dt.mu.Lock()
+		if !dt.active || dt.conn == nil {
+			dt.mu.Unlock()
+			return
+		}
+		dt.mu.Unlock()
 
-	select {
-	case <-done:
-		util.Debug("DCC: Message sent successfully")
-	case <-time.After(time.Second * 5):
-		util.Warning("DCC: Write timeout, stopping tunnel")
-		dt.Stop()
-	}
+		// Nieblokujące wysyłanie z timeoutem
+		done := make(chan bool, 1)
+		writeErr := make(chan error, 1)
+
+		go func() {
+			dt.mu.Lock()
+			if !dt.active || dt.conn == nil {
+				dt.mu.Unlock()
+				writeErr <- fmt.Errorf("connection closed")
+				return
+			}
+
+			// Set a deadline for the write operation
+			dt.conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+			_, err := dt.conn.Write([]byte(msg + "\r\n"))
+			dt.conn.SetWriteDeadline(time.Time{}) // Reset deadline
+			dt.mu.Unlock()
+
+			if err != nil {
+				writeErr <- err
+			} else {
+				done <- true
+			}
+		}()
+
+		select {
+		case <-done:
+			// Message sent successfully
+		case err := <-writeErr:
+			util.Warning("DCC: Write error: %v", err)
+			dt.Stop()
+		case <-time.After(3 * time.Second):
+			util.Warning("DCC: Write timeout, stopping tunnel")
+			dt.Stop()
+		}
+	}(parsedMessage)
 }
 
 func (dt *DCCTunnel) parseIRCMessage(raw string) string {
@@ -254,8 +299,23 @@ func (dt *DCCTunnel) shouldIgnoreEvent(data string) bool {
 
 // sendToClient wysyła wiadomość do klienta DCC
 func (dt *DCCTunnel) sendToClient(message string) {
-	if dt.conn != nil {
-		dt.conn.Write([]byte(message + "\r\n"))
+	dt.mu.Lock()
+	if !dt.active || dt.conn == nil {
+		dt.mu.Unlock()
+		return
+	}
+
+	// Set a deadline for the write operation
+	dt.conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+	_, err := dt.conn.Write([]byte(message + "\r\n"))
+	dt.conn.SetWriteDeadline(time.Time{}) // Reset deadline
+	dt.mu.Unlock()
+
+	if err != nil {
+		util.Warning("DCC: Error sending message to client: %v", err)
+		// Don't call Stop() here to avoid potential deadlocks
+		// Instead, schedule a stop
+		go dt.Stop()
 	}
 }
 
@@ -397,12 +457,29 @@ func GetGlobalPartyLine() *PartyLine {
 
 // Metody PartyLine
 func (pl *PartyLine) AddSession(tunnel *DCCTunnel) {
-	pl.mutex.Lock()
-	defer pl.mutex.Unlock()
+	if tunnel == nil {
+		util.Warning("PartyLine: Attempted to add nil tunnel")
+		return
+	}
 
+	pl.mutex.Lock()
+	// Check if session already exists
+	if _, exists := pl.sessions[tunnel.sessionID]; exists {
+		util.Warning("PartyLine: Session %s already exists", tunnel.sessionID)
+		pl.mutex.Unlock()
+		return
+	}
+
+	// Add the session
 	pl.sessions[tunnel.sessionID] = tunnel
 
-	for _, msg := range pl.messageLog {
+	// Create a copy of the message log to avoid holding the lock while sending messages
+	messageLogCopy := make([]PartyLineMessage, len(pl.messageLog))
+	copy(messageLogCopy, pl.messageLog)
+	pl.mutex.Unlock()
+
+	// Send message history to the new client
+	for _, msg := range messageLogCopy {
 		formattedMsg := fmt.Sprintf("[%s] %s: %s",
 			msg.Timestamp.Format("15:04:05"),
 			msg.Sender,
@@ -410,45 +487,85 @@ func (pl *PartyLine) AddSession(tunnel *DCCTunnel) {
 		tunnel.sendToClient(formattedMsg)
 	}
 
+	// Broadcast join message
 	pl.broadcast(fmt.Sprintf("*** %s joined the party line ***", tunnel.ownerNick), "")
 }
 
 func (pl *PartyLine) RemoveSession(sessionID string) {
-	pl.mutex.Lock()
-	defer pl.mutex.Unlock()
+	if sessionID == "" {
+		util.Warning("PartyLine: Attempted to remove empty sessionID")
+		return
+	}
 
-	if tunnel, exists := pl.sessions[sessionID]; exists {
-		pl.broadcast(fmt.Sprintf("*** %s left the party line ***", tunnel.ownerNick), sessionID)
-		delete(pl.sessions, sessionID)
+	pl.mutex.Lock()
+	tunnel, exists := pl.sessions[sessionID]
+	if !exists {
+		pl.mutex.Unlock()
+		return
+	}
+
+	// Get the owner nick before deleting the session
+	ownerNick := tunnel.ownerNick
+
+	// Delete the session
+	delete(pl.sessions, sessionID)
+	pl.mutex.Unlock()
+
+	// Broadcast the leave message outside the lock
+	if ownerNick != "" {
+		pl.broadcast(fmt.Sprintf("*** %s left the party line ***", ownerNick), sessionID)
 	}
 }
 
 func (pl *PartyLine) broadcast(message string, excludeSessionID string) {
+	// First, safely get the sender's nick if this is a user message
+	var senderNick string
+	if !strings.HasPrefix(message, "***") && excludeSessionID != "" {
+		if tunnel, exists := pl.sessions[excludeSessionID]; exists {
+			senderNick = tunnel.bot.GetCurrentNick()
+		}
+	}
+
+	// Then broadcast to all other sessions
 	for id, tunnel := range pl.sessions {
 		if id != excludeSessionID {
-			tunnel.sendToClient(message)
+			// Use a goroutine to prevent blocking if one client is slow
+			go func(t *DCCTunnel, msg string) {
+				t.sendToClient(msg)
+			}(tunnel, message)
 		}
 	}
 
 	// Dodajemy do historii tylko wiadomości od użytkowników (nie systemowe)
-	if !strings.HasPrefix(message, "***") {
+	if !strings.HasPrefix(message, "***") && senderNick != "" {
 		pl.addToMessageLog(PartyLineMessage{
 			Timestamp: time.Now(),
-			Sender:    pl.sessions[excludeSessionID].bot.GetCurrentNick(),
+			Sender:    senderNick,
 			Message:   message,
 		})
 	}
 }
 
 func (pl *PartyLine) addToMessageLog(msg PartyLineMessage) {
+	pl.mutex.Lock()
+	defer pl.mutex.Unlock()
+
 	if len(pl.messageLog) >= pl.maxLogSize {
 		pl.messageLog = pl.messageLog[1:]
 	}
 	pl.messageLog = append(pl.messageLog, msg)
 }
 
-// W dcc_tunnel.go
+// HandleDisconnect handles a disconnection event
 func (dt *DCCTunnel) HandleDisconnect() {
-	dt.sendToClient("Connection closed by remote host")
-	dt.Stop()
+	// Check if the tunnel is still active before sending a message
+	dt.mu.Lock()
+	isActive := dt.active
+	dt.mu.Unlock()
+
+	if isActive {
+		util.Info("DCC: Handling disconnect for bot %s", dt.bot.GetCurrentNick())
+		dt.sendToClient("Connection closed by remote host")
+		dt.Stop()
+	}
 }
