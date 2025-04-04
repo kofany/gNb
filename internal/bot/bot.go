@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"net"
@@ -48,7 +49,8 @@ type Bot struct {
 	dccTunnel          *dcc.DCCTunnel            // Legacy field - kept for backward compatibility
 	dccTunnels         map[string]*dcc.DCCTunnel // Map of owner nick -> tunnel
 	dccTunnelsMutex    sync.Mutex
-	channelCheckTicker *time.Ticker // Ticker for periodic channel check
+	channelCheckTicker *time.Ticker  // Ticker for periodic channel check
+	isonTokens         chan struct{} // Tokens for limiting ISON requests
 }
 
 // GetBotManager returns the BotManager for this bot
@@ -92,6 +94,7 @@ func NewBot(cfg *config.BotConfig, globalConfig *config.GlobalConfig, nm types.N
 		isonResponse:   make(chan []string, 1),
 		joinedChannels: make(map[string]bool),
 		dccTunnels:     make(map[string]*dcc.DCCTunnel),
+		isonTokens:     make(chan struct{}, 5), // Allow up to 5 concurrent ISON requests
 	}
 
 	bot.isConnected.Store(false)
@@ -600,15 +603,51 @@ func (b *Bot) RequestISON(nicks []string) ([]string, error) {
 		return nil, fmt.Errorf("bot %s is not connected", b.CurrentNick)
 	}
 
-	command := fmt.Sprintf("ISON %s", strings.Join(nicks, " "))
-	util.Debug("Bot %s is sending ISON command: %s", b.CurrentNick, command)
-	b.Connection.SendRaw(command)
+	// Create a timeout context
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
+	// Create a result channel
+	resultChan := make(chan []string, 1)
+	errChan := make(chan error, 1)
+
+	// Run the ISON request in a goroutine
+	go func() {
+		// First check if we're already sending too many ISON requests
+		// Use a non-blocking send to check
+		select {
+		case b.isonTokens <- struct{}{}:
+			// Got a token, proceed
+			defer func() { <-b.isonTokens }() // Release token when done
+		default:
+			// No token available, too many ISON requests in progress
+			errChan <- fmt.Errorf("too many ISON requests from bot %s", b.CurrentNick)
+			return
+		}
+
+		command := fmt.Sprintf("ISON %s", strings.Join(nicks, " "))
+		util.Debug("Bot %s is sending ISON command: %s", b.CurrentNick, command)
+		b.Connection.SendRaw(command)
+
+		// Wait for response with internal timeout
+		select {
+		case response := <-b.isonResponse:
+			resultChan <- response
+		case <-time.After(4 * time.Second): // Slightly shorter than the context timeout
+			errChan <- fmt.Errorf("bot %s did not receive ISON response in time", b.CurrentNick)
+		case <-ctx.Done():
+			errChan <- ctx.Err()
+		}
+	}()
+
+	// Wait for result or error
 	select {
-	case response := <-b.isonResponse:
-		return response, nil
-	case <-time.After(10 * time.Second):
-		return nil, fmt.Errorf("bot %s did not receive ISON response in time", b.CurrentNick)
+	case result := <-resultChan:
+		return result, nil
+	case err := <-errChan:
+		return nil, err
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 }
 

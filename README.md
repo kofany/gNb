@@ -24,6 +24,9 @@ gNb is a Go-based IRC bot designed to manage and monitor nicknames on IRC networ
 - **Dynamic Configuration**: Reads configurations from YAML and JSON files for flexibility.
 - **Autojoin #literki after letter catch**: To diseble edit NICK callback in bot.go file. 
 - **Deadlock Prevention**: Improved lock management to prevent system-wide hangs during multiple concurrent operations.
+- **Enhanced Concurrency**: Robust handling of concurrent operations, particularly during command execution and ISON monitoring.
+- **Circuit Breaker Pattern**: Automatic detection and mitigation of failing operations to maintain system stability.
+- **Resource Limiting**: Token-based limits on resource-intensive operations to prevent system overload.
 
 ## Prerequisites
 

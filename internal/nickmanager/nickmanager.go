@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os"
 	"strings"
 	"sync"
@@ -98,6 +99,11 @@ func (nm *NickManager) monitorNicks() {
 	updateTicker := time.NewTicker(nm.updateInterval)
 	isonTicker := time.NewTicker(1 * time.Second)
 
+	// Create a circuit breaker to track consecutive failures
+	consecutiveFailures := 0
+	var lastFailedBot string
+	failureLimit := 5
+
 	go func() {
 		for range updateTicker.C {
 			nm.updateConnectedBots()
@@ -105,6 +111,20 @@ func (nm *NickManager) monitorNicks() {
 	}()
 
 	for range isonTicker.C {
+		// Skip this iteration if we've had too many consecutive failures with the same bot
+		if consecutiveFailures >= failureLimit && lastFailedBot != "" {
+			util.Warning("Skipping ISON request after %d consecutive failures with bot %s",
+				consecutiveFailures, lastFailedBot)
+
+			// Reset the counter periodically to allow retries
+			if rand.Intn(10) == 0 { // 10% chance to reset
+				util.Info("Resetting ISON failure counter for bot %s", lastFailedBot)
+				consecutiveFailures = 0
+				lastFailedBot = ""
+			}
+			continue
+		}
+
 		// Use a non-blocking approach with a watchdog
 		go func() {
 			// Create a timeout context
@@ -115,14 +135,41 @@ func (nm *NickManager) monitorNicks() {
 			doneChan := make(chan struct{})
 			resultChan := make(chan []string, 1)
 			errorChan := make(chan error, 1)
+			successChan := make(chan bool, 1)
 
 			// Get connected bots with minimal lock time
 			nm.connectedBotsMutex.RLock()
-			connectedBots := nm.connectedBots
+			connectedBots := make([]types.Bot, 0, len(nm.connectedBots))
+			for _, bot := range nm.connectedBots {
+				// Skip bot that's been causing consecutive failures
+				if bot.GetCurrentNick() != lastFailedBot {
+					connectedBots = append(connectedBots, bot)
+				}
+			}
+
 			botsCount := len(connectedBots)
 			if botsCount == 0 {
 				nm.connectedBotsMutex.RUnlock()
-				return
+
+				// If we have no bots other than the failing one, try the failing one again
+				if lastFailedBot != "" {
+					util.Warning("No other bots available, trying the failing bot %s again", lastFailedBot)
+
+					for _, bot := range nm.connectedBots {
+						if bot.GetCurrentNick() == lastFailedBot {
+							connectedBots = append(connectedBots, bot)
+							break
+						}
+					}
+
+					if len(connectedBots) == 0 {
+						util.Error("No connected bots available for ISON requests")
+						return
+					}
+				} else {
+					util.Error("No connected bots available for ISON requests")
+					return
+				}
 			}
 
 			// Safely get and increment the bot index
@@ -131,11 +178,19 @@ func (nm *NickManager) monitorNicks() {
 			nm.botIndex = (nm.botIndex + 1) % botsCount
 			nm.connectedBotsMutex.RUnlock()
 
+			currentBot := bot.GetCurrentNick()
+
 			// Get the list of nicks to monitor with minimal lock time
 			nm.mutex.RLock()
 			nicksToCatch := make([]string, len(nm.nicksToCatch))
 			copy(nicksToCatch, nm.nicksToCatch)
 			nm.mutex.RUnlock()
+
+			// Skip empty nick lists
+			if len(nicksToCatch) == 0 {
+				util.Debug("No nicks to monitor, skipping ISON request")
+				return
+			}
 
 			// Request ISON in a separate goroutine to prevent blocking
 			go func() {
@@ -153,6 +208,7 @@ func (nm *NickManager) monitorNicks() {
 				}
 
 				resultChan <- onlineNicks
+				successChan <- true
 			}()
 
 			// Wait for result or timeout
@@ -162,12 +218,39 @@ func (nm *NickManager) monitorNicks() {
 			case onlineNicks := <-resultChan:
 				// Got results, process them
 				go nm.handleISONResponse(onlineNicks)
+
+				// Operation was successful - reset failure counter if this was the failing bot
+				if currentBot == lastFailedBot {
+					consecutiveFailures = 0
+					lastFailedBot = ""
+					util.Info("ISON request succeeded with previously failing bot %s", currentBot)
+				}
 			case err := <-errorChan:
 				// There was an error
-				util.Error("Error requesting ISON from bot %s: %v", bot.GetCurrentNick(), err)
+				util.Error("Error requesting ISON from bot %s: %v", currentBot, err)
+
+				// Track consecutive failures with the same bot
+				if currentBot == lastFailedBot {
+					consecutiveFailures++
+					util.Warning("Consecutive failure #%d with bot %s", consecutiveFailures, currentBot)
+				} else {
+					lastFailedBot = currentBot
+					consecutiveFailures = 1
+					util.Warning("New failing bot %s, resetting consecutive failure counter to 1", currentBot)
+				}
 			case <-ctx.Done():
 				// Timeout occurred
-				util.Error("Timeout requesting ISON from bot %s", bot.GetCurrentNick())
+				util.Error("Timeout requesting ISON from bot %s", currentBot)
+
+				// Track consecutive failures with the same bot
+				if currentBot == lastFailedBot {
+					consecutiveFailures++
+					util.Warning("Consecutive failure #%d with bot %s", consecutiveFailures, currentBot)
+				} else {
+					lastFailedBot = currentBot
+					consecutiveFailures = 1
+					util.Warning("New failing bot %s, resetting consecutive failure counter to 1", currentBot)
+				}
 			}
 		}()
 	}
