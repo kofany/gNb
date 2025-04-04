@@ -256,11 +256,11 @@ func handleListNicksCommand(b *Bot, e *irc.Event, args []string) {
 	isChannelMsg := strings.HasPrefix(target, "#")
 
 	if isChannelMsg {
+		nicks := b.GetNickManager().GetNicks()
 		b.GetBotManager().CollectReactions(
 			target,
 			nil,
 			func() (string, error) {
-				nicks := b.GetNickManager().GetNicks()
 				message := fmt.Sprintf("Current nicks: %s", strings.Join(nicks, ", "))
 				return message, nil
 			},
@@ -321,11 +321,11 @@ func handleListOwnersCommand(b *Bot, e *irc.Event, args []string) {
 	isChannelMsg := strings.HasPrefix(target, "#")
 
 	if isChannelMsg {
+		owners := b.GetBotManager().GetOwners()
 		b.GetBotManager().CollectReactions(
 			target,
 			nil,
 			func() (string, error) {
-				owners := b.GetBotManager().GetOwners()
 				message := fmt.Sprintf("Current owners: %s", strings.Join(owners, ", "))
 				return message, nil
 			},
