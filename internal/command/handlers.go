@@ -1,13 +1,8 @@
 package command
 
 import (
-	"context"
 	"fmt"
 	"strings"
-	"time"
-
-	"github.com/kofany/gNb/internal/types"
-	"github.com/kofany/gNb/internal/util"
 )
 
 // RegisterStandardHandlers registers the standard handlers for common commands
@@ -48,52 +43,15 @@ func RegisterStandardHandlers(executor *CommandExecutor) {
 
 // handleListOwnersCommand handles the LISTOWNERS command
 func handleListOwnersCommand(req *CommandRequest) *CommandResult {
-	// Create a timeout context for getting the owners
-	ctx, cancel := req.Context, func() {}
-	if req.Context == nil {
-		var cancelFunc func()
-		ctx, cancelFunc = context.WithTimeout(context.Background(), 5*time.Second)
-		cancel = cancelFunc
-	}
-	defer cancel()
-
 	result := &CommandResult{
 		Handled: false,
 	}
 
 	if bm := req.Bot.GetBotManager(); bm != nil {
-		// Get owners with timeout
-		ownerChan := make(chan []string, 1)
-		errChan := make(chan error, 1)
-
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					errChan <- fmt.Errorf("panic while getting owners: %v", r)
-				}
-			}()
-
-			owners := bm.GetOwners()
-			select {
-			case <-ctx.Done():
-				// Context was canceled, don't try to send
-				return
-			default:
-				ownerChan <- owners
-			}
-		}()
-
-		// Wait for result or timeout
-		select {
-		case owners := <-ownerChan:
-			result.Output = fmt.Sprintf("Current owners: %s", strings.Join(owners, ", "))
-			result.Handled = true
-		case err := <-errChan:
-			result.Error = err
-		case <-ctx.Done():
-			result.Error = ctx.Err()
-			util.Warning("Command listowners timed out")
-		}
+		// Get owners directly without extra goroutines to avoid potential deadlocks
+		owners := bm.GetOwners()
+		result.Output = fmt.Sprintf("Current owners: %s", strings.Join(owners, ", "))
+		result.Handled = true
 	} else {
 		result.Error = fmt.Errorf("bot manager is not available")
 	}
@@ -124,88 +82,21 @@ func handleBotsCommand(req *CommandRequest) *CommandResult {
 		Handled: false,
 	}
 
-	// Use a timeout context for checking bot connections
-	ctx, cancel := context.WithTimeout(req.Context, 5*time.Second)
-	defer cancel()
-
 	if bm := req.Bot.GetBotManager(); bm != nil {
 		bots := bm.GetBots()
 		totalCreatedBots := bm.GetTotalCreatedBots()
 		totalBotsNow := len(bots)
 
-		// Count connected bots with timeout protection
+		// Count connected bots with a simplified approach
 		var connectedBotNicks []string
 		totalConnectedBots := 0
 
-		// Use parallel checking with timeouts
-		connectedChan := make(chan string, len(bots))
-		doneChan := make(chan struct{})
-
-		go func() {
-			for _, bot := range bots {
-				go func(b types.Bot) {
-					// Use a short timeout for each check
-					checkCtx, checkCancel := context.WithTimeout(ctx, 1*time.Second)
-					defer checkCancel()
-
-					// Run the check in a separate goroutine
-					checkDone := make(chan bool, 1)
-					go func() {
-						checkDone <- b.IsConnected()
-					}()
-
-					// Wait for the check to complete or timeout
-					select {
-					case isConnected := <-checkDone:
-						if isConnected {
-							connectedChan <- b.GetCurrentNick()
-						}
-					case <-checkCtx.Done():
-						// Timeout, skip this bot
-						util.Debug("Command bots: Timeout checking connection for bot %s", b.GetCurrentNick())
-					}
-				}(bot)
+		// Check connection status with a simple loop - no goroutines
+		for _, bot := range bots {
+			if bot.IsConnected() {
+				connectedBotNicks = append(connectedBotNicks, bot.GetCurrentNick())
+				totalConnectedBots++
 			}
-
-			// Wait a bit for all checks to complete
-			select {
-			case <-time.After(3 * time.Second):
-				// Continue with what we have
-			case <-ctx.Done():
-				// Timeout occurred, continue with what we have
-			}
-
-			close(doneChan)
-		}()
-
-		// Collect results
-		collectDone := make(chan struct{})
-		go func() {
-			defer close(collectDone)
-			for {
-				select {
-				case nick, ok := <-connectedChan:
-					if !ok {
-						return
-					}
-					connectedBotNicks = append(connectedBotNicks, nick)
-					totalConnectedBots++
-				case <-doneChan:
-					// Stop collecting when doneChan is closed
-					close(connectedChan)
-				case <-ctx.Done():
-					// Timeout occurred
-					return
-				}
-			}
-		}()
-
-		// Wait for collection to complete or timeout
-		select {
-		case <-collectDone:
-			// Collection completed
-		case <-ctx.Done():
-			// Timeout occurred, continue with what we have
 		}
 
 		// Format the response based on the arguments
@@ -238,42 +129,20 @@ func handleServersCommand(req *CommandRequest) *CommandResult {
 		Handled: false,
 	}
 
-	// Use a timeout context for checking servers
-	ctx, cancel := context.WithTimeout(req.Context, 5*time.Second)
-	defer cancel()
-
 	if bm := req.Bot.GetBotManager(); bm != nil {
 		bots := bm.GetBots()
 
 		// Use a map to deduplicate servers
 		servers := make(map[string][]string)
 
-		// Check each bot's server with timeout protection
+		// Check each bot's server with a simple loop - no goroutines
 		for _, bot := range bots {
-			go func(b types.Bot) {
-				if b.IsConnected() {
-					serverName := b.GetServerName()
-					if serverName != "" {
-						// Lock-free approach using channels
-						select {
-						case <-ctx.Done():
-							// Timeout occurred, skip this bot
-							return
-						default:
-							// Add the bot to the server's list
-							servers[serverName] = append(servers[serverName], b.GetCurrentNick())
-						}
-					}
+			if bot.IsConnected() {
+				serverName := bot.GetServerName()
+				if serverName != "" {
+					servers[serverName] = append(servers[serverName], bot.GetCurrentNick())
 				}
-			}(bot)
-		}
-
-		// Give some time for the goroutines to complete
-		select {
-		case <-time.After(3 * time.Second):
-			// Continue with what we have
-		case <-ctx.Done():
-			// Timeout occurred, continue with what we have
+			}
 		}
 
 		// Format the response

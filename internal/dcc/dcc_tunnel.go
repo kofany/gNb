@@ -393,13 +393,9 @@ func (dt *DCCTunnel) handleUserInput(input string) {
 		return
 	}
 
-	// Process the input with timeout protection
-	timeoutChan := time.After(5 * time.Second)
-	doneChan := make(chan struct{})
-
+	// Process the input without blocking - run everything in separate goroutines
 	go func() {
 		defer func() {
-			close(doneChan)
 			if r := recover(); r != nil {
 				util.Error("DCC: Panic in handleUserInput: %v", r)
 			}
@@ -436,27 +432,22 @@ func (dt *DCCTunnel) handleUserInput(input string) {
 					Message:   input,
 				}
 
-				// Add to message log first
-				dt.partyLine.addToMessageLog(msg)
+				// All party line operations run in a separate goroutine
+				go func() {
+					// Add to message log first
+					dt.partyLine.addToMessageLog(msg)
 
-				// Use the command adapter's party line feature
-				dt.commandAdapter.SendPartyLineMessage(input, ownerNick, sessionID)
+					// Use the command adapter's party line feature
+					dt.commandAdapter.SendPartyLineMessage(input, ownerNick, sessionID)
 
-				// Then broadcast to all - use a separate goroutine to avoid blocking
-				go dt.partyLine.broadcast(formattedMsg, sessionID)
+					// Then broadcast to all
+					dt.partyLine.broadcast(formattedMsg, sessionID)
+				}()
 			} else {
 				util.Warning("DCC: PartyLine is nil, cannot broadcast message")
 			}
 		}
 	}()
-
-	// Wait for processing to complete or timeout
-	select {
-	case <-doneChan:
-		// Processing completed
-	case <-timeoutChan:
-		util.Warning("DCC: Timeout processing user input: %s", input)
-	}
 }
 
 func (dt *DCCTunnel) WriteToConn(data string) {

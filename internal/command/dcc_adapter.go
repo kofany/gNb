@@ -45,38 +45,42 @@ func (a *DCCAdapter) ProcessCommand(
 		args = parts[1:]
 	}
 
-	// Create a context with a timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
+	// Create a context with a timeout - increased from 15 to 30 seconds
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 
-	// Get a result channel - this doesn't block
-	resultChan := a.executor.ExecuteCommand(
-		ctx,
-		command,
-		args,
-		bot,
-		ownerNick,
-		PartyLineCommand,
-		NormalPriority,
-	)
+	// Execute in a separate goroutine to avoid blocking the bot's event loop
+	go func() {
+		defer cancel() // Ensure context is cancelled when done
 
-	// Wait for the result with a timeout
-	select {
-	case result := <-resultChan:
-		if result.Error != nil {
-			responseCallback(result.Error.Error())
-			util.Warning("DCC command %s from %s failed: %v", command, ownerNick, result.Error)
-		} else if result.Output != "" {
-			responseCallback(result.Output)
-			util.Debug("DCC command %s from %s completed successfully", command, ownerNick)
-		} else if !result.Handled {
-			responseCallback("Command not handled: " + command)
-			util.Warning("DCC command %s from %s was not handled", command, ownerNick)
+		// Get a result channel - this doesn't block
+		resultChan := a.executor.ExecuteCommand(
+			ctx,
+			command,
+			args,
+			bot,
+			ownerNick,
+			PartyLineCommand,
+			NormalPriority,
+		)
+
+		// Wait for the result with a timeout
+		select {
+		case result := <-resultChan:
+			if result.Error != nil {
+				responseCallback(result.Error.Error())
+				util.Warning("DCC command %s from %s failed: %v", command, ownerNick, result.Error)
+			} else if result.Output != "" {
+				responseCallback(result.Output)
+				util.Debug("DCC command %s from %s completed successfully", command, ownerNick)
+			} else if !result.Handled {
+				responseCallback("Command not handled: " + command)
+				util.Warning("DCC command %s from %s was not handled", command, ownerNick)
+			}
+		case <-ctx.Done():
+			responseCallback("Command timed out: " + command)
+			util.Warning("DCC command %s from %s timed out", command, ownerNick)
 		}
-	case <-ctx.Done():
-		responseCallback("Command timed out: " + command)
-		util.Warning("DCC command %s from %s timed out", command, ownerNick)
-	}
+	}()
 }
 
 // IsKnownCommand checks if a command is registered in the executor
