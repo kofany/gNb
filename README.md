@@ -23,6 +23,7 @@ gNb is a Go-based IRC bot designed to manage and monitor nicknames on IRC networ
 - **Configurable Logging**: Supports different logging levels and outputs to log files.
 - **Dynamic Configuration**: Reads configurations from YAML and JSON files for flexibility.
 - **Autojoin #literki after letter catch**: To diseble edit NICK callback in bot.go file. 
+- **Deadlock Prevention**: Improved lock management to prevent system-wide hangs during multiple concurrent operations.
 
 ## Prerequisites
 
@@ -260,3 +261,22 @@ Contributions are welcome! Please follow these steps:
 This project is licensed under the MIT License.
 
 **Disclaimer**: Use this bot responsibly and ensure you comply with the IRC network's policies and guidelines. Unauthorized use or abuse may result in bans or other penalties from network administrators. 🙈
+
+## Recent Updates
+
+### Deadlock Prevention (v1.4.0)
+
+We've implemented several improvements to prevent potential deadlocks in the system:
+
+1. **Non-blocking Command Handling**: DCC commands like `listowners` now use timeouts and separate goroutines to prevent blocking the entire system.
+
+2. **Improved Lock Management**: Replaced global lock with read-write locks (RWMutex) in critical components to allow concurrent read operations.
+
+3. **Optimized ISON Processing**:
+   - The NickManager now uses timeouts to prevent hanging on ISON requests
+   - Better data copying to minimize lock times
+   - Using non-blocking goroutines for nick monitoring operations
+
+4. **Timeout Protection**: Added context-based timeouts to prevent indefinite waiting in critical operations.
+
+These improvements ensure the system remains responsive even when multiple owners are connected via DCC and issuing commands simultaneously.

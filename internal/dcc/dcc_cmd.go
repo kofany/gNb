@@ -415,8 +415,44 @@ func (dt *DCCTunnel) handleDelOwnerCommand(args []string) {
 
 func (dt *DCCTunnel) handleListOwnersCommand(_ []string) {
 	if bm := dt.bot.GetBotManager(); bm != nil {
-		owners := bm.GetOwners()
-		dt.sendToClient(fmt.Sprintf("Current owners: %s", strings.Join(owners, ", ")))
+		// Create a context with timeout to prevent deadlocks
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		// Use a channel to get the result
+		resultChan := make(chan []string, 1)
+		errorChan := make(chan error, 1)
+
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					errorChan <- fmt.Errorf("panic while getting owners: %v", r)
+				}
+			}()
+
+			// Get owners in a separate goroutine
+			owners := bm.GetOwners()
+			select {
+			case <-ctx.Done():
+				// Context was canceled, don't try to send on resultChan
+				return
+			default:
+				resultChan <- owners
+			}
+		}()
+
+		// Wait for result or timeout
+		select {
+		case owners := <-resultChan:
+			dt.sendToClient(fmt.Sprintf("Current owners: %s", strings.Join(owners, ", ")))
+		case err := <-errorChan:
+			dt.sendToClient(fmt.Sprintf("Error getting owners: %v", err))
+		case <-ctx.Done():
+			dt.sendToClient("Command timed out. The system may be experiencing high load.")
+			util.Warning("Command listowners timed out")
+		}
+	} else {
+		dt.sendToClient("BotManager is not available.")
 	}
 }
 

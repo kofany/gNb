@@ -1,6 +1,7 @@
 package nickmanager
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -105,27 +106,71 @@ func (nm *NickManager) monitorNicks() {
 	}()
 
 	for range isonTicker.C {
-		nm.connectedBotsMutex.RLock()
-		connectedBots := nm.connectedBots
-		botsCount := len(connectedBots)
-		if botsCount == 0 {
+		// Use a non-blocking approach with a watchdog
+		go func() {
+			// Create a timeout context
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			// Create channels for communication
+			doneChan := make(chan struct{})
+			resultChan := make(chan []string, 1)
+			errorChan := make(chan error, 1)
+
+			// Get connected bots with minimal lock time
+			nm.connectedBotsMutex.RLock()
+			connectedBots := nm.connectedBots
+			botsCount := len(connectedBots)
+			if botsCount == 0 {
+				nm.connectedBotsMutex.RUnlock()
+				return
+			}
+
+			// Safely get and increment the bot index
+			localIndex := nm.botIndex % botsCount
+			bot := connectedBots[localIndex]
+			nm.botIndex = (nm.botIndex + 1) % botsCount
 			nm.connectedBotsMutex.RUnlock()
-			continue
-		}
 
-		// Używamy lokalnego indeksu dla połączonych botów
-		localIndex := nm.botIndex % botsCount
-		bot := connectedBots[localIndex]
-		nm.botIndex = (nm.botIndex + 1) % botsCount
-		nm.connectedBotsMutex.RUnlock()
+			// Get the list of nicks to monitor with minimal lock time
+			nm.mutex.RLock()
+			nicksToCatch := make([]string, len(nm.nicksToCatch))
+			copy(nicksToCatch, nm.nicksToCatch)
+			nm.mutex.RUnlock()
 
-		// Request ISON and wait for response
-		onlineNicks, err := bot.RequestISON(nm.nicksToCatch)
-		if err != nil {
-			util.Error("Error requesting ISON from bot %s: %v", bot.GetCurrentNick(), err)
-		} else {
-			nm.handleISONResponse(onlineNicks)
-		}
+			// Request ISON in a separate goroutine to prevent blocking
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						errorChan <- fmt.Errorf("panic in RequestISON: %v", r)
+					}
+					close(doneChan)
+				}()
+
+				onlineNicks, err := bot.RequestISON(nicksToCatch)
+				if err != nil {
+					errorChan <- err
+					return
+				}
+
+				resultChan <- onlineNicks
+			}()
+
+			// Wait for result or timeout
+			select {
+			case <-doneChan:
+				// Operation completed (with or without error)
+			case onlineNicks := <-resultChan:
+				// Got results, process them
+				go nm.handleISONResponse(onlineNicks)
+			case err := <-errorChan:
+				// There was an error
+				util.Error("Error requesting ISON from bot %s: %v", bot.GetCurrentNick(), err)
+			case <-ctx.Done():
+				// Timeout occurred
+				util.Error("Timeout requesting ISON from bot %s", bot.GetCurrentNick())
+			}
+		}()
 	}
 }
 
@@ -169,19 +214,60 @@ func (nm *NickManager) UnregisterBot(botToRemove types.Bot) {
 }
 
 func (nm *NickManager) handleISONResponse(onlineNicks []string) {
-	nm.mutex.Lock()
-	defer nm.mutex.Unlock()
+	// Make a copy of necessary data with minimal lock time
+	nm.mutex.RLock()
 
+	// Copy the temporary unavailable nicks map
+	tempUnavailable := make(map[string]time.Time)
+	for k, v := range nm.tempUnavailableNicks {
+		tempUnavailable[k] = v
+	}
+
+	// Copy priority and secondary nicks
+	priorityNicks := make([]string, len(nm.priorityNicks))
+	copy(priorityNicks, nm.priorityNicks)
+
+	secondaryNicks := make([]string, len(nm.secondaryNicks))
+	copy(secondaryNicks, nm.secondaryNicks)
+
+	// Copy the NoLettersServers map
+	noLettersServers := make(map[string]bool)
+	for k, v := range nm.NoLettersServers {
+		noLettersServers[k] = v
+	}
+
+	// Copy the bots slice
+	bots := make([]types.Bot, len(nm.bots))
+	copy(bots, nm.bots)
+
+	nm.mutex.RUnlock()
+
+	// Now do the processing with the copies
 	util.Debug("NickManager received ISON response: %v", onlineNicks)
 
 	currentTime := time.Now()
-	nm.cleanupTempUnavailableNicks(currentTime)
 
-	availablePriorityNicks := nm.filterAvailableNicks(nm.priorityNicks, onlineNicks)
-	availableSecondaryNicks := nm.filterAvailableNicks(nm.secondaryNicks, onlineNicks)
+	// Clean up temporarily unavailable nicks
+	for nick, timestamp := range tempUnavailable {
+		if currentTime.Sub(timestamp) > 5*time.Minute {
+			nm.mutex.Lock()
+			delete(nm.tempUnavailableNicks, nick)
+			nm.mutex.Unlock()
+		}
+	}
+
+	// Filter available nicks
+	availablePriorityNicks := nm.filterAvailableNicks(priorityNicks, onlineNicks)
+	availableSecondaryNicks := nm.filterAvailableNicks(secondaryNicks, onlineNicks)
 
 	// Get list of available bots
-	availableBots := nm.getAvailableBots()
+	var availableBots []types.Bot
+	for _, bot := range bots {
+		if bot.IsConnected() && !util.IsTargetNick(bot.GetCurrentNick(), append(priorityNicks, secondaryNicks...)) {
+			availableBots = append(availableBots, bot)
+		}
+	}
+
 	if len(availableBots) == 0 {
 		util.Debug("No available bots to assign nicks")
 		return
@@ -196,7 +282,7 @@ func (nm *NickManager) handleISONResponse(onlineNicks []string) {
 		bot := availableBots[assignedBots]
 
 		// Skip single-letter nicks for servers that don't accept them
-		if len(nick) == 1 && nm.NoLettersServers[bot.GetServerName()] {
+		if len(nick) == 1 && noLettersServers[bot.GetServerName()] {
 			util.Debug("Skipping single-letter nick %s for server %s", nick, bot.GetServerName())
 			continue
 		}
@@ -213,7 +299,7 @@ func (nm *NickManager) handleISONResponse(onlineNicks []string) {
 		bot := availableBots[assignedBots]
 
 		// Skip single-letter nicks for servers that don't accept them
-		if len(nick) == 1 && nm.NoLettersServers[bot.GetServerName()] {
+		if len(nick) == 1 && noLettersServers[bot.GetServerName()] {
 			util.Debug("Skipping single-letter nick %s for server %s", nick, bot.GetServerName())
 			continue
 		}

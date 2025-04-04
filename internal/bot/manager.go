@@ -37,7 +37,7 @@ type BotManager struct {
 	stopChan            chan struct{}
 	nickManager         types.NickManager
 	commandBotIndex     int
-	mutex               sync.Mutex
+	mutex               sync.RWMutex
 	lastMassCommand     map[string]time.Time
 	massCommandCooldown time.Duration
 	wordPool            []string
@@ -341,8 +341,10 @@ func (bm *BotManager) RemoveOwner(ownerMask string) error {
 }
 
 func (bm *BotManager) GetOwners() []string {
-	bm.mutex.Lock()
-	defer bm.mutex.Unlock()
+	// Use a read lock to allow multiple readers
+	// This helps prevent blocking when multiple users request owner lists
+	bm.mutex.RLock()
+	defer bm.mutex.RUnlock()
 
 	ownersCopy := make([]string, len(bm.owners.Owners))
 	copy(ownersCopy, bm.owners.Owners)
