@@ -385,35 +385,23 @@ func (bm *BotManager) GetMassCommandCooldown() time.Duration {
 
 func (bm *BotManager) CollectReactions(channel, message string, action func() error) {
 	bm.reactionMutex.Lock()
-	defer bm.reactionMutex.Unlock()
 
 	key := channel + ":" + message
 	now := time.Now()
 
+	// Sprawdzenie duplikatów
 	if req, exists := bm.reactionRequests[key]; exists && now.Sub(req.Timestamp) < 5*time.Second {
-		return // Ignore duplicates within 5 seconds
+		bm.reactionMutex.Unlock()
+		return
 	}
 
-	// Execute action
+	// Wykonanie akcji
+	var err error
 	if action != nil {
-		err := action()
-		if err != nil {
-			bm.errorMutex.Lock()
-			if !bm.errorHandled {
-				bm.SendSingleMsg(channel, fmt.Sprintf("Error: %v", err))
-				bm.errorHandled = true            // Ustaw flagę po obsłużeniu błędu
-				go bm.cleanupReactionRequest(key) // Wywołaj cleanup po błędzie
-			}
-			bm.errorMutex.Unlock()
-			return
-		}
+		err = action()
 	}
 
-	if message != "" {
-		bm.SendSingleMsg(channel, message)
-	}
-
-	// Save request to ignore duplicates for the next 5 seconds
+	// Zapisanie żądania przed zwolnieniem mutexa
 	bm.reactionRequests[key] = types.ReactionRequest{
 		Channel:   channel,
 		Message:   message,
@@ -421,7 +409,26 @@ func (bm *BotManager) CollectReactions(channel, message string, action func() er
 		Action:    action,
 	}
 
-	// Run cleanup after 5 seconds for successful command
+	// Zwolnienie mutex przed wywołaniem SendSingleMsg
+	bm.reactionMutex.Unlock()
+
+	// Obsługa błędów i wysyłanie wiadomości
+	if err != nil {
+		bm.errorMutex.Lock()
+		if !bm.errorHandled {
+			bm.SendSingleMsg(channel, fmt.Sprintf("Error: %v", err))
+			bm.errorHandled = true
+			go bm.cleanupReactionRequest(key)
+		}
+		bm.errorMutex.Unlock()
+		return
+	}
+
+	if message != "" {
+		bm.SendSingleMsg(channel, message)
+	}
+
+	// Uruchomienie czyszczenia po 5 sekundach
 	go bm.cleanupReactionRequest(key)
 }
 

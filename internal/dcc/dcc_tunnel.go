@@ -306,10 +306,6 @@ func (pl *PartyLine) RemoveSession(sessionID string) {
 }
 
 func (pl *PartyLine) broadcast(message string, excludeSessionID string) {
-	pl.mutex.Lock()
-	defer pl.mutex.Unlock()
-
-	// Wysyłanie wiadomości do tuneli
 	for id, tunnel := range pl.sessions {
 		if id != excludeSessionID {
 			tunnel.sendToClient(message)
@@ -318,16 +314,11 @@ func (pl *PartyLine) broadcast(message string, excludeSessionID string) {
 
 	// Dodajemy do historii tylko wiadomości od użytkowników (nie systemowe)
 	if !strings.HasPrefix(message, "***") {
-		// Bezpieczne sprawdzenie czy istnieje sesja wyłączona z broadcastu
-		if excludeSessionID != "" {
-			if tunnel, exists := pl.sessions[excludeSessionID]; exists {
-				pl.addToMessageLog(PartyLineMessage{
-					Timestamp: time.Now(),
-					Sender:    tunnel.bot.GetCurrentNick(),
-					Message:   message,
-				})
-			}
-		}
+		pl.addToMessageLog(PartyLineMessage{
+			Timestamp: time.Now(),
+			Sender:    pl.sessions[excludeSessionID].bot.GetCurrentNick(),
+			Message:   message,
+		})
 	}
 }
 
