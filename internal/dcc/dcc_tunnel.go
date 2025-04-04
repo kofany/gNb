@@ -33,6 +33,7 @@ type DCCTunnel struct {
 type PartyLine struct {
 	sessions   map[string]*DCCTunnel
 	mutex      sync.RWMutex
+	cmdMutex   sync.Mutex // Mutex for command processing
 	messageLog []PartyLineMessage
 	maxLogSize int
 }
@@ -138,9 +139,13 @@ func (dt *DCCTunnel) Stop() {
 
 // handleUserInput przetwarza dane wejściowe od użytkownika
 func (dt *DCCTunnel) handleUserInput(input string) {
+	util.Debug("DCC input received: %s from session: %s", input, dt.sessionID)
+
 	if strings.HasPrefix(input, ".") {
+		util.Debug("Processing DCC command: %s", input)
 		dt.processCommand(input)
 	} else {
+		util.Debug("Broadcasting DCC message")
 		timestamp := colorText(time.Now().Format("15:04:05"), 14)
 		formattedMsg := fmt.Sprintf("[%s] %s%s%s %s",
 			timestamp,
@@ -148,7 +153,7 @@ func (dt *DCCTunnel) handleUserInput(input string) {
 			colorText(dt.ownerNick, 14),
 			colorText(">", 13),
 			input)
-		dt.partyLine.broadcast(formattedMsg, dt.sessionID)
+		dt.partyLine.broadcast(formattedMsg, dt.sessionID, false)
 	}
 }
 
@@ -292,7 +297,7 @@ func (pl *PartyLine) AddSession(tunnel *DCCTunnel) {
 		tunnel.sendToClient(formattedMsg)
 	}
 
-	pl.broadcast(fmt.Sprintf("*** %s joined the party line ***", tunnel.ownerNick), "")
+	pl.broadcast(fmt.Sprintf("*** %s joined the party line ***", tunnel.ownerNick), "", false)
 }
 
 func (pl *PartyLine) RemoveSession(sessionID string) {
@@ -300,23 +305,41 @@ func (pl *PartyLine) RemoveSession(sessionID string) {
 	defer pl.mutex.Unlock()
 
 	if tunnel, exists := pl.sessions[sessionID]; exists {
-		pl.broadcast(fmt.Sprintf("*** %s left the party line ***", tunnel.ownerNick), sessionID)
+		pl.broadcast(fmt.Sprintf("*** %s left the party line ***", tunnel.ownerNick), sessionID, false)
 		delete(pl.sessions, sessionID)
 	}
 }
 
-func (pl *PartyLine) broadcast(message string, excludeSessionID string) {
+func (pl *PartyLine) broadcast(message string, excludeSessionID string, isCommand bool) {
+	if isCommand {
+		pl.cmdMutex.Lock()
+		defer pl.cmdMutex.Unlock()
+	} else {
+		pl.mutex.RLock()
+		defer pl.mutex.RUnlock()
+	}
+
 	for id, tunnel := range pl.sessions {
 		if id != excludeSessionID {
+			if isCommand {
+				continue // Don't broadcast commands to other sessions
+			}
 			tunnel.sendToClient(message)
 		}
 	}
 
 	// Dodajemy do historii tylko wiadomości od użytkowników (nie systemowe)
-	if !strings.HasPrefix(message, "***") {
+	if !isCommand && !strings.HasPrefix(message, "***") {
+		var sender string
+		if tunnel, exists := pl.sessions[excludeSessionID]; exists {
+			sender = tunnel.bot.GetCurrentNick()
+		} else {
+			sender = "System"
+		}
+
 		pl.addToMessageLog(PartyLineMessage{
 			Timestamp: time.Now(),
-			Sender:    pl.sessions[excludeSessionID].bot.GetCurrentNick(),
+			Sender:    sender,
 			Message:   message,
 		})
 	}
