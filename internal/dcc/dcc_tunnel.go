@@ -33,7 +33,6 @@ type DCCTunnel struct {
 type PartyLine struct {
 	sessions   map[string]*DCCTunnel
 	mutex      sync.RWMutex
-	cmdMutex   sync.Mutex // Mutex for command processing
 	messageLog []PartyLineMessage
 	maxLogSize int
 }
@@ -143,6 +142,7 @@ func (dt *DCCTunnel) handleUserInput(input string) {
 
 	if strings.HasPrefix(input, ".") {
 		util.Debug("Processing DCC command: %s", input)
+		// Komendy są przetwarzane lokalnie, nie są broadcastowane
 		dt.processCommand(input)
 	} else {
 		util.Debug("Broadcasting DCC message")
@@ -153,6 +153,7 @@ func (dt *DCCTunnel) handleUserInput(input string) {
 			colorText(dt.ownerNick, 14),
 			colorText(">", 13),
 			input)
+		// Zwykłe wiadomości są broadcastowane do wszystkich połączonych użytkowników
 		dt.partyLine.broadcast(formattedMsg, dt.sessionID, false)
 	}
 }
@@ -284,67 +285,101 @@ func GetGlobalPartyLine() *PartyLine {
 
 // Metody PartyLine
 func (pl *PartyLine) AddSession(tunnel *DCCTunnel) {
-	pl.mutex.Lock()
-	defer pl.mutex.Unlock()
+	// Najpierw przygotujmy wiadomości z historii
+	var historyMessages []string
 
-	pl.sessions[tunnel.sessionID] = tunnel
-
+	pl.mutex.RLock()
 	for _, msg := range pl.messageLog {
 		formattedMsg := fmt.Sprintf("[%s] %s: %s",
 			msg.Timestamp.Format("15:04:05"),
 			msg.Sender,
 			msg.Message)
-		tunnel.sendToClient(formattedMsg)
+		historyMessages = append(historyMessages, formattedMsg)
+	}
+	pl.mutex.RUnlock()
+
+	// Teraz dodajmy tunel do sesji
+	pl.mutex.Lock()
+	pl.sessions[tunnel.sessionID] = tunnel
+	pl.mutex.Unlock()
+
+	// Wyślijmy historię do nowego połączenia
+	for _, msg := range historyMessages {
+		tunnel.sendToClient(msg)
 	}
 
+	// Powiadommy wszystkich o nowym połączeniu
 	pl.broadcast(fmt.Sprintf("*** %s joined the party line ***", tunnel.ownerNick), "", false)
 }
 
 func (pl *PartyLine) RemoveSession(sessionID string) {
-	pl.mutex.Lock()
-	defer pl.mutex.Unlock()
+	// Najpierw sprawdźmy czy sesja istnieje i pobieramy informacje o niej
+	var ownerNick string
+	var exists bool
 
-	if tunnel, exists := pl.sessions[sessionID]; exists {
-		pl.broadcast(fmt.Sprintf("*** %s left the party line ***", tunnel.ownerNick), sessionID, false)
+	pl.mutex.Lock()
+	if tunnel, ok := pl.sessions[sessionID]; ok {
+		ownerNick = tunnel.ownerNick
+		exists = true
 		delete(pl.sessions, sessionID)
+	}
+	pl.mutex.Unlock()
+
+	// Jeśli sesja istniała, powiadamiamy innych o rozłączeniu
+	if exists {
+		pl.broadcast(fmt.Sprintf("*** %s left the party line ***", ownerNick), sessionID, false)
 	}
 }
 
 func (pl *PartyLine) broadcast(message string, excludeSessionID string, isCommand bool) {
+	// Jeśli to komenda, nie broadcastujemy jej
 	if isCommand {
-		pl.cmdMutex.Lock()
-		defer pl.cmdMutex.Unlock()
-	} else {
-		pl.mutex.RLock()
-		defer pl.mutex.RUnlock()
+		return
 	}
 
+	// Kopiujemy potrzebne dane pod mutexem, aby zminimalizować czas blokady
+	var tunnelsToSend []*DCCTunnel
+	var senderNick string
+	var needToLog bool
+
+	pl.mutex.RLock()
+	// Zbieramy tunele do wysłania wiadomości
 	for id, tunnel := range pl.sessions {
 		if id != excludeSessionID {
-			if isCommand {
-				continue // Don't broadcast commands to other sessions
-			}
-			tunnel.sendToClient(message)
+			tunnelsToSend = append(tunnelsToSend, tunnel)
 		}
+	}
+
+	// Sprawdzamy czy potrzebujemy dodać wiadomość do logu
+	needToLog = !strings.HasPrefix(message, "***")
+	if needToLog && excludeSessionID != "" {
+		if tunnel, exists := pl.sessions[excludeSessionID]; exists {
+			senderNick = tunnel.bot.GetCurrentNick()
+		} else {
+			senderNick = "System"
+		}
+	}
+	pl.mutex.RUnlock()
+
+	// Wysyłamy wiadomości bez blokowania mutexa
+	for _, tunnel := range tunnelsToSend {
+		tunnel.sendToClient(message)
 	}
 
 	// Dodajemy do historii tylko wiadomości od użytkowników (nie systemowe)
-	if !isCommand && !strings.HasPrefix(message, "***") {
-		var sender string
-		if tunnel, exists := pl.sessions[excludeSessionID]; exists {
-			sender = tunnel.bot.GetCurrentNick()
-		} else {
-			sender = "System"
-		}
-
+	if needToLog {
+		pl.mutex.Lock()
 		pl.addToMessageLog(PartyLineMessage{
 			Timestamp: time.Now(),
-			Sender:    sender,
+			Sender:    senderNick,
 			Message:   message,
 		})
+		pl.mutex.Unlock()
 	}
 }
 
+// addToMessageLog dodaje wiadomość do historii
+// UWAGA: Ta metoda zakłada, że mutex jest już zablokowany przez wywołującego
 func (pl *PartyLine) addToMessageLog(msg PartyLineMessage) {
 	if len(pl.messageLog) >= pl.maxLogSize {
 		pl.messageLog = pl.messageLog[1:]

@@ -18,10 +18,6 @@ import (
 
 // processCommand przetwarza komendy od użytkownika
 func (dt *DCCTunnel) processCommand(command string) {
-	// Acquire command mutex to prevent race conditions
-	dt.partyLine.cmdMutex.Lock()
-	defer dt.partyLine.cmdMutex.Unlock()
-
 	util.Debug("DCC: Processing command: %s for session: %s", command, dt.sessionID)
 
 	fields := strings.Fields(command)
