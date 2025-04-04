@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -419,41 +418,6 @@ func (dt *DCCTunnel) getExternalIP(network string) string {
 	}
 
 	return strings.TrimSpace(string(body))
-}
-
-// Pomocnicza funkcja do generowania losowych nicków
-func (dt *DCCTunnel) generateRandomNick() string {
-	rand.Seed(time.Now().UnixNano())
-
-	// Generowanie głównej części nicka (4-7 znaków)
-	mainLength := rand.Intn(4) + 4
-	mainPart := make([]byte, mainLength)
-
-	for i := range mainPart {
-		if rand.Intn(2) == 0 {
-			mainPart[i] = byte('A' + rand.Intn(26))
-		} else {
-			mainPart[i] = byte('a' + rand.Intn(26))
-		}
-	}
-
-	// Generowanie końcówki (1-4 znaki)
-	suffixLength := rand.Intn(4) + 1
-	suffixPart := make([]byte, suffixLength)
-
-	for i := range suffixPart {
-		choice := rand.Intn(3)
-		if choice == 0 {
-			suffixPart[i] = byte('A' + rand.Intn(26))
-		} else if choice == 1 {
-			suffixPart[i] = byte('a' + rand.Intn(26))
-		} else {
-			suffixPart[i] = byte('0' + rand.Intn(10))
-		}
-	}
-
-	// Łączenie części nicka
-	return fmt.Sprintf("%s%s", string(mainPart), string(suffixPart))
 }
 
 func colorCommand(command, description string) string {

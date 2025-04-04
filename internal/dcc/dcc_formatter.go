@@ -45,10 +45,6 @@ func boldText(text string) string {
 	return fmt.Sprintf("\x02%s\x02", text)
 }
 
-func underlineText(text string) string {
-	return fmt.Sprintf("\x1F%s\x1F", text)
-}
-
 // FormatMessage formats a raw IRC message
 func (mf *MessageFormatter) FormatMessage(raw string) string {
 	event := irc.ParseIRCMessage(raw)
