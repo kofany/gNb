@@ -20,7 +20,6 @@ type NickManager struct {
 	bots                 []types.Bot
 	connectedBots        []types.Bot // Nowe pole dla połączonych botów
 	botIndex             int
-	isonInterval         time.Duration
 	tempUnavailableNicks map[string]time.Time
 	NoLettersServers     map[string]bool
 	mutex                sync.RWMutex  // Zmiana na RWMutex dla lepszej wydajności
@@ -425,14 +424,6 @@ func (nm *NickManager) saveNicksToFile() error {
 	}
 
 	return os.WriteFile("data/nicks.json", jsonData, 0644)
-}
-
-func (nm *NickManager) cleanupTempUnavailableNicks(currentTime time.Time) {
-	for nick, unblockTime := range nm.tempUnavailableNicks {
-		if currentTime.After(unblockTime) {
-			delete(nm.tempUnavailableNicks, nick)
-		}
-	}
 }
 
 func (nm *NickManager) filterAvailableNicks(nicks []string, onlineNicks []string) []string {

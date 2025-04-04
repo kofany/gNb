@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kofany/gNb/internal/command"
 	"github.com/kofany/gNb/internal/irc"
 	"github.com/kofany/gNb/internal/types"
 	"github.com/kofany/gNb/internal/util"
@@ -15,19 +16,20 @@ import (
 
 // DCCTunnel reprezentuje tunel DCC do komunikacji z botem
 type DCCTunnel struct {
-	conn          net.Conn
-	bot           types.Bot
-	active        bool
-	mu            sync.Mutex
-	ignoredEvents map[string]bool
-	onStop        func()
-	formatter     *MessageFormatter
-	botManager    types.BotManager
-	readDone      chan struct{}
-	writeDone     chan struct{}
-	sessionID     string
-	partyLine     *PartyLine
-	ownerNick     string // Dodane pole
+	conn           net.Conn
+	bot            types.Bot
+	active         bool
+	mu             sync.Mutex
+	ignoredEvents  map[string]bool
+	onStop         func()
+	formatter      *MessageFormatter
+	botManager     types.BotManager
+	readDone       chan struct{}
+	writeDone      chan struct{}
+	sessionID      string
+	partyLine      *PartyLine
+	ownerNick      string
+	commandAdapter *command.DCCAdapter // New field for command processing
 }
 
 type PartyLine struct {
@@ -52,16 +54,21 @@ var (
 func NewDCCTunnel(bot types.Bot, ownerNick string, onStop func()) *DCCTunnel {
 	sessionID := fmt.Sprintf("dcc-%s-%d", bot.GetCurrentNick(), time.Now().UnixNano())
 	dt := &DCCTunnel{
-		bot:           bot,
-		active:        false,
-		ignoredEvents: map[string]bool{"303": true},
-		onStop:        onStop,
-		formatter:     NewMessageFormatter(bot.GetCurrentNick()),
-		botManager:    bot.GetBotManager(),
-		sessionID:     sessionID,
-		partyLine:     GetGlobalPartyLine(),
-		ownerNick:     ownerNick,
+		bot:            bot,
+		active:         false,
+		ignoredEvents:  map[string]bool{"303": true},
+		onStop:         onStop,
+		formatter:      NewMessageFormatter(bot.GetCurrentNick()),
+		botManager:     bot.GetBotManager(),
+		sessionID:      sessionID,
+		partyLine:      GetGlobalPartyLine(),
+		ownerNick:      ownerNick,
+		commandAdapter: command.NewDCCAdapter(), // Initialize the command adapter
 	}
+
+	// Initialize the command system
+	dt.commandAdapter.Initialize()
+
 	return dt
 }
 
@@ -307,8 +314,13 @@ func (dt *DCCTunnel) handleUserInput(input string) {
 		}()
 
 		if strings.HasPrefix(input, ".") {
-			// Command processing is already protected with timeouts in processCommand
-			dt.processCommand(input)
+			// Use the new command system to process commands
+			dt.commandAdapter.ProcessCommand(
+				input,
+				dt.bot,
+				ownerNick,
+				dt.sendToClient,
+			)
 		} else if input != "" { // Only broadcast non-empty messages
 			// Regular message to party line - don't use the global mutex for this
 			// to avoid blocking party line messages when commands are being processed
@@ -334,6 +346,9 @@ func (dt *DCCTunnel) handleUserInput(input string) {
 
 				// Add to message log first
 				dt.partyLine.addToMessageLog(msg)
+
+				// Use the command adapter's party line feature
+				dt.commandAdapter.SendPartyLineMessage(input, ownerNick, sessionID)
 
 				// Then broadcast to all - use a separate goroutine to avoid blocking
 				go dt.partyLine.broadcast(formattedMsg, sessionID)

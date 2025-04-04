@@ -1,6 +1,7 @@
 package util
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"strings"
@@ -28,6 +29,21 @@ func ParseCIDR(cidr string) (net.IP, *net.IPNet, error) {
 	return net.ParseCIDR(cidr)
 }
 
+// IsIPInRange checks if an IP address is within a CIDR range
+func IsIPInRange(ip string, cidr string) (bool, error) {
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return false, fmt.Errorf("invalid IP address: %s", ip)
+	}
+
+	_, ipNet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return false, fmt.Errorf("invalid CIDR: %s", cidr)
+	}
+
+	return ipNet.Contains(parsedIP), nil
+}
+
 // ExpandIPv6 expands a shortened IPv6 address to its full form
 func ExpandIPv6(ip string) string {
 	parsedIP := net.ParseIP(ip)
@@ -35,6 +51,21 @@ func ExpandIPv6(ip string) string {
 		return ip // Return original if not a valid IPv6
 	}
 	return strings.ToUpper(fmt.Sprintf("%032x", []byte(parsedIP.To16())))
+}
+
+// CompareIPs compares two IP addresses
+func CompareIPs(ip1, ip2 string) (int, error) {
+	parsedIP1 := net.ParseIP(ip1)
+	parsedIP2 := net.ParseIP(ip2)
+
+	if parsedIP1 == nil {
+		return 0, fmt.Errorf("invalid IP address: %s", ip1)
+	}
+	if parsedIP2 == nil {
+		return 0, fmt.Errorf("invalid IP address: %s", ip2)
+	}
+
+	return bytes.Compare(parsedIP1, parsedIP2), nil
 }
 
 // IsPrivateIP checks if the IP address is private

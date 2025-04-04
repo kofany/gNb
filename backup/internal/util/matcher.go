@@ -50,9 +50,9 @@ func (m *Matcher) matchWildcard(pattern, str string) bool {
 	// Escape regex special characters
 	pattern = regexp.QuoteMeta(pattern)
 	// Replace wildcards with regex equivalents
-	pattern = strings.ReplaceAll(pattern, `\*`, ".*")    // * matches any string
-	pattern = strings.ReplaceAll(pattern, `\?`, ".")     // ? matches any character
-	pattern = strings.ReplaceAll(pattern, `\#`, "[0-9]") // # matches any digit
+	pattern = strings.Replace(pattern, `\*`, ".*", -1)    // * matches any string
+	pattern = strings.Replace(pattern, `\?`, ".", -1)     // ? matches any character
+	pattern = strings.Replace(pattern, `\#`, "[0-9]", -1) // # matches any digit
 	// Add start and end anchors
 	pattern = "^" + pattern + "$"
 
