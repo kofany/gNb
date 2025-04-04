@@ -97,55 +97,50 @@ func (bm *BotManager) cleanupDisconnectedBots() {
 	// Czekamy 240 sekund od startu
 	time.Sleep(240 * time.Second)
 
-	bm.mutex.Lock()
-	defer bm.mutex.Unlock()
-
 	util.Info("Starting cleanup of disconnected bots after startup grace period")
 
-	// Tworzymy nową listę tylko z połączonymi botami
-	connectedBots := make([]types.Bot, 0)
-	removedCount := 0
-
+	// Najpierw identyfikujemy boty do usunięcia pod RLock
+	bm.mutex.RLock()
+	botsToRemove := make([]types.Bot, 0)
 	for _, bot := range bm.bots {
-		if bot.IsConnected() {
-			connectedBots = append(connectedBots, bot)
-		} else {
-			// Logujemy informację o usuwanym bocie
-			util.Warning("Removing bot %s due to connection failure after startup period", bot.GetCurrentNick())
-
-			// Zwalniamy zasoby bota
-			bot.Quit("Cleanup - connection failure")
-
-			// Jeśli bot miał przypisany nick do złapania, zwracamy go do puli
-			if bm.nickManager != nil {
-				currentNick := bot.GetCurrentNick()
-				bm.nickManager.ReturnNickToPool(currentNick)
-				nm := bm.nickManager.(*nickmanager.NickManager)
-				nm.UnregisterBot(bot)
-			}
-
-			removedCount++
+		if !bot.IsConnected() {
+			botsToRemove = append(botsToRemove, bot)
 		}
 	}
+	bm.mutex.RUnlock()
 
-	// Aktualizujemy listę botów
-	bm.bots = connectedBots
+	// Teraz usuwamy każdy bot pojedynczo, aby zminimalizować czas blokowania
+	removedCount := 0
+	for _, bot := range botsToRemove {
+		// Logujemy informację o usuwanym bocie
+		util.Warning("Removing bot %s due to connection failure after startup period", bot.GetCurrentNick())
 
-	// Aktualizujemy indeks dla komend jeśli jest potrzeba
-	if bm.commandBotIndex >= len(bm.bots) {
-		bm.commandBotIndex = 0
+		// Zwalniamy zasoby bota w osobnej goroutine, aby nie blokować
+		go func(botToRemove types.Bot) {
+			botToRemove.Quit("Cleanup - connection failure")
+		}(bot)
+
+		// Usuwamy bota z managera
+		bm.RemoveBotFromManager(bot)
+		removedCount++
 	}
 
 	// Logujemy podsumowanie
 	if removedCount > 0 {
+		bm.mutex.RLock()
+		remainingBots := len(bm.bots)
+		bm.mutex.RUnlock()
+
 		util.Info("Cleanup completed: removed %d disconnected bots, %d bots remaining",
-			removedCount, len(bm.bots))
+			removedCount, remainingBots)
+
+		// Aktualizujemy totalCreatedBots o liczbę usuniętych botów
+		bm.mutex.Lock()
+		bm.totalCreatedBots -= removedCount
+		bm.mutex.Unlock()
 	} else {
 		util.Info("Cleanup completed: all bots are connected")
 	}
-
-	// Aktualizujemy totalCreatedBots o liczbę usuniętych botów
-	bm.totalCreatedBots -= removedCount
 }
 
 func (bm *BotManager) StartBots() {
@@ -232,14 +227,33 @@ func (bm *BotManager) Stop() {
 	util.Info("All bots have been stopped.")
 }
 
-// Dodajemy nową metodę do BotManager
+// RemoveBotFromManager usuwa bota z managera
 func (bm *BotManager) RemoveBotFromManager(botToRemove types.Bot) {
-	bm.mutex.Lock()
-	defer bm.mutex.Unlock()
+	// Najpierw sprawdzamy, czy bot istnieje w liście
+	var found bool
+	var currentNick string
 
-	// Znajdź i usuń bota z listy
+	bm.mutex.RLock()
+	for _, bot := range bm.bots {
+		if bot == botToRemove {
+			found = true
+			currentNick = botToRemove.GetCurrentNick()
+			break
+		}
+	}
+	bm.mutex.RUnlock()
+
+	if !found {
+		util.Debug("Bot %s already removed from BotManager", botToRemove.GetCurrentNick())
+		return // Bot już został usunięty
+	}
+
+	// Teraz usuwamy bota z listy pod mutexem
+	bm.mutex.Lock()
+
+	// Sprawdź ponownie, czy bot nadal istnieje (mógł zostać usunięty w międzyczasie)
 	newBots := make([]types.Bot, 0, len(bm.bots))
-	found := false
+	found = false
 
 	for _, bot := range bm.bots {
 		if bot != botToRemove {
@@ -250,22 +264,30 @@ func (bm *BotManager) RemoveBotFromManager(botToRemove types.Bot) {
 	}
 
 	if !found {
+		bm.mutex.Unlock()
+		util.Debug("Bot %s already removed from BotManager", botToRemove.GetCurrentNick())
 		return // Bot już został usunięty
 	}
 
+	// Aktualizujemy listę botów
 	bm.bots = newBots
 
-	// Aktualizuj indeks dla komend
+	// Aktualizujemy indeks dla komend
 	if bm.commandBotIndex >= len(bm.bots) {
 		bm.commandBotIndex = 0
 	}
+	bm.mutex.Unlock()
 
-	// Aktualizuj NickManager
+	// Aktualizujemy NickManager w osobnej goroutine, aby nie blokować
 	if bm.nickManager != nil {
-		currentNick := botToRemove.GetCurrentNick()
-		bm.nickManager.ReturnNickToPool(currentNick)
-		nm := bm.nickManager.(*nickmanager.NickManager)
-		nm.UnregisterBot(botToRemove)
+		go func() {
+			// Zwracamy nick do puli
+			bm.nickManager.ReturnNickToPool(currentNick)
+
+			// Wyrejestrowujemy bota z NickManagera
+			nm := bm.nickManager.(*nickmanager.NickManager)
+			nm.UnregisterBot(botToRemove)
+		}()
 	}
 
 	util.Info("Bot %s has been removed from BotManager", botToRemove.GetCurrentNick())

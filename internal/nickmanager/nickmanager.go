@@ -44,21 +44,30 @@ func NewNickManager() *NickManager {
 }
 
 func (nm *NickManager) updateConnectedBots() {
+	util.Debug("NickManager: Updating connected bots list")
+
+	// Kopiujemy listę wszystkich botów pod RLock
 	nm.mutex.RLock()
-	allBots := nm.bots
+	allBots := make([]types.Bot, len(nm.bots))
+	copy(allBots, nm.bots)
 	nm.mutex.RUnlock()
 
+	// Sprawdzamy, które boty są połączone
 	newConnected := make([]types.Bot, 0, len(allBots))
 	for _, bot := range allBots {
-		if bot.IsConnected() {
+		// Dodajemy dodatkowe sprawdzenie, czy bot nie jest nil
+		if bot != nil && bot.IsConnected() {
 			newConnected = append(newConnected, bot)
 		}
 	}
 
+	// Aktualizujemy listę połączonych botów
 	nm.connectedBotsMutex.Lock()
 	nm.connectedBots = newConnected
 	nm.lastConnectedUpdate = time.Now()
 	nm.connectedBotsMutex.Unlock()
+
+	util.Debug("NickManager: Connected bots list updated, %d bots connected", len(newConnected))
 }
 
 func (nm *NickManager) LoadNicks(filename string) error {
@@ -122,18 +131,46 @@ func (nm *NickManager) monitorNicks() {
 		// Request ISON and wait for response
 		// Wykonujemy w osobnej goroutine, aby nie blokować głównej pętli
 		go func(currentBot types.Bot) {
+			// Sprawdzamy, czy bot jest nadal połączony
+			if !currentBot.IsConnected() {
+				util.Warning("NickManager: Bot %s is no longer connected, skipping ISON request", currentBot.GetCurrentNick())
+				return
+			}
+
 			// Kopiujemy listę nicków do złapania
 			nm.mutex.RLock()
+			if len(nm.nicksToCatch) == 0 {
+				nm.mutex.RUnlock()
+				util.Debug("NickManager: No nicks to catch, skipping ISON request")
+				return
+			}
+
 			nicksCopy := make([]string, len(nm.nicksToCatch))
 			copy(nicksCopy, nm.nicksToCatch)
 			nm.mutex.RUnlock()
 
-			// Wysyłamy zapytanie ISON
-			onlineNicks, err := currentBot.RequestISON(nicksCopy)
-			if err != nil {
-				util.Error("Error requesting ISON from bot %s: %v", currentBot.GetCurrentNick(), err)
-			} else {
-				nm.handleISONResponse(onlineNicks)
+			// Wysyłamy zapytanie ISON z timeoutem
+			doneChan := make(chan struct{})
+			var onlineNicks []string
+			var err error
+
+			go func() {
+				onlineNicks, err = currentBot.RequestISON(nicksCopy)
+				close(doneChan)
+			}()
+
+			// Czekamy na zakończenie zapytania z timeoutem
+			select {
+			case <-doneChan:
+				// Zapytanie zakończone
+				if err != nil {
+					util.Error("Error requesting ISON from bot %s: %v", currentBot.GetCurrentNick(), err)
+				} else {
+					nm.handleISONResponse(onlineNicks)
+				}
+			case <-time.After(6 * time.Second):
+				// Timeout - zapytanie trwa zbyt długo
+				util.Warning("NickManager: ISON request to bot %s timed out", currentBot.GetCurrentNick())
 			}
 		}(bot)
 	}
@@ -153,11 +190,13 @@ func (nm *NickManager) RegisterBot(bot types.Bot) {
 	}
 }
 
-// Zmodyfikowana funkcja do wyrejestrowania bota
+// UnregisterBot wyrejestrowuje bota z NickManagera
 func (nm *NickManager) UnregisterBot(botToRemove types.Bot) {
+	util.Debug("NickManager: Unregistering bot %s", botToRemove.GetCurrentNick())
+
 	// Usuń z głównej listy botów
 	nm.mutex.Lock()
-	newBots := make([]types.Bot, 0, len(nm.bots)-1)
+	newBots := make([]types.Bot, 0, len(nm.bots))
 	for _, bot := range nm.bots {
 		if bot != botToRemove {
 			newBots = append(newBots, bot)
@@ -176,6 +215,8 @@ func (nm *NickManager) UnregisterBot(botToRemove types.Bot) {
 	}
 	nm.connectedBots = newConnected
 	nm.connectedBotsMutex.Unlock()
+
+	util.Debug("NickManager: Bot %s unregistered successfully", botToRemove.GetCurrentNick())
 }
 
 func (nm *NickManager) handleISONResponse(onlineNicks []string) {
