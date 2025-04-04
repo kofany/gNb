@@ -978,7 +978,6 @@ func (b *Bot) GetCurrentNick() string {
 // BNC
 
 type BNCServer struct {
-	bot      types.Bot
 	Port     int
 	Password string
 	Tunnel   *bnc.RawTunnel
