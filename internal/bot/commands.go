@@ -3,7 +3,6 @@ package bot
 import (
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/kofany/gNb/internal/auth"
@@ -42,9 +41,6 @@ func init() {
 	}
 }
 
-// commandMutex is a global mutex to ensure only one command is processed at a time per bot
-var commandMutex sync.Mutex
-
 func (b *Bot) HandleCommands(e *irc.Event) {
 	util.Debug("Received command for bot %s: %s", b.GetCurrentNick(), e.Message())
 
@@ -78,11 +74,6 @@ func (b *Bot) HandleCommands(e *irc.Event) {
 	}
 
 	util.Debug("Command %s recognized for bot %s", cmdName, b.GetCurrentNick())
-
-	// Use a mutex to ensure only one command is processed at a time per bot
-	// This is important to prevent race conditions and resource contention
-	commandMutex.Lock()
-	defer commandMutex.Unlock()
 
 	// Execute the command with a longer timeout
 	timeoutChan := time.After(30 * time.Second) // Increased timeout
