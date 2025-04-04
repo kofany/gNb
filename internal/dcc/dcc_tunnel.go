@@ -85,6 +85,19 @@ func (dt *DCCTunnel) Start(conn net.Conn) {
 	dt.active = true
 	dt.readDone = make(chan struct{})
 	dt.writeDone = make(chan struct{})
+
+	// Apply TCP optimizations if we have a TCP connection
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		// Disable Nagle's algorithm for interactive connections
+		tcpConn.SetNoDelay(true)
+
+		// Enable TCP keepalives at the socket level
+		tcpConn.SetKeepAlive(true)
+		tcpConn.SetKeepAlivePeriod(60 * time.Second)
+
+		util.Debug("DCC: Applied TCP optimizations to connection for bot %s", dt.bot.GetCurrentNick())
+	}
+
 	dt.mu.Unlock()
 
 	util.Debug("DCC: DCC tunnel started for bot %s", dt.bot.GetCurrentNick())
@@ -95,7 +108,85 @@ func (dt *DCCTunnel) Start(conn net.Conn) {
 	// Dołączamy do PartyLine
 	dt.partyLine.AddSession(dt)
 
+	// Start a keep-alive goroutine to prevent connection timeouts
+	go dt.keepAliveLoop()
+
 	go dt.readLoop()
+}
+
+// keepAliveLoop sends periodic keep-alive messages to maintain the connection
+func (dt *DCCTunnel) keepAliveLoop() {
+	// Create a ticker that fires every 180 seconds (3 minutes)
+	// This is below the typical NAT timeout of 5 minutes
+	keepAliveTicker := time.NewTicker(180 * time.Second)
+	defer keepAliveTicker.Stop()
+
+	for {
+		select {
+		case <-keepAliveTicker.C:
+			// Check if the tunnel is still active
+			if !dt.IsActive() {
+				return
+			}
+
+			// Send a keep-alive message
+			dt.sendKeepAlive()
+
+		case <-dt.readDone:
+			// Tunnel was closed, exit the loop
+			return
+		}
+	}
+}
+
+// sendKeepAlive sends a minimal keep-alive ping to keep the connection alive
+func (dt *DCCTunnel) sendKeepAlive() {
+	dt.mu.Lock()
+	if !dt.active || dt.conn == nil {
+		dt.mu.Unlock()
+		return
+	}
+	dt.mu.Unlock()
+
+	// Send a minimal keep-alive message (a single space followed by newline is invisible to the user)
+	// This is smaller than a PING/PONG and serves just to keep the connection alive
+	done := make(chan bool, 1)
+	writeErr := make(chan error, 1)
+
+	go func() {
+		dt.mu.Lock()
+		if !dt.active || dt.conn == nil {
+			dt.mu.Unlock()
+			writeErr <- nil // Not really an error, just signaling we're done
+			return
+		}
+
+		util.Debug("DCC: Sending keep-alive to maintain connection for %s", dt.bot.GetCurrentNick())
+		// Set a deadline for the write operation
+		dt.conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+		_, err := dt.conn.Write([]byte(" \r\n"))
+		dt.conn.SetWriteDeadline(time.Time{}) // Reset deadline
+		dt.mu.Unlock()
+
+		if err != nil {
+			writeErr <- err
+		} else {
+			done <- true
+		}
+	}()
+
+	select {
+	case <-done:
+		// Keep-alive sent successfully
+	case err := <-writeErr:
+		if err != nil {
+			util.Warning("DCC: Keep-alive write error: %v", err)
+			dt.Stop()
+		}
+	case <-time.After(3 * time.Second):
+		util.Warning("DCC: Keep-alive write timeout, stopping tunnel")
+		dt.Stop()
+	}
 }
 
 func (dt *DCCTunnel) readLoop() {
@@ -115,17 +206,18 @@ func (dt *DCCTunnel) readLoop() {
 		dt.Stop()
 	}()
 
-	// Set a read deadline to prevent blocking forever
+	// Set a longer read deadline now that we have keepalives - 5 minutes (300 seconds)
+	// Our keepalive is every 3 minutes, so this gives ample time for a keepalive to arrive
 	dt.mu.Lock()
 	if dt.conn != nil {
-		dt.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+		dt.conn.SetReadDeadline(time.Now().Add(300 * time.Second))
 	}
 	dt.mu.Unlock()
 
 	scanner := bufio.NewScanner(dt.conn)
 	scanner.Buffer(make([]byte, 4096), 1024*1024) // Increase buffer size to handle larger messages
 
-	readTimeoutTicker := time.NewTicker(30 * time.Second)
+	readTimeoutTicker := time.NewTicker(120 * time.Second) // Check less frequently since we have keepalives
 	defer readTimeoutTicker.Stop()
 
 	// Use a separate goroutine to read from the scanner
@@ -151,12 +243,17 @@ func (dt *DCCTunnel) readLoop() {
 				}
 
 				// Send the line to the read channel
-				readChan <- scanner.Text()
+				text := scanner.Text()
 
-				// Reset the read deadline
+				// Skip empty keepalive messages when they come back
+				if strings.TrimSpace(text) != "" {
+					readChan <- text
+				}
+
+				// Reset the read deadline after receiving any data - adding 5 minutes
 				dt.mu.Lock()
 				if dt.conn != nil {
-					dt.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+					dt.conn.SetReadDeadline(time.Now().Add(300 * time.Second))
 				}
 				dt.mu.Unlock()
 			}
@@ -200,12 +297,7 @@ func (dt *DCCTunnel) readLoop() {
 				return
 			}
 
-			// Reset the read deadline
-			dt.mu.Lock()
-			if dt.conn != nil {
-				dt.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
-			}
-			dt.mu.Unlock()
+			// No need to reset deadline here as the keepaliveLoop handles that
 		}
 	}
 }
