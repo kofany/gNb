@@ -19,6 +19,7 @@ type DCCTunnel struct {
 	bot           types.Bot
 	active        bool
 	mu            sync.Mutex
+	cmdMu         sync.Mutex // Mutex dla komend
 	ignoredEvents map[string]bool
 	onStop        func()
 	formatter     *MessageFormatter
@@ -138,14 +139,18 @@ func (dt *DCCTunnel) Stop() {
 
 // handleUserInput przetwarza dane wejściowe od użytkownika
 func (dt *DCCTunnel) handleUserInput(input string) {
-	util.Debug("DCC input received: %s from session: %s", input, dt.sessionID)
+	util.Debug("DCC input received: %s from session: %s for bot %s", input, dt.sessionID, dt.bot.GetCurrentNick())
 
 	if strings.HasPrefix(input, ".") {
-		util.Debug("Processing DCC command: %s", input)
+		// Blokujemy mutex dla komend, aby uniknąć równoczesnego wykonywania komend
+		dt.cmdMu.Lock()
+		defer dt.cmdMu.Unlock()
+
+		util.Debug("Processing DCC command: %s for bot %s", input, dt.bot.GetCurrentNick())
 		// Komendy są przetwarzane lokalnie, nie są broadcastowane
 		dt.processCommand(input)
 	} else {
-		util.Debug("Broadcasting DCC message")
+		util.Debug("Broadcasting DCC message from %s", dt.bot.GetCurrentNick())
 		timestamp := colorText(time.Now().Format("15:04:05"), 14)
 		formattedMsg := fmt.Sprintf("[%s] %s%s%s %s",
 			timestamp,
