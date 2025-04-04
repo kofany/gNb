@@ -45,7 +45,9 @@ type Bot struct {
 	ServerName         string // Nazwa serwera otrzymana po połączeniu
 	bncServer          *bnc.BNCServer
 	mutex              sync.Mutex
-	dccTunnel          *dcc.DCCTunnel
+	dccTunnel          *dcc.DCCTunnel            // Legacy field - kept for backward compatibility
+	dccTunnels         map[string]*dcc.DCCTunnel // Map of owner nick -> tunnel
+	dccTunnelsMutex    sync.Mutex
 	channelCheckTicker *time.Ticker // Ticker for periodic channel check
 }
 
@@ -89,6 +91,7 @@ func NewBot(cfg *config.BotConfig, globalConfig *config.GlobalConfig, nm types.N
 		botManager:     bm,
 		isonResponse:   make(chan []string, 1),
 		joinedChannels: make(map[string]bool),
+		dccTunnels:     make(map[string]*dcc.DCCTunnel),
 	}
 
 	bot.isConnected.Store(false)
@@ -1021,8 +1024,20 @@ func (b *Bot) SendRaw(message string) {
 }
 
 func (b *Bot) ForwardToTunnel(data string) {
+	// Forward to BNC tunnel if available
 	if b.bncServer != nil && b.bncServer.Tunnel != nil {
 		b.bncServer.Tunnel.WriteToConn(data)
+	}
+
+	// Forward to all active DCC tunnels
+	b.dccTunnelsMutex.Lock()
+	defer b.dccTunnelsMutex.Unlock()
+
+	// Forward to all active tunnels
+	for _, tunnel := range b.dccTunnels {
+		if tunnel.IsActive() {
+			tunnel.WriteToConn(data)
+		}
 	}
 }
 
@@ -1100,12 +1115,32 @@ func (b *Bot) handleDCCRequest(e *irc.Event) {
 		return
 	}
 
-	b.dccTunnel = dcc.NewDCCTunnel(b, e.Nick, func() {
-		b.dccTunnel = nil
+	// Lock before accessing the tunnels map
+	b.dccTunnelsMutex.Lock()
+
+	// Get the owner's nick
+	ownerNick := e.Nick
+
+	// Check if owner already has an active tunnel
+	if existingTunnel, exists := b.dccTunnels[ownerNick]; exists && existingTunnel.IsActive() {
+		util.Debug("DCC: Owner %s already has an active DCC tunnel - closing old one", ownerNick)
+		existingTunnel.Stop()
+	}
+
+	// Create new tunnel with proper cleanup
+	tunnel := dcc.NewDCCTunnel(b, ownerNick, func() {
+		b.dccTunnelsMutex.Lock()
+		delete(b.dccTunnels, ownerNick)
+		b.dccTunnelsMutex.Unlock()
 	})
 
-	util.Debug("DCC: Starting DCC tunnel with %s", e.Nick)
-	b.dccTunnel.Start(conn)
+	// Store the tunnel in both maps (legacy and new)
+	b.dccTunnel = tunnel // For backward compatibility
+	b.dccTunnels[ownerNick] = tunnel
+	b.dccTunnelsMutex.Unlock()
+
+	util.Debug("DCC: Starting DCC tunnel with %s", ownerNick)
+	tunnel.Start(conn)
 }
 
 func intToIP(intIP uint32) net.IP {

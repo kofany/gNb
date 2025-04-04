@@ -284,7 +284,7 @@ func (dt *DCCTunnel) handleUserInput(input string) {
 		if strings.HasPrefix(input, ".") {
 			// Command processing is already protected with timeouts in processCommand
 			dt.processCommand(input)
-		} else {
+		} else if input != "" { // Only broadcast non-empty messages
 			// Regular message to party line - don't use the global mutex for this
 			// to avoid blocking party line messages when commands are being processed
 			timestamp := colorText(time.Now().Format("15:04:05"), 14)
@@ -297,7 +297,17 @@ func (dt *DCCTunnel) handleUserInput(input string) {
 
 			// Check if partyLine is available
 			if dt.partyLine != nil {
-				util.Debug("DCC: Broadcasting party line message from %s on bot %s", dt.ownerNick, dt.bot.GetCurrentNick())
+				util.Debug("DCC: Broadcasting party line message from %s on bot %s: %s",
+					dt.ownerNick, dt.bot.GetCurrentNick(), input)
+
+				// Add to message log first
+				dt.partyLine.addToMessageLog(PartyLineMessage{
+					Timestamp: time.Now(),
+					Sender:    dt.ownerNick,
+					Message:   input,
+				})
+
+				// Then broadcast to all
 				dt.partyLine.broadcast(formattedMsg, dt.sessionID)
 			} else {
 				util.Warning("DCC: PartyLine is nil, cannot broadcast message")
@@ -601,32 +611,78 @@ func (pl *PartyLine) AddSession(tunnel *DCCTunnel) {
 	}
 
 	pl.mutex.Lock()
+
+	// Generate a unique session ID
+	sessionID := tunnel.sessionID
+	botNick := tunnel.bot.GetCurrentNick()
+	ownerNick := tunnel.ownerNick
+
 	// Check if session already exists
-	if _, exists := pl.sessions[tunnel.sessionID]; exists {
-		util.Warning("PartyLine: Session %s already exists", tunnel.sessionID)
+	if _, exists := pl.sessions[sessionID]; exists {
+		util.Warning("PartyLine: Session %s already exists", sessionID)
 		pl.mutex.Unlock()
 		return
 	}
 
 	// Add the session
-	pl.sessions[tunnel.sessionID] = tunnel
+	pl.sessions[sessionID] = tunnel
 
-	// Create a copy of the message log to avoid holding the lock while sending messages
+	// Log session addition
+	util.Debug("PartyLine: Added session %s (bot: %s, owner: %s)", sessionID, botNick, ownerNick)
+
+	// Create a copy of the message log to avoid holding the lock while sending
 	messageLogCopy := make([]PartyLineMessage, len(pl.messageLog))
 	copy(messageLogCopy, pl.messageLog)
+
+	// Get current online users
+	var onlineUsers []string
+	for _, t := range pl.sessions {
+		if t != nil && t.ownerNick != "" {
+			onlineUsers = append(onlineUsers, t.ownerNick)
+		}
+	}
 	pl.mutex.Unlock()
+
+	// Send welcome message
+	welcomeMsg := fmt.Sprintf("*** Welcome to the PartyLine, %s! ***", ownerNick)
+	tunnel.sendToClient(welcomeMsg)
+
+	// Send current users message
+	if len(onlineUsers) > 0 {
+		usersMsg := fmt.Sprintf("*** Current users: %s ***", strings.Join(onlineUsers, ", "))
+		tunnel.sendToClient(usersMsg)
+	}
 
 	// Send message history to the new client
 	for _, msg := range messageLogCopy {
-		formattedMsg := fmt.Sprintf("[%s] %s: %s",
-			msg.Timestamp.Format("15:04:05"),
-			msg.Sender,
+		formattedTime := msg.Timestamp.Format("15:04:05")
+		formattedMsg := fmt.Sprintf("[%s] %s%s%s %s",
+			colorText(formattedTime, 14),
+			colorText("<", 13),
+			colorText(msg.Sender, 14),
+			colorText(">", 13),
 			msg.Message)
 		tunnel.sendToClient(formattedMsg)
 	}
 
-	// Broadcast join message
-	pl.broadcast(fmt.Sprintf("*** %s joined the party line ***", tunnel.ownerNick), "")
+	// Broadcast join message to other users
+	pl.broadcast(fmt.Sprintf("*** %s joined the party line ***", ownerNick), sessionID)
+}
+
+// addToMessageLog dodaje wiadomość do historii PartyLine
+func (pl *PartyLine) addToMessageLog(msg PartyLineMessage) {
+	pl.mutex.Lock()
+	defer pl.mutex.Unlock()
+
+	// Add the message to the log
+	pl.messageLog = append(pl.messageLog, msg)
+
+	// Trim the log if it exceeds the maximum size
+	if len(pl.messageLog) > pl.maxLogSize {
+		pl.messageLog = pl.messageLog[len(pl.messageLog)-pl.maxLogSize:]
+	}
+
+	util.Debug("PartyLine: Added message to log from %s: %s", msg.Sender, msg.Message)
 }
 
 func (pl *PartyLine) RemoveSession(sessionID string) {
@@ -742,23 +798,19 @@ func (pl *PartyLine) broadcast(message string, excludeSessionID string) {
 
 	// Dodajemy do historii tylko wiadomości od użytkowników (nie systemowe)
 	if !strings.HasPrefix(message, "***") && senderNick != "" {
-		pl.addToMessageLog(PartyLineMessage{
+		// Create a message object
+		msg := PartyLineMessage{
 			Timestamp: time.Now(),
 			Sender:    senderNick,
 			Message:   message,
-		})
+		}
+
+		// Add to message log
+		pl.addToMessageLog(msg)
 	}
 }
 
-func (pl *PartyLine) addToMessageLog(msg PartyLineMessage) {
-	pl.mutex.Lock()
-	defer pl.mutex.Unlock()
-
-	if len(pl.messageLog) >= pl.maxLogSize {
-		pl.messageLog = pl.messageLog[1:]
-	}
-	pl.messageLog = append(pl.messageLog, msg)
-}
+// This method has been replaced by the improved version above
 
 // HandleDisconnect handles a disconnection event
 func (dt *DCCTunnel) HandleDisconnect() {
