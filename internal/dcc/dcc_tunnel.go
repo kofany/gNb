@@ -3,7 +3,6 @@ package dcc
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"net"
 	"strings"
 	"sync"
@@ -20,6 +19,7 @@ type DCCTunnel struct {
 	bot           types.Bot
 	active        bool
 	mu            sync.Mutex
+	cmdMu         sync.Mutex // Mutex dla komend
 	ignoredEvents map[string]bool
 	onStop        func()
 	formatter     *MessageFormatter
@@ -137,27 +137,20 @@ func (dt *DCCTunnel) Stop() {
 	dt.mu.Unlock()
 }
 
-// readFromConn obsługuje odczyt danych z połączenia
-func (dt *DCCTunnel) readFromConn() {
-	defer dt.Stop()
-
-	scanner := bufio.NewScanner(dt.conn)
-	for scanner.Scan() {
-		line := scanner.Text()
-		util.Debug("DCC: Received from DCC connection: %s", line)
-		dt.handleUserInput(line)
-	}
-
-	if err := scanner.Err(); err != nil {
-		util.Error("DCC: Error reading from DCC Chat connection: %v", err)
-	}
-}
-
 // handleUserInput przetwarza dane wejściowe od użytkownika
 func (dt *DCCTunnel) handleUserInput(input string) {
+	util.Debug("DCC input received: %s from session: %s for bot %s", input, dt.sessionID, dt.bot.GetCurrentNick())
+
 	if strings.HasPrefix(input, ".") {
+		// Blokujemy mutex dla komend, aby uniknąć równoczesnego wykonywania komend
+		dt.cmdMu.Lock()
+		defer dt.cmdMu.Unlock()
+
+		util.Debug("Processing DCC command: %s for bot %s", input, dt.bot.GetCurrentNick())
+		// Komendy są przetwarzane lokalnie, nie są broadcastowane
 		dt.processCommand(input)
 	} else {
+		util.Debug("Broadcasting DCC message from %s", dt.bot.GetCurrentNick())
 		timestamp := colorText(time.Now().Format("15:04:05"), 14)
 		formattedMsg := fmt.Sprintf("[%s] %s%s%s %s",
 			timestamp,
@@ -165,42 +158,55 @@ func (dt *DCCTunnel) handleUserInput(input string) {
 			colorText(dt.ownerNick, 14),
 			colorText(">", 13),
 			input)
-		dt.partyLine.broadcast(formattedMsg, dt.sessionID)
+		// Zwykłe wiadomości są broadcastowane do wszystkich połączonych użytkowników
+		dt.partyLine.broadcast(formattedMsg, dt.sessionID, false)
 	}
 }
 
 func (dt *DCCTunnel) WriteToConn(data string) {
+	// Najpierw sprawdzamy stan i przetwarzamy wiadomość pod mutexem
 	dt.mu.Lock()
-	defer dt.mu.Unlock()
-
 	if !dt.active || dt.conn == nil {
+		dt.mu.Unlock()
 		return
 	}
 
 	// Ignorowanie określonych zdarzeń
 	if strings.Contains(data, " 303 ") {
+		dt.mu.Unlock()
 		return
 	}
 
 	parsedMessage := dt.parseIRCMessage(data)
 	if parsedMessage == "" {
+		dt.mu.Unlock()
 		return
 	}
 
-	// Nieblokujące wysyłanie z timeoutem
-	done := make(chan bool, 1)
-	go func() {
-		dt.conn.Write([]byte(parsedMessage + "\r\n"))
-		done <- true
-	}()
+	// Kopiujemy połączenie, aby nie blokować mutexa podczas wysyłania
+	conn := dt.conn
+	dt.mu.Unlock()
 
-	select {
-	case <-done:
-		util.Debug("DCC: Message sent successfully")
-	case <-time.After(time.Second * 5):
-		util.Warning("DCC: Write timeout, stopping tunnel")
-		dt.Stop()
-	}
+	// Wysyłanie w osobnej goroutine bez blokowania mutexa
+	go func() {
+		// Nieblokujące wysyłanie z timeoutem
+		done := make(chan bool, 1)
+		go func() {
+			_, err := conn.Write([]byte(parsedMessage + "\r\n"))
+			if err != nil {
+				util.Warning("DCC: Error writing to connection: %v", err)
+			}
+			done <- true
+		}()
+
+		select {
+		case <-done:
+			util.Debug("DCC: Message sent successfully")
+		case <-time.After(time.Second * 2):
+			util.Warning("DCC: Write timeout, stopping tunnel")
+			dt.Stop()
+		}
+	}()
 }
 
 func (dt *DCCTunnel) parseIRCMessage(raw string) string {
@@ -233,30 +239,26 @@ func (dt *DCCTunnel) parseIRCMessage(raw string) string {
 	}
 }
 
-// shouldIgnoreEvent sprawdza czy dane zdarzenie powinno być ignorowane
-func (dt *DCCTunnel) shouldIgnoreEvent(data string) bool {
-	dt.mu.Lock()
-	defer dt.mu.Unlock()
-
-	// Ignoruj odpowiedzi ISON
-	if strings.Contains(data, " 303 ") {
-		return true
-	}
-
-	for event := range dt.ignoredEvents {
-		if strings.Contains(data, " "+event+" ") {
-			return true
-		}
-	}
-
-	return false
-}
-
 // sendToClient wysyła wiadomość do klienta DCC
 func (dt *DCCTunnel) sendToClient(message string) {
-	if dt.conn != nil {
-		dt.conn.Write([]byte(message + "\r\n"))
+	// Sprawdzamy czy połączenie jest aktywne
+	dt.mu.Lock()
+	if !dt.active || dt.conn == nil {
+		dt.mu.Unlock()
+		return
 	}
+
+	// Kopiujemy połączenie, aby nie blokować mutexa podczas wysyłania
+	conn := dt.conn
+	dt.mu.Unlock()
+
+	// Wysyłanie w osobnej goroutine bez blokowania
+	go func() {
+		_, err := conn.Write([]byte(message + "\r\n"))
+		if err != nil {
+			util.Warning("DCC: Error sending message to client: %v", err)
+		}
+	}()
 }
 
 // getWelcomeMessage zwraca wiadomość powitalną dla połączenia DCC
@@ -300,88 +302,6 @@ func (dt *DCCTunnel) GetBot() types.Bot {
 	return dt.bot
 }
 
-// updateFormatter aktualizuje formatter wiadomości (np. po zmianie nicka)
-func (dt *DCCTunnel) updateFormatter(newNick string) {
-	dt.mu.Lock()
-	defer dt.mu.Unlock()
-	dt.formatter = NewMessageFormatter(newNick)
-}
-
-// Funkcje pomocnicze do debugowania i logowania
-
-// logDebug loguje wiadomość debugowania
-func (dt *DCCTunnel) logDebug(format string, args ...interface{}) {
-	botNick := dt.bot.GetCurrentNick()
-	message := fmt.Sprintf(format, args...)
-	util.Debug("DCC[%s]: %s", botNick, message)
-}
-
-// logError loguje błąd
-func (dt *DCCTunnel) logError(format string, args ...interface{}) {
-	botNick := dt.bot.GetCurrentNick()
-	message := fmt.Sprintf(format, args...)
-	util.Error("DCC[%s]: %s", botNick, message)
-}
-
-// logWarning loguje ostrzeżenie
-func (dt *DCCTunnel) logWarning(format string, args ...interface{}) {
-	botNick := dt.bot.GetCurrentNick()
-	message := fmt.Sprintf(format, args...)
-	util.Warning("DCC[%s]: %s", botNick, message)
-}
-
-// handleConnectionError obsługuje błędy połączenia
-func (dt *DCCTunnel) handleConnectionError(err error) {
-	if err != nil && err != io.EOF {
-		dt.logError("Connection error: %v", err)
-	}
-	dt.Stop()
-}
-
-// isValidCommand sprawdza czy komenda jest poprawna
-func (dt *DCCTunnel) isValidCommand(command string) bool {
-	if !strings.HasPrefix(command, ".") {
-		return false
-	}
-
-	cmd := strings.Fields(command)
-	if len(cmd) == 0 {
-		return false
-	}
-
-	// Usuń prefiks "." i przekonwertuj na wielkie litery
-	cmdName := strings.ToUpper(strings.TrimPrefix(cmd[0], "."))
-
-	// Lista dozwolonych komend
-	validCommands := map[string]bool{
-		"MSG": true, "JOIN": true, "PART": true,
-		"MODE": true, "KICK": true, "QUIT": true,
-		"NICK": true, "RAW": true, "HELP": true,
-		"MJOIN": true, "MPART": true, "MRECONNECT": true,
-		"ADDNICK": true, "DELNICK": true, "LISTNICKS": true,
-		"ADDOWNER": true, "DELOWNER": true, "LISTOWNERS": true,
-		"CFLO": true, "NFLO": true, "INFO": true,
-	}
-
-	return validCommands[cmdName]
-}
-
-// validateInput sprawdza i czyści dane wejściowe
-func (dt *DCCTunnel) validateInput(input string) string {
-	// Usuń znaki nowej linii i powrotu karetki
-	input = strings.TrimSpace(input)
-	input = strings.ReplaceAll(input, "\r", "")
-	input = strings.ReplaceAll(input, "\n", "")
-
-	// Ogranicz długość wejścia
-	maxLength := 512 // Standardowe ograniczenie IRC
-	if len(input) > maxLength {
-		input = input[:maxLength]
-	}
-
-	return input
-}
-
 // PARTYLINE
 
 func GetGlobalPartyLine() *PartyLine {
@@ -397,49 +317,101 @@ func GetGlobalPartyLine() *PartyLine {
 
 // Metody PartyLine
 func (pl *PartyLine) AddSession(tunnel *DCCTunnel) {
-	pl.mutex.Lock()
-	defer pl.mutex.Unlock()
+	// Najpierw przygotujmy wiadomości z historii
+	var historyMessages []string
 
-	pl.sessions[tunnel.sessionID] = tunnel
-
+	pl.mutex.RLock()
 	for _, msg := range pl.messageLog {
 		formattedMsg := fmt.Sprintf("[%s] %s: %s",
 			msg.Timestamp.Format("15:04:05"),
 			msg.Sender,
 			msg.Message)
-		tunnel.sendToClient(formattedMsg)
+		historyMessages = append(historyMessages, formattedMsg)
+	}
+	pl.mutex.RUnlock()
+
+	// Teraz dodajmy tunel do sesji
+	pl.mutex.Lock()
+	pl.sessions[tunnel.sessionID] = tunnel
+	pl.mutex.Unlock()
+
+	// Wyślijmy historię do nowego połączenia
+	for _, msg := range historyMessages {
+		tunnel.sendToClient(msg)
 	}
 
-	pl.broadcast(fmt.Sprintf("*** %s joined the party line ***", tunnel.ownerNick), "")
+	// Powiadommy wszystkich o nowym połączeniu
+	pl.broadcast(fmt.Sprintf("*** %s joined the party line ***", tunnel.ownerNick), "", false)
 }
 
 func (pl *PartyLine) RemoveSession(sessionID string) {
-	pl.mutex.Lock()
-	defer pl.mutex.Unlock()
+	// Najpierw sprawdźmy czy sesja istnieje i pobieramy informacje o niej
+	var ownerNick string
+	var exists bool
 
-	if tunnel, exists := pl.sessions[sessionID]; exists {
-		pl.broadcast(fmt.Sprintf("*** %s left the party line ***", tunnel.ownerNick), sessionID)
+	pl.mutex.Lock()
+	if tunnel, ok := pl.sessions[sessionID]; ok {
+		ownerNick = tunnel.ownerNick
+		exists = true
 		delete(pl.sessions, sessionID)
+	}
+	pl.mutex.Unlock()
+
+	// Jeśli sesja istniała, powiadamiamy innych o rozłączeniu
+	if exists {
+		pl.broadcast(fmt.Sprintf("*** %s left the party line ***", ownerNick), sessionID, false)
 	}
 }
 
-func (pl *PartyLine) broadcast(message string, excludeSessionID string) {
+func (pl *PartyLine) broadcast(message string, excludeSessionID string, isCommand bool) {
+	// Jeśli to komenda, nie broadcastujemy jej
+	if isCommand {
+		return
+	}
+
+	// Kopiujemy potrzebne dane pod mutexem, aby zminimalizować czas blokady
+	var tunnelsToSend []*DCCTunnel
+	var senderNick string
+	var needToLog bool
+
+	pl.mutex.RLock()
+	// Zbieramy tunele do wysłania wiadomości
 	for id, tunnel := range pl.sessions {
 		if id != excludeSessionID {
-			tunnel.sendToClient(message)
+			tunnelsToSend = append(tunnelsToSend, tunnel)
 		}
 	}
 
+	// Sprawdzamy czy potrzebujemy dodać wiadomość do logu
+	needToLog = !strings.HasPrefix(message, "***")
+	if needToLog && excludeSessionID != "" {
+		if tunnel, exists := pl.sessions[excludeSessionID]; exists {
+			senderNick = tunnel.bot.GetCurrentNick()
+		} else {
+			senderNick = "System"
+		}
+	}
+	pl.mutex.RUnlock()
+
+	// Wysyłamy wiadomości bez blokowania mutexa
+	for _, tunnel := range tunnelsToSend {
+		tunnel.sendToClient(message)
+	}
+
 	// Dodajemy do historii tylko wiadomości od użytkowników (nie systemowe)
-	if !strings.HasPrefix(message, "***") {
+	if needToLog {
+		pl.mutex.Lock()
 		pl.addToMessageLog(PartyLineMessage{
 			Timestamp: time.Now(),
-			Sender:    pl.sessions[excludeSessionID].bot.GetCurrentNick(),
+			Sender:    senderNick,
 			Message:   message,
 		})
+		pl.mutex.Unlock()
 	}
 }
 
+// addToMessageLog dodaje wiadomość do historii
+// UWAGA: Ta metoda zakłada, że mutex jest już zablokowany przez wywołującego
 func (pl *PartyLine) addToMessageLog(msg PartyLineMessage) {
 	if len(pl.messageLog) >= pl.maxLogSize {
 		pl.messageLog = pl.messageLog[1:]

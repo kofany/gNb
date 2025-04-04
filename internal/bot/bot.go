@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,26 +24,29 @@ import (
 
 // Bot represents a single IRC bot
 type Bot struct {
-	Config          *config.BotConfig
-	GlobalConfig    *config.GlobalConfig
-	Connection      *irc.Connection
-	CurrentNick     string
-	Username        string
-	Realname        string
-	isConnected     atomic.Bool
-	owners          auth.OwnerList
-	channels        []string
-	nickManager     types.NickManager
-	isReconnecting  bool
-	lastConnectTime time.Time
-	connected       chan struct{}
-	botManager      types.BotManager
-	gaveUp          bool
-	isonResponse    chan []string
-	ServerName      string // Nazwa serwera otrzymana po połączeniu
-	bncServer       *bnc.BNCServer
-	mutex           sync.Mutex
-	dccTunnel       *dcc.DCCTunnel
+	Config             *config.BotConfig
+	GlobalConfig       *config.GlobalConfig
+	Connection         *irc.Connection
+	CurrentNick        string
+	PreviousNick       string // Store the previous nick for recovery during reconnection
+	Username           string
+	Realname           string
+	isConnected        atomic.Bool
+	owners             auth.OwnerList
+	channels           []string
+	joinedChannels     map[string]bool // Track which channels the bot has successfully joined
+	nickManager        types.NickManager
+	isReconnecting     bool
+	lastConnectTime    time.Time
+	connected          chan struct{}
+	botManager         types.BotManager
+	gaveUp             bool
+	isonResponse       chan []string
+	ServerName         string // Nazwa serwera otrzymana po połączeniu
+	bncServer          *bnc.BNCServer
+	mutex              sync.Mutex
+	dccTunnel          *dcc.DCCTunnel
+	channelCheckTicker *time.Ticker // Ticker for periodic channel check
 }
 
 // GetBotManager returns the BotManager for this bot
@@ -76,14 +80,15 @@ func NewBot(cfg *config.BotConfig, globalConfig *config.GlobalConfig, nm types.N
 	realname := bm.getWordFromPool()
 
 	bot := &Bot{
-		Config:       cfg,
-		GlobalConfig: globalConfig,
-		CurrentNick:  nick,
-		Username:     ident,
-		Realname:     realname,
-		nickManager:  nm,
-		botManager:   bm,
-		isonResponse: make(chan []string, 1),
+		Config:         cfg,
+		GlobalConfig:   globalConfig,
+		CurrentNick:    nick,
+		Username:       ident,
+		Realname:       realname,
+		nickManager:    nm,
+		botManager:     bm,
+		isonResponse:   make(chan []string, 10), // Zwiększamy bufor, aby uniknąć blokowania
+		joinedChannels: make(map[string]bool),
 	}
 
 	bot.isConnected.Store(false)
@@ -142,10 +147,19 @@ func (b *Bot) markAsConnected() {
 
 func (b *Bot) connectWithRetry() error {
 	maxRetries := b.GlobalConfig.ReconnectRetries
-	retryInterval := time.Duration(b.GlobalConfig.ReconnectInterval) * time.Second
+	baseRetryInterval := time.Duration(b.GlobalConfig.ReconnectInterval) * time.Second
 
 	var lastError error
-	for attempts := 0; attempts < maxRetries; attempts++ {
+	for attempts := range maxRetries {
+		// Exponential backoff with jitter
+		retryInterval := baseRetryInterval * time.Duration(1<<uint(attempts))
+		// Add jitter (±20%)
+		jitter := float64(retryInterval) * (0.8 + 0.4*rand.Float64())
+		retryInterval = time.Duration(jitter)
+
+		// Cap the retry interval at 5 minutes
+		retryInterval = min(retryInterval, 5*time.Minute)
+
 		b.mutex.Lock()
 		b.connected = make(chan struct{})
 		b.mutex.Unlock()
@@ -156,11 +170,16 @@ func (b *Bot) connectWithRetry() error {
 		b.Connection.Debug = false
 		b.Connection.UseTLS = b.Config.SSL
 		b.Connection.RealName = b.Realname
+		// Increase timeout for better stability
+		b.Connection.Timeout = 2 * time.Minute
+		b.Connection.KeepAlive = 5 * time.Minute
+		// Set HandleErrorAsDisconnect to false to allow the library to handle reconnections
+		b.Connection.HandleErrorAsDisconnect = false
 
 		b.addCallbacks()
 
-		util.Info("Bot %s is attempting to connect to %s (attempt %d/%d)",
-			b.CurrentNick, b.Config.ServerAddress(), attempts+1, maxRetries)
+		util.Info("Bot %s is attempting to connect to %s (attempt %d/%d, retry interval: %v)",
+			b.CurrentNick, b.Config.ServerAddress(), attempts+1, maxRetries, retryInterval)
 
 		if err := b.Connection.Connect(b.Config.ServerAddress()); err != nil {
 			lastError = err
@@ -177,7 +196,7 @@ func (b *Bot) connectWithRetry() error {
 		case <-b.connected:
 			util.Info("Bot %s successfully connected", b.CurrentNick)
 			return nil
-		case <-time.After(30 * time.Second):
+		case <-time.After(45 * time.Second): // Increased timeout for connection establishment
 			if b.IsConnected() {
 				util.Info("Bot %s is fully connected, proceeding", b.CurrentNick)
 				return nil
@@ -223,6 +242,24 @@ func (b *Bot) Quit(message string) {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 
+	// Store current nick as previous nick for potential recovery
+	if b.Connection != nil && b.Connection.GetNick() != "" {
+		b.PreviousNick = b.Connection.GetNick()
+		util.Debug("Stored previous nick %s for potential recovery", b.PreviousNick)
+	} else if b.CurrentNick != "" {
+		b.PreviousNick = b.CurrentNick
+		util.Debug("Stored previous nick %s for potential recovery", b.PreviousNick)
+	}
+
+	// Stop channel checker if running
+	if b.channelCheckTicker != nil {
+		b.channelCheckTicker.Stop()
+		b.channelCheckTicker = nil
+	}
+
+	// Clear joined channels map
+	b.joinedChannels = make(map[string]bool)
+
 	if b.Connection != nil {
 		b.Connection.QuitMessage = message
 		b.Connection.Quit()
@@ -255,10 +292,18 @@ func (b *Bot) addCallbacks() {
 
 		util.Info("Bot %s fully connected to %s as %s", b.CurrentNick, b.ServerName, b.CurrentNick)
 
+		// Reset joined channels map
+		b.mutex.Lock()
+		b.joinedChannels = make(map[string]bool)
+		b.mutex.Unlock()
+
 		// Join channels
 		for _, channel := range b.channels {
 			b.JoinChannel(channel)
 		}
+
+		// Start channel checker
+		b.startChannelChecker()
 
 		// Signal that connection has been established
 		select {
@@ -377,6 +422,61 @@ func (b *Bot) addCallbacks() {
 	// Callback for invite handling
 	b.Connection.AddCallback("INVITE", b.handleInvite)
 
+	// Callback for JOIN events
+	b.Connection.AddCallback("JOIN", func(e *irc.Event) {
+		if e.Nick == b.Connection.GetNick() {
+			channel := e.Arguments[0]
+			util.Debug("Bot %s has joined channel %s", b.CurrentNick, channel)
+			b.mutex.Lock()
+			b.joinedChannels[channel] = true
+			b.mutex.Unlock()
+		}
+	})
+
+	// Callback for PART events
+	b.Connection.AddCallback("PART", func(e *irc.Event) {
+		if e.Nick == b.Connection.GetNick() {
+			channel := e.Arguments[0]
+			util.Debug("Bot %s has left channel %s", b.CurrentNick, channel)
+			b.mutex.Lock()
+			delete(b.joinedChannels, channel)
+			b.mutex.Unlock()
+		}
+	})
+
+	// Callback for KICK events
+	b.Connection.AddCallback("KICK", func(e *irc.Event) {
+		if len(e.Arguments) >= 2 && e.Arguments[1] == b.Connection.GetNick() {
+			channel := e.Arguments[0]
+			reason := ""
+			if len(e.Arguments) >= 3 {
+				reason = e.Arguments[2]
+			}
+			util.Warning("Bot %s was kicked from channel %s by %s: %s",
+				b.CurrentNick, channel, e.Nick, reason)
+			b.mutex.Lock()
+			delete(b.joinedChannels, channel)
+			b.mutex.Unlock()
+
+			// Try to rejoin after a delay if it's in our channel list
+			b.mutex.Lock()
+			channelsList := make([]string, len(b.channels))
+			copy(channelsList, b.channels)
+			b.mutex.Unlock()
+
+			if slices.Contains(channelsList, channel) {
+				go func(channel string) {
+					time.Sleep(30 * time.Second)
+					if b.IsConnected() {
+						util.Info("Bot %s attempting to rejoin channel %s after kick",
+							b.CurrentNick, channel)
+						b.JoinChannel(channel)
+					}
+				}(channel)
+			}
+		}
+	})
+
 	// Callback dla ERR_YOUREBANNEDCREEP (465)
 	b.Connection.AddCallback("465", func(e *irc.Event) {
 		reason := e.Message()
@@ -422,6 +522,17 @@ func (b *Bot) addCallbacks() {
 	b.Connection.AddCallback("DISCONNECTED", func(e *irc.Event) {
 		util.Warning("Bot %s disconnected from server %s", b.CurrentNick, b.ServerName)
 
+		// Store current nick for potential recovery
+		b.mutex.Lock()
+		if b.Connection != nil && b.Connection.GetNick() != "" {
+			b.PreviousNick = b.Connection.GetNick()
+			util.Debug("Stored previous nick %s for potential recovery during disconnect", b.PreviousNick)
+		} else if b.CurrentNick != "" {
+			b.PreviousNick = b.CurrentNick
+			util.Debug("Stored previous nick %s for potential recovery during disconnect", b.PreviousNick)
+		}
+		b.mutex.Unlock()
+
 		wasConnected := b.isConnected.Swap(false)
 		b.markAsDisconnected()
 
@@ -462,10 +573,25 @@ func (b *Bot) GetServerName() string {
 func (b *Bot) handleISONResponse(e *irc.Event) {
 	isonResponse := strings.Fields(e.Message())
 	util.Debug("Bot %s received ISON response: %v", b.CurrentNick, isonResponse)
+
+	// Nieblokujące wysyłanie do kanału z timeoutem
 	select {
 	case b.isonResponse <- isonResponse:
-	default:
-		util.Warning("Bot %s isonResponse channel is full", b.CurrentNick)
+		// Wysłano pomyślnie
+	case <-time.After(100 * time.Millisecond):
+		// Timeout - kanał jest pełny lub nikt nie czyta
+		util.Warning("Bot %s isonResponse channel is full or no one is reading", b.CurrentNick)
+		// Opróżniamy kanał, jeśli jest pełny
+		select {
+		case <-b.isonResponse: // Próbujemy opróżnić kanał
+		default: // Kanał jest już pusty
+		}
+		// Próbujemy ponownie wysłać
+		select {
+		case b.isonResponse <- isonResponse:
+		default:
+			util.Error("Bot %s still cannot send ISON response", b.CurrentNick)
+		}
 	}
 }
 
@@ -482,19 +608,30 @@ func (b *Bot) handleInvite(e *irc.Event) {
 }
 
 func (b *Bot) RequestISON(nicks []string) ([]string, error) {
+	// Sprawdzamy czy bot jest połączony
 	if !b.IsConnected() {
 		return nil, fmt.Errorf("bot %s is not connected", b.CurrentNick)
 	}
 
+	// Opróżniamy kanał przed wysłaniem nowego zapytania
+	select {
+	case <-b.isonResponse: // Próbujemy opróżnić kanał
+		util.Debug("Bot %s cleared old ISON response from channel", b.CurrentNick)
+	default: // Kanał jest już pusty
+	}
+
+	// Wysyłamy zapytanie ISON
 	command := fmt.Sprintf("ISON %s", strings.Join(nicks, " "))
 	util.Debug("Bot %s is sending ISON command: %s", b.CurrentNick, command)
 	b.Connection.SendRaw(command)
 
+	// Czekamy na odpowiedź z timeoutem
 	select {
 	case response := <-b.isonResponse:
 		return response, nil
-	case <-time.After(10 * time.Second):
-		return nil, fmt.Errorf("bot %s did not receive ISON response in time", b.CurrentNick)
+	case <-time.After(5 * time.Second): // Zmniejszamy timeout z 10 do 5 sekund
+		util.Warning("Bot %s did not receive ISON response in time", b.CurrentNick)
+		return []string{}, fmt.Errorf("bot %s did not receive ISON response in time", b.CurrentNick)
 	}
 }
 
@@ -536,8 +673,66 @@ func (b *Bot) PartChannel(channel string) {
 	if b.IsConnected() {
 		util.Debug("Bot %s is leaving channel %s", b.CurrentNick, channel)
 		b.Connection.Part(channel)
+
+		// Update joined channels map
+		b.mutex.Lock()
+		delete(b.joinedChannels, channel)
+		b.mutex.Unlock()
 	} else {
 		util.Debug("Bot %s is not connected; cannot part channel %s", b.CurrentNick, channel)
+	}
+}
+
+// isChannelJoined checks if a channel is marked as joined
+func (b *Bot) isChannelJoined(channel string) bool {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	return b.joinedChannels[channel]
+}
+
+// startChannelChecker starts a periodic check to ensure the bot is in all required channels
+func (b *Bot) startChannelChecker() {
+	if b.channelCheckTicker != nil {
+		b.channelCheckTicker.Stop()
+	}
+
+	// Check channels every 5 minutes
+	b.channelCheckTicker = time.NewTicker(5 * time.Minute)
+
+	go func() {
+		for {
+			select {
+			case <-b.channelCheckTicker.C:
+				if !b.IsConnected() {
+					continue
+				}
+
+				b.checkAndRejoinChannels()
+
+			case <-b.connected:
+				// Channel closed, bot disconnected
+				return
+			}
+		}
+	}()
+}
+
+// checkAndRejoinChannels checks if the bot is in all required channels and rejoins if necessary
+func (b *Bot) checkAndRejoinChannels() {
+	if !b.IsConnected() {
+		return
+	}
+
+	b.mutex.Lock()
+	channels := make([]string, len(b.channels))
+	copy(channels, b.channels)
+	b.mutex.Unlock()
+
+	for _, channel := range channels {
+		if !b.isChannelJoined(channel) {
+			util.Info("Bot %s is not in channel %s, rejoining", b.CurrentNick, channel)
+			b.JoinChannel(channel)
+		}
 	}
 }
 
@@ -545,10 +740,9 @@ func (b *Bot) Reconnect() {
 	if b.IsConnected() {
 		oldNick := b.CurrentNick
 
-		newNick, err := util.GenerateRandomNick(b.GlobalConfig.NickAPI.URL, b.GlobalConfig.NickAPI.MaxWordLength, b.GlobalConfig.NickAPI.Timeout)
-		if err != nil {
-			newNick = util.GenerateFallbackNick()
-		}
+		// Store the current nick as previous nick for potential recovery
+		b.PreviousNick = oldNick
+		util.Debug("Stored previous nick %s for potential recovery", b.PreviousNick)
 
 		b.Quit("Reconnecting")
 
@@ -556,14 +750,32 @@ func (b *Bot) Reconnect() {
 			b.nickManager.ReturnNickToPool(oldNick)
 		}
 
-		b.CurrentNick = newNick
-
 		time.Sleep(5 * time.Second)
+
+		// First try to reconnect with the same nick
+		util.Info("Attempting to reconnect with the same nick: %s", oldNick)
+		b.CurrentNick = oldNick
+		err := b.connectWithNewNick(oldNick)
+		if err == nil {
+			util.Info("Bot successfully reconnected with the same nick: %s", oldNick)
+			return
+		}
+		util.Warning("Failed to reconnect with the same nick %s: %v", oldNick, err)
+
+		// If that fails, try with a new random nick
+		newNick, err := util.GenerateRandomNick(b.GlobalConfig.NickAPI.URL, b.GlobalConfig.NickAPI.MaxWordLength, b.GlobalConfig.NickAPI.Timeout)
+		if err != nil {
+			newNick = util.GenerateFallbackNick()
+		}
+
+		b.CurrentNick = newNick
+		util.Info("Attempting to reconnect with new nick: %s", newNick)
 
 		err = b.connectWithNewNick(newNick)
 		if err != nil {
 			util.Error("Failed to reconnect bot %s (new nick: %s): %v", oldNick, newNick, err)
 
+			// If that also fails, try with a shuffled version of the original nick
 			shuffledNick := shuffleNick(oldNick)
 			util.Info("Attempting to reconnect with shuffled nick: %s", shuffledNick)
 
@@ -618,13 +830,65 @@ func (b *Bot) handleReconnect() {
 	}()
 
 	maxRetries := b.GlobalConfig.ReconnectRetries
-	retryInterval := time.Duration(b.GlobalConfig.ReconnectInterval) * time.Second
+	baseRetryInterval := time.Duration(b.GlobalConfig.ReconnectInterval) * time.Second
 
-	for attempts := 0; attempts < maxRetries; attempts++ {
-		util.Info("Bot %s is attempting to reconnect (attempt %d/%d)", b.CurrentNick, attempts+1, maxRetries)
+	// First, try to reconnect with the previous nick if available
+	if b.PreviousNick != "" && b.PreviousNick != b.CurrentNick {
+		util.Info("Attempting to reconnect with previous nick: %s", b.PreviousNick)
+
+		// Save current nick temporarily
+		currentNick := b.CurrentNick
+
+		// Try with previous nick
+		b.CurrentNick = b.PreviousNick
+		err := b.connectWithRetry()
+		if err == nil {
+			util.Info("Successfully reconnected with previous nick: %s", b.CurrentNick)
+
+			// Ensure we rejoin all channels
+			time.Sleep(5 * time.Second) // Give the server a moment
+			b.checkAndRejoinChannels()
+			return
+		}
+
+		util.Warning("Failed to reconnect with previous nick %s: %v", b.PreviousNick, err)
+
+		// Restore current nick for further attempts
+		b.CurrentNick = currentNick
+	}
+
+	// If reconnecting with previous nick failed or wasn't possible, try with current nick or new nicks
+	for attempts := range maxRetries {
+		// Exponential backoff with jitter for reconnection
+		retryInterval := baseRetryInterval * time.Duration(1<<uint(attempts))
+		// Add jitter (±20%)
+		jitter := float64(retryInterval) * (0.8 + 0.4*rand.Float64())
+		retryInterval = time.Duration(jitter)
+
+		// Cap the retry interval at 5 minutes
+		retryInterval = min(retryInterval, 5*time.Minute)
+
+		// For the first attempt, try with current nick
+		// For subsequent attempts, try with new random nicks
+		if attempts > 0 {
+			newNick, err := util.GenerateRandomNick(b.GlobalConfig.NickAPI.URL, b.GlobalConfig.NickAPI.MaxWordLength, b.GlobalConfig.NickAPI.Timeout)
+			if err != nil {
+				newNick = util.GenerateFallbackNick()
+			}
+			b.CurrentNick = newNick
+			util.Info("Using new random nick for reconnection attempt %d: %s", attempts+1, b.CurrentNick)
+		}
+
+		util.Info("Bot %s is attempting to reconnect (attempt %d/%d, retry interval: %v)",
+			b.CurrentNick, attempts+1, maxRetries, retryInterval)
+
 		err := b.connectWithRetry()
 		if err == nil {
 			util.Info("Bot %s reconnected", b.CurrentNick)
+
+			// Ensure we rejoin all channels
+			time.Sleep(5 * time.Second) // Give the server a moment
+			b.checkAndRejoinChannels()
 			return
 		}
 		util.Error("Attempt %d failed: %v", attempts+1, err)
@@ -694,7 +958,6 @@ func (b *Bot) GetCurrentNick() string {
 // BNC
 
 type BNCServer struct {
-	bot      types.Bot
 	Port     int
 	Password string
 	Tunnel   *bnc.RawTunnel

@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -14,17 +13,22 @@ import (
 	"time"
 
 	"github.com/kofany/gNb/internal/types"
+	"github.com/kofany/gNb/internal/util"
 )
 
 // processCommand przetwarza komendy od użytkownika
 func (dt *DCCTunnel) processCommand(command string) {
+	util.Debug("DCC: Processing command: %s for session: %s on bot %s", command, dt.sessionID, dt.bot.GetCurrentNick())
+
 	fields := strings.Fields(command)
 	if len(fields) == 0 {
+		util.Warning("DCC: Empty command received from session: %s", dt.sessionID)
 		return
 	}
 
 	// Usuń prefiks '.' i przekonwertuj na wielkie litery
 	cmd := strings.ToUpper(strings.TrimPrefix(fields[0], "."))
+	util.Debug("DCC: Command parsed: %s with %d arguments for bot %s", cmd, len(fields)-1, dt.bot.GetCurrentNick())
 
 	switch cmd {
 	case "MSG":
@@ -284,54 +288,155 @@ func (dt *DCCTunnel) handleDelNickCommand(args []string) {
 }
 
 func (dt *DCCTunnel) handleListNicksCommand(_ []string) {
-	if bm := dt.bot.GetBotManager(); bm != nil {
-		nicks := dt.bot.GetNickManager().GetNicks()
-		dt.sendToClient(fmt.Sprintf("Current nicks: %s", strings.Join(nicks, ", ")))
+	util.Debug("DCC: Executing .listnicks command for bot %s", dt.bot.GetCurrentNick())
+
+	// Pobieramy BotManager
+	bm := dt.bot.GetBotManager()
+	if bm == nil {
+		util.Warning("DCC: BotManager is nil for bot %s", dt.bot.GetCurrentNick())
+		dt.sendToClient("Error: BotManager not available")
+		return
 	}
+
+	// Pobieramy NickManager
+	nm := dt.bot.GetNickManager()
+	if nm == nil {
+		util.Warning("DCC: NickManager is nil for bot %s", dt.bot.GetCurrentNick())
+		dt.sendToClient("Error: NickManager not available")
+		return
+	}
+
+	// Pobieramy listę nicków w osobnej goroutine, aby uniknąć blokowania
+	go func() {
+		util.Debug("DCC: Getting nicks list for bot %s", dt.bot.GetCurrentNick())
+		nicks := nm.GetNicks()
+		util.Debug("DCC: Got %d nicks for bot %s", len(nicks), dt.bot.GetCurrentNick())
+
+		// Wysyłamy odpowiedź do klienta
+		response := fmt.Sprintf("Current nicks: %s", strings.Join(nicks, ", "))
+		dt.sendToClient(response)
+	}()
 }
 
 func (dt *DCCTunnel) handleAddOwnerCommand(args []string) {
-	if len(args) >= 1 {
-		ownerMask := args[0]
-		if bm := dt.bot.GetBotManager(); bm != nil {
-			bm.CollectReactions(
-				dt.bot.GetCurrentNick(),
-				fmt.Sprintf("Owner '%s' has been added.", ownerMask),
-				func() error { return bm.AddOwner(ownerMask) },
-			)
-		}
-	} else {
+	util.Debug("DCC: Executing .addowner command for bot %s", dt.bot.GetCurrentNick())
+
+	if len(args) < 1 {
 		dt.sendToClient("Usage: .addowner <mask>")
+		return
 	}
+
+	ownerMask := args[0]
+	util.Debug("DCC: Adding owner %s for bot %s", ownerMask, dt.bot.GetCurrentNick())
+
+	// Pobieramy BotManager
+	bm := dt.bot.GetBotManager()
+	if bm == nil {
+		util.Warning("DCC: BotManager is nil for bot %s", dt.bot.GetCurrentNick())
+		dt.sendToClient("Error: BotManager not available")
+		return
+	}
+
+	// Dodajemy właściciela w osobnej goroutine, aby uniknąć blokowania
+	go func() {
+		util.Debug("DCC: Adding owner %s via BotManager for bot %s", ownerMask, dt.bot.GetCurrentNick())
+
+		bm.CollectReactions(
+			dt.bot.GetCurrentNick(),
+			fmt.Sprintf("Owner '%s' has been added.", ownerMask),
+			func() error {
+				err := bm.AddOwner(ownerMask)
+				if err != nil {
+					util.Warning("DCC: Error adding owner %s: %v", ownerMask, err)
+					dt.sendToClient(fmt.Sprintf("Error adding owner: %v", err))
+				}
+				return err
+			},
+		)
+	}()
 }
 
 func (dt *DCCTunnel) handleDelOwnerCommand(args []string) {
-	if len(args) >= 1 {
-		ownerMask := args[0]
-		if bm := dt.bot.GetBotManager(); bm != nil {
-			bm.CollectReactions(
-				dt.bot.GetCurrentNick(),
-				fmt.Sprintf("Owner '%s' has been removed.", ownerMask),
-				func() error { return bm.RemoveOwner(ownerMask) },
-			)
-		}
-	} else {
+	util.Debug("DCC: Executing .delowner command for bot %s", dt.bot.GetCurrentNick())
+
+	if len(args) < 1 {
 		dt.sendToClient("Usage: .delowner <mask>")
+		return
 	}
+
+	ownerMask := args[0]
+	util.Debug("DCC: Removing owner %s for bot %s", ownerMask, dt.bot.GetCurrentNick())
+
+	// Pobieramy BotManager
+	bm := dt.bot.GetBotManager()
+	if bm == nil {
+		util.Warning("DCC: BotManager is nil for bot %s", dt.bot.GetCurrentNick())
+		dt.sendToClient("Error: BotManager not available")
+		return
+	}
+
+	// Usuwamy właściciela w osobnej goroutine, aby uniknąć blokowania
+	go func() {
+		util.Debug("DCC: Removing owner %s via BotManager for bot %s", ownerMask, dt.bot.GetCurrentNick())
+
+		bm.CollectReactions(
+			dt.bot.GetCurrentNick(),
+			fmt.Sprintf("Owner '%s' has been removed.", ownerMask),
+			func() error {
+				err := bm.RemoveOwner(ownerMask)
+				if err != nil {
+					util.Warning("DCC: Error removing owner %s: %v", ownerMask, err)
+					dt.sendToClient(fmt.Sprintf("Error removing owner: %v", err))
+				}
+				return err
+			},
+		)
+	}()
 }
 
 func (dt *DCCTunnel) handleListOwnersCommand(_ []string) {
-	if bm := dt.bot.GetBotManager(); bm != nil {
-		owners := bm.GetOwners()
-		dt.sendToClient(fmt.Sprintf("Current owners: %s", strings.Join(owners, ", ")))
+	util.Debug("DCC: Executing .listowners command for bot %s", dt.bot.GetCurrentNick())
+
+	// Pobieramy BotManager
+	bm := dt.bot.GetBotManager()
+	if bm == nil {
+		util.Warning("DCC: BotManager is nil for bot %s", dt.bot.GetCurrentNick())
+		dt.sendToClient("Error: BotManager not available")
+		return
 	}
+
+	// Pobieramy listę właścicieli w osobnej goroutine, aby uniknąć blokowania
+	go func() {
+		util.Debug("DCC: Getting owners list for bot %s", dt.bot.GetCurrentNick())
+		owners := bm.GetOwners()
+		util.Debug("DCC: Got %d owners for bot %s", len(owners), dt.bot.GetCurrentNick())
+
+		// Wysyłamy odpowiedź do klienta
+		response := fmt.Sprintf("Current owners: %s", strings.Join(owners, ", "))
+		dt.sendToClient(response)
+	}()
 }
 
 func (dt *DCCTunnel) handleInfoCommand(_ []string) {
-	if bm := dt.bot.GetBotManager(); bm != nil {
-		info := dt.generateSystemInfo()
-		dt.sendToClient(info)
+	util.Debug("DCC: Executing .info command for bot %s", dt.bot.GetCurrentNick())
+
+	// Pobieramy BotManager
+	bm := dt.bot.GetBotManager()
+	if bm == nil {
+		util.Warning("DCC: BotManager is nil for bot %s", dt.bot.GetCurrentNick())
+		dt.sendToClient("Error: BotManager not available")
+		return
 	}
+
+	// Generujemy informacje w osobnej goroutine, aby uniknąć blokowania
+	go func() {
+		util.Debug("DCC: Generating system info for bot %s", dt.bot.GetCurrentNick())
+		info := dt.generateSystemInfo()
+		util.Debug("DCC: Generated system info for bot %s", dt.bot.GetCurrentNick())
+
+		// Wysyłamy odpowiedź do klienta
+		dt.sendToClient(info)
+	}()
 }
 
 // Funkcje pomocnicze
@@ -419,41 +524,6 @@ func (dt *DCCTunnel) getExternalIP(network string) string {
 	}
 
 	return strings.TrimSpace(string(body))
-}
-
-// Pomocnicza funkcja do generowania losowych nicków
-func (dt *DCCTunnel) generateRandomNick() string {
-	rand.Seed(time.Now().UnixNano())
-
-	// Generowanie głównej części nicka (4-7 znaków)
-	mainLength := rand.Intn(4) + 4
-	mainPart := make([]byte, mainLength)
-
-	for i := range mainPart {
-		if rand.Intn(2) == 0 {
-			mainPart[i] = byte('A' + rand.Intn(26))
-		} else {
-			mainPart[i] = byte('a' + rand.Intn(26))
-		}
-	}
-
-	// Generowanie końcówki (1-4 znaki)
-	suffixLength := rand.Intn(4) + 1
-	suffixPart := make([]byte, suffixLength)
-
-	for i := range suffixPart {
-		choice := rand.Intn(3)
-		if choice == 0 {
-			suffixPart[i] = byte('A' + rand.Intn(26))
-		} else if choice == 1 {
-			suffixPart[i] = byte('a' + rand.Intn(26))
-		} else {
-			suffixPart[i] = byte('0' + rand.Intn(10))
-		}
-	}
-
-	// Łączenie części nicka
-	return fmt.Sprintf("%s%s", string(mainPart), string(suffixPart))
 }
 
 func colorCommand(command, description string) string {
