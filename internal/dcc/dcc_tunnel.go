@@ -218,7 +218,10 @@ func (dt *DCCTunnel) parseIRCMessage(raw string) string {
 
 // sendToClient wysyła wiadomość do klienta DCC
 func (dt *DCCTunnel) sendToClient(message string) {
-	if dt.conn != nil {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	if dt.active && dt.conn != nil {
 		dt.conn.Write([]byte(message + "\r\n"))
 	}
 }
@@ -306,19 +309,26 @@ func (pl *PartyLine) RemoveSession(sessionID string) {
 }
 
 func (pl *PartyLine) broadcast(message string, excludeSessionID string) {
+	pl.mutex.RLock()
+	defer pl.mutex.RUnlock()
+
 	for id, tunnel := range pl.sessions {
 		if id != excludeSessionID {
 			tunnel.sendToClient(message)
 		}
 	}
 
-	// Dodajemy do historii tylko wiadomości od użytkowników (nie systemowe)
 	if !strings.HasPrefix(message, "***") {
-		pl.addToMessageLog(PartyLineMessage{
-			Timestamp: time.Now(),
-			Sender:    pl.sessions[excludeSessionID].bot.GetCurrentNick(),
-			Message:   message,
-		})
+		// Dodaj sprawdzenie, czy excludeSessionID istnieje w mapie
+		if excludeSessionID != "" {
+			if tunnel, exists := pl.sessions[excludeSessionID]; exists {
+				pl.addToMessageLog(PartyLineMessage{
+					Timestamp: time.Now(),
+					Sender:    tunnel.bot.GetCurrentNick(),
+					Message:   message,
+				})
+			}
+		}
 	}
 }
 
