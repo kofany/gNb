@@ -306,9 +306,6 @@ func (pl *PartyLine) RemoveSession(sessionID string) {
 }
 
 func (pl *PartyLine) broadcast(message string, excludeSessionID string) {
-	pl.mutex.RLock()
-	defer pl.mutex.RUnlock()
-
 	for id, tunnel := range pl.sessions {
 		if id != excludeSessionID {
 			tunnel.sendToClient(message)
@@ -317,21 +314,11 @@ func (pl *PartyLine) broadcast(message string, excludeSessionID string) {
 
 	// Dodajemy do historii tylko wiadomości od użytkowników (nie systemowe)
 	if !strings.HasPrefix(message, "***") {
-		// Sprawdzamy, czy sesja istnieje zanim spróbujemy uzyskać dostęp do jej pola bot
-		if tunnel, exists := pl.sessions[excludeSessionID]; exists {
-			pl.addToMessageLog(PartyLineMessage{
-				Timestamp: time.Now(),
-				Sender:    tunnel.bot.GetCurrentNick(),
-				Message:   message,
-			})
-		} else {
-			// Jeśli sesja nie istnieje, używamy domyślnej wartości dla nadawcy
-			pl.addToMessageLog(PartyLineMessage{
-				Timestamp: time.Now(),
-				Sender:    "unknown",
-				Message:   message,
-			})
-		}
+		pl.addToMessageLog(PartyLineMessage{
+			Timestamp: time.Now(),
+			Sender:    pl.sessions[excludeSessionID].bot.GetCurrentNick(),
+			Message:   message,
+		})
 	}
 }
 
