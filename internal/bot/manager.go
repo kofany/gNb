@@ -383,120 +383,61 @@ func (bm *BotManager) GetMassCommandCooldown() time.Duration {
 	return bm.massCommandCooldown
 }
 
-func (bm *BotManager) CollectReactions(channel string, defaultSuccessMessage *string, action func() (string, error)) {
-	// 1. Acquire main lock
-	bm.mutex.Lock()
+func (bm *BotManager) CollectReactions(channel, message string, action func() error) {
+	bm.reactionMutex.Lock()
+	defer bm.reactionMutex.Unlock()
 
-	// Generate key based on channel and action (or default message if action is nil)
-	// This helps differentiate calls that might have nil defaultSuccessMessage but different actions
-	var keyActionPart string
-	if action != nil {
-		// Note: This relies on func pointer being consistent, might not be perfect for closures
-		keyActionPart = fmt.Sprintf("%p", action)
-	} else if defaultSuccessMessage != nil {
-		keyActionPart = *defaultSuccessMessage
-	}
-	key := channel + ":" + keyActionPart // Klucz teraz uwzględnia akcję lub wiadomość
+	key := channel + ":" + message
 	now := time.Now()
 
-	// 2. Check duplicates (briefly locking reactionMutex)
-	bm.reactionMutex.Lock()
 	if req, exists := bm.reactionRequests[key]; exists && now.Sub(req.Timestamp) < 5*time.Second {
-		bm.reactionMutex.Unlock()
-		bm.mutex.Unlock() // Release main lock before returning
-		util.Debug("Duplicate reaction request ignored for key: %s", key)
-		return
+		return // Ignore duplicates within 5 seconds
 	}
-	// Register request (store only timestamp and key relevant info)
+
+	// Execute action
+	if action != nil {
+		err := action()
+		if err != nil {
+			bm.errorMutex.Lock()
+			if !bm.errorHandled {
+				bm.SendSingleMsg(channel, fmt.Sprintf("Error: %v", err))
+				bm.errorHandled = true            // Ustaw flagę po obsłużeniu błędu
+				go bm.cleanupReactionRequest(key) // Wywołaj cleanup po błędzie
+			}
+			bm.errorMutex.Unlock()
+			return
+		}
+	}
+
+	if message != "" {
+		bm.SendSingleMsg(channel, message)
+	}
+
+	// Save request to ignore duplicates for the next 5 seconds
 	bm.reactionRequests[key] = types.ReactionRequest{
 		Channel:   channel,
+		Message:   message,
 		Timestamp: now,
-		// Message and Action are handled below
+		Action:    action,
 	}
-	bm.reactionMutex.Unlock() // Release reaction lock
 
-	// Schedule cleanup (independent goroutine)
+	// Run cleanup after 5 seconds for successful command
 	go bm.cleanupReactionRequest(key)
-
-	// 3. Execute action (holding main lock)
-	var actionResult string
-	var actionErr error
-	if action != nil {
-		actionResult, actionErr = action() // <- ZMIANA: Przechwycenie wyniku action
-	}
-
-	// Determine the final message to send (if any)
-	messageToSend := ""
-	if actionErr == nil {
-		if actionResult != "" {
-			messageToSend = actionResult // Use result from action
-		} else if defaultSuccessMessage != nil {
-			messageToSend = *defaultSuccessMessage // Use default success message
-		}
-		// If both actionResult and defaultSuccessMessage are empty/nil, messageToSend remains ""
-	}
-
-	// Prepare for message sending
-	var botToSend types.Bot
-	shouldSendMessage := messageToSend != "" && actionErr == nil
-	shouldSendError := actionErr != nil
-	var errorMessage string
-
-	if shouldSendMessage || shouldSendError {
-		if len(bm.bots) > 0 {
-			// 4. Select bot (holding main lock)
-			botIndexToSend := bm.commandBotIndex
-			bm.commandBotIndex = (bm.commandBotIndex + 1) % len(bm.bots)
-			botToSend = bm.bots[botIndexToSend] // Store reference
-			if shouldSendError {
-				errorMessage = fmt.Sprintf("Error: %v", actionErr)
-			}
-		} else {
-			util.Warning("CollectReactions: No bots available to send response.")
-			shouldSendMessage = false
-			shouldSendError = false // Cannot send error if no bots
-		}
-	}
-
-	// 5. Release main lock *before* sending
-	bm.mutex.Unlock()
-
-	// 6. Send message/error (after releasing main lock)
-	if shouldSendError {
-		bm.errorMutex.Lock()
-		sendError := false
-		if !bm.errorHandled {
-			bm.errorHandled = true
-			sendError = true
-			go bm.resetErrorHandledFlag() // Schedule reset
-		}
-		bm.errorMutex.Unlock()
-
-		if sendError && botToSend != nil {
-			util.Error("Error executing action for key %s: %v", key, actionErr)
-			botToSend.SendMessage(channel, errorMessage)
-		}
-	} else if shouldSendMessage && botToSend != nil {
-		botToSend.SendMessage(channel, messageToSend) // <- ZMIANA: Używamy messageToSend
-	}
 }
 
-// cleanupReactionRequest removes the request entry after cooldown.
+// Zaktualizowana funkcja cleanupReactionRequest
 func (bm *BotManager) cleanupReactionRequest(key string) {
 	time.Sleep(5 * time.Second)
 	bm.reactionMutex.Lock()
 	defer bm.reactionMutex.Unlock()
-	delete(bm.reactionRequests, key)
-	util.Debug("Cleaned up reaction request for key: %s", key)
-}
 
-// resetErrorHandledFlag resets the error flag after a delay.
-func (bm *BotManager) resetErrorHandledFlag() {
-	time.Sleep(5 * time.Second) // Use the same cooldown
+	// Usuń zapis reakcji
+	delete(bm.reactionRequests, key)
+
+	// Resetuj flagę błędu po zakończeniu reakcji
 	bm.errorMutex.Lock()
-	defer bm.errorMutex.Unlock()
 	bm.errorHandled = false
-	util.Debug("Reset errorHandled flag.")
+	bm.errorMutex.Unlock()
 }
 
 func (bm *BotManager) SendSingleMsg(channel, message string) {

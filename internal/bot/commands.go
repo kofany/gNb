@@ -91,8 +91,7 @@ func (b *Bot) HandleCommands(e *irc.Event) {
 
 func (b *Bot) sendReply(isChannelMsg bool, target, sender, message string) {
 	if isChannelMsg {
-		msgPtr := &message
-		b.GetBotManager().CollectReactions(target, msgPtr, nil)
+		b.GetBotManager().CollectReactions(target, message, nil)
 	} else {
 		util.Debug("SendReply reciver: sender: %s, message: %s", sender, message)
 		b.SendMessage(sender, message)
@@ -126,8 +125,7 @@ func handleSayCommand(b *Bot, e *irc.Event, args []string) {
 		targetChannel := args[0]
 		msg := strings.Join(args[1:], " ")
 		if strings.HasPrefix(targetChannel, "#") {
-			msgPtr := &msg
-			b.GetBotManager().CollectReactions(targetChannel, msgPtr, nil)
+			b.GetBotManager().CollectReactions(targetChannel, msg, nil)
 		} else {
 			b.SendMessage(targetChannel, msg)
 		}
@@ -144,13 +142,11 @@ func handleJoinCommand(b *Bot, e *irc.Event, args []string) {
 	if len(args) >= 1 {
 		channel := args[0]
 		if isChannelMsg {
-			msg := fmt.Sprintf("All bots are joining channel %s", channel)
-			msgPtr := &msg
-			b.GetBotManager().CollectReactions(target, msgPtr, func() (string, error) {
+			b.GetBotManager().CollectReactions(target, fmt.Sprintf("All bots are joining channel %s", channel), func() error {
 				for _, bot := range b.GetBotManager().GetBots() {
 					bot.JoinChannel(channel)
 				}
-				return "", nil
+				return nil
 			})
 		} else {
 			b.JoinChannel(channel)
@@ -169,13 +165,11 @@ func handlePartCommand(b *Bot, e *irc.Event, args []string) {
 	if len(args) >= 1 {
 		channel := args[0]
 		if isChannelMsg {
-			msg := fmt.Sprintf("All bots are leaving channel %s", channel)
-			msgPtr := &msg
-			b.GetBotManager().CollectReactions(target, msgPtr, func() (string, error) {
+			b.GetBotManager().CollectReactions(target, fmt.Sprintf("All bots are leaving channel %s", channel), func() error {
 				for _, bot := range b.GetBotManager().GetBots() {
 					bot.PartChannel(channel)
 				}
-				return "", nil
+				return nil
 			})
 		} else {
 			b.PartChannel(channel)
@@ -192,13 +186,11 @@ func handleReconnectCommand(b *Bot, e *irc.Event, args []string) {
 	isChannelMsg := strings.HasPrefix(target, "#")
 
 	if isChannelMsg {
-		msg := "All bots are reconnecting with new nicks..."
-		msgPtr := &msg
-		b.GetBotManager().CollectReactions(target, msgPtr, func() (string, error) {
+		b.GetBotManager().CollectReactions(target, "All bots are reconnecting with new nicks...", func() error {
 			for _, bot := range b.GetBotManager().GetBots() {
 				go bot.Reconnect()
 			}
-			return "", nil
+			return nil
 		})
 	} else {
 		b.sendReply(isChannelMsg, target, sender, "Reconnecting with a new nick...")
@@ -213,15 +205,10 @@ func handleAddNickCommand(b *Bot, e *irc.Event, args []string) {
 
 	if len(args) >= 1 {
 		nick := args[0]
-		msg := fmt.Sprintf("Nick '%s' has been added.", nick)
-		msgPtr := &msg
 		b.GetBotManager().CollectReactions(
 			target,
-			msgPtr,
-			func() (string, error) {
-				err := b.GetNickManager().AddNick(nick)
-				return "", err
-			},
+			fmt.Sprintf("Nick '%s' has been added.", nick),
+			func() error { return b.GetNickManager().AddNick(nick) },
 		)
 	} else {
 		b.sendReply(isChannelMsg, target, sender, "Usage: addnick <nick>")
@@ -235,15 +222,10 @@ func handleDelNickCommand(b *Bot, e *irc.Event, args []string) {
 
 	if len(args) >= 1 {
 		nick := args[0]
-		msg := fmt.Sprintf("Nick '%s' has been removed.", nick)
-		msgPtr := &msg
 		b.GetBotManager().CollectReactions(
 			target,
-			msgPtr,
-			func() (string, error) {
-				err := b.GetNickManager().RemoveNick(nick)
-				return "", err
-			},
+			fmt.Sprintf("Nick '%s' has been removed.", nick),
+			func() error { return b.GetNickManager().RemoveNick(nick) },
 		)
 	} else {
 		b.sendReply(isChannelMsg, target, sender, "Usage: delnick <nick>")
@@ -256,13 +238,14 @@ func handleListNicksCommand(b *Bot, e *irc.Event, args []string) {
 	isChannelMsg := strings.HasPrefix(target, "#")
 
 	if isChannelMsg {
-		nicks := b.GetNickManager().GetNicks()
 		b.GetBotManager().CollectReactions(
 			target,
-			nil,
-			func() (string, error) {
+			"",
+			func() error {
+				nicks := b.GetNickManager().GetNicks()
 				message := fmt.Sprintf("Current nicks: %s", strings.Join(nicks, ", "))
-				return message, nil
+				b.GetBotManager().SendSingleMsg(target, message)
+				return nil
 			},
 		)
 	} else {
@@ -278,15 +261,10 @@ func handleAddOwnerCommand(b *Bot, e *irc.Event, args []string) {
 
 	if len(args) >= 1 {
 		ownerMask := args[0]
-		msg := fmt.Sprintf("Owner '%s' has been added.", ownerMask)
-		msgPtr := &msg
 		b.GetBotManager().CollectReactions(
 			target,
-			msgPtr,
-			func() (string, error) {
-				err := b.GetBotManager().AddOwner(ownerMask)
-				return "", err
-			},
+			fmt.Sprintf("Owner '%s' has been added.", ownerMask),
+			func() error { return b.GetBotManager().AddOwner(ownerMask) },
 		)
 	} else {
 		b.sendReply(isChannelMsg, target, sender, "Usage: addowner <mask>")
@@ -300,15 +278,10 @@ func handleDelOwnerCommand(b *Bot, e *irc.Event, args []string) {
 
 	if len(args) >= 1 {
 		ownerMask := args[0]
-		msg := fmt.Sprintf("Owner '%s' has been removed.", ownerMask)
-		msgPtr := &msg
 		b.GetBotManager().CollectReactions(
 			target,
-			msgPtr,
-			func() (string, error) {
-				err := b.GetBotManager().RemoveOwner(ownerMask)
-				return "", err
-			},
+			fmt.Sprintf("Owner '%s' has been removed.", ownerMask),
+			func() error { return b.GetBotManager().RemoveOwner(ownerMask) },
 		)
 	} else {
 		b.sendReply(isChannelMsg, target, sender, "Usage: delowner <mask>")
@@ -321,13 +294,14 @@ func handleListOwnersCommand(b *Bot, e *irc.Event, args []string) {
 	isChannelMsg := strings.HasPrefix(target, "#")
 
 	if isChannelMsg {
-		owners := b.GetBotManager().GetOwners()
 		b.GetBotManager().CollectReactions(
 			target,
-			nil,
-			func() (string, error) {
+			"",
+			func() error {
+				owners := b.GetBotManager().GetOwners()
 				message := fmt.Sprintf("Current owners: %s", strings.Join(owners, ", "))
-				return message, nil
+				b.GetBotManager().SendSingleMsg(target, message)
+				return nil
 			},
 		)
 	} else {
