@@ -383,80 +383,120 @@ func (bm *BotManager) GetMassCommandCooldown() time.Duration {
 	return bm.massCommandCooldown
 }
 
+// CollectReactions handles command execution with duplicate prevention and potential message sending.
 func (bm *BotManager) CollectReactions(channel, message string, action func() error) {
-	bm.reactionMutex.Lock()
+	// Acquire the main manager lock first to establish locking order.
+	bm.mutex.Lock()
+	// Ensure main lock is always released using defer.
+	// Note: careful with long operations or blocking calls while holding the lock.
+	defer bm.mutex.Unlock()
 
 	key := channel + ":" + message
 	now := time.Now()
 
-	// Sprawdzenie duplikatów
+	// Acquire reaction lock briefly to check for duplicates.
+	bm.reactionMutex.Lock()
 	if req, exists := bm.reactionRequests[key]; exists && now.Sub(req.Timestamp) < 5*time.Second {
+		// Duplicate found within cooldown, release reaction lock and return early.
 		bm.reactionMutex.Unlock()
-		return
+		util.Debug("Duplicate reaction request ignored for key: %s", key)
+		return // Return while bm.mutex is held by the defer call.
 	}
 
-	// Wykonanie akcji
-	var err error
-	if action != nil {
-		err = action()
-	}
-
-	// Zapisanie żądania przed zwolnieniem mutexa
+	// Mark request to prevent immediate duplicates while holding reaction lock.
 	bm.reactionRequests[key] = types.ReactionRequest{
 		Channel:   channel,
 		Message:   message,
 		Timestamp: now,
-		Action:    action,
+		// Action is not stored here anymore, executed directly later.
 	}
-
-	// Zwolnienie mutex przed wywołaniem SendSingleMsg
+	// Release reaction lock *before* scheduling cleanup and executing action.
 	bm.reactionMutex.Unlock()
 
-	// Obsługa błędów i wysyłanie wiadomości
-	if err != nil {
+	// Schedule the cleanup using the key.
+	// Needs to handle its own locking for bm.reactionRequests.
+	go bm.cleanupReactionRequest(key)
+
+	// Execute the action while holding the main bm.mutex.
+	var actionErr error
+	if action != nil {
+		actionErr = action() // Action can safely access structures protected by bm.mutex.
+	}
+
+	// Handle results and send messages (still holding bm.mutex).
+	if actionErr != nil {
+		// Handle error: Log it and potentially send an error message.
+		util.Error("Error executing action for key %s: %v", key, actionErr)
+
+		// Use the errorHandled flag, protected by its own mutex.
 		bm.errorMutex.Lock()
 		if !bm.errorHandled {
-			bm.SendSingleMsg(channel, fmt.Sprintf("Error: %v", err))
+			// Send error message using the internal function that assumes bm.mutex is held.
+			bm.sendSingleMsgInternal(channel, fmt.Sprintf("Error: %v", actionErr))
 			bm.errorHandled = true
-			go bm.cleanupReactionRequest(key)
+			// Schedule error flag cleanup *after* handling the error.
+			// The cleanup must run independently.
+			go bm.resetErrorHandledFlag()
 		}
 		bm.errorMutex.Unlock()
-		return
+	} else if message != "" {
+		// Action succeeded, send the success message if provided.
+		bm.sendSingleMsgInternal(channel, message)
 	}
-
-	if message != "" {
-		bm.SendSingleMsg(channel, message)
-	}
-
-	// Uruchomienie czyszczenia po 5 sekundach
-	go bm.cleanupReactionRequest(key)
+	// Main mutex is released by the deferred bm.mutex.Unlock() call.
 }
 
-// Zaktualizowana funkcja cleanupReactionRequest
+// Internal function to send a message, assumes bm.mutex is held.
+func (bm *BotManager) sendSingleMsgInternal(channel, message string) {
+	if len(bm.bots) == 0 {
+		util.Warning("SendSingleMsgInternal: No bots available to send message.")
+		return
+	}
+	// Cycle through bots using commandBotIndex (protected by bm.mutex).
+	botIndexToSend := bm.commandBotIndex
+	bm.commandBotIndex = (bm.commandBotIndex + 1) % len(bm.bots)
+
+	// It's crucial to select the bot while the lock is held.
+	botToSend := bm.bots[botIndexToSend]
+
+	// Option 1: Send message while holding the lock (if SendMessage is fast/non-blocking)
+	// botToSend.SendMessage(channel, message)
+
+	// Option 2: Release lock before sending (if SendMessage might block) - POTENTIALLY RISKY if SendMessage internally needs manager state.
+	// bm.mutex.Unlock() // Temporarily release
+	// botToSend.SendMessage(channel, message)
+	// bm.mutex.Lock() // Re-acquire (complex error handling needed)
+
+	// Assuming Option 1 is safe based on current SendMessage implementation (it delegates to irc.Connection)
+	botToSend.SendMessage(channel, message)
+}
+
+// Public function SendSingleMsg acquires lock and calls internal version.
+func (bm *BotManager) SendSingleMsg(channel, message string) {
+	bm.mutex.Lock()
+	defer bm.mutex.Unlock()
+	bm.sendSingleMsgInternal(channel, message)
+}
+
+// cleanupReactionRequest removes the request entry after cooldown.
+// It needs to acquire the reactionMutex independently.
 func (bm *BotManager) cleanupReactionRequest(key string) {
 	time.Sleep(5 * time.Second)
 	bm.reactionMutex.Lock()
 	defer bm.reactionMutex.Unlock()
-
-	// Usuń zapis reakcji
 	delete(bm.reactionRequests, key)
-
-	// Resetuj flagę błędu po zakończeniu reakcji
-	bm.errorMutex.Lock()
-	bm.errorHandled = false
-	bm.errorMutex.Unlock()
+	util.Debug("Cleaned up reaction request for key: %s", key)
 }
 
-func (bm *BotManager) SendSingleMsg(channel, message string) {
-	bm.mutex.Lock()
-	defer bm.mutex.Unlock()
-
-	if len(bm.bots) == 0 {
-		return
-	}
-	bot := bm.bots[bm.commandBotIndex]
-	bm.commandBotIndex = (bm.commandBotIndex + 1) % len(bm.bots)
-	bot.SendMessage(channel, message)
+// resetErrorHandledFlag resets the error flag after a delay.
+// It needs to acquire the errorMutex independently.
+func (bm *BotManager) resetErrorHandledFlag() {
+	// Use the same cooldown as reaction requests for consistency.
+	time.Sleep(5 * time.Second)
+	bm.errorMutex.Lock()
+	defer bm.errorMutex.Unlock()
+	bm.errorHandled = false
+	util.Debug("Reset errorHandled flag.")
 }
 
 func (bm *BotManager) GetTotalCreatedBots() int {
