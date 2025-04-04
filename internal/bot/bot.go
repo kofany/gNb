@@ -1023,6 +1023,11 @@ func (b *Bot) SendRaw(message string) {
 }
 
 func (b *Bot) ForwardToTunnel(data string) {
+	// Quick check for empty data
+	if data == "" {
+		return
+	}
+
 	// Forward to BNC tunnel if available
 	if b.bncServer != nil && b.bncServer.Tunnel != nil {
 		b.bncServer.Tunnel.WriteToConn(data)
@@ -1030,13 +1035,20 @@ func (b *Bot) ForwardToTunnel(data string) {
 
 	// Forward to all active DCC tunnels
 	b.dccTunnelsMutex.Lock()
-	defer b.dccTunnelsMutex.Unlock()
 
-	// Forward to all active tunnels
+	// Create a copy of active tunnels to avoid holding the lock while sending
+	activeTunnels := make([]*dcc.DCCTunnel, 0, len(b.dccTunnels))
 	for _, tunnel := range b.dccTunnels {
-		if tunnel.IsActive() {
-			tunnel.WriteToConn(data)
+		if tunnel != nil && tunnel.IsActive() {
+			activeTunnels = append(activeTunnels, tunnel)
 		}
+	}
+	b.dccTunnelsMutex.Unlock()
+
+	// Forward to all active tunnels without holding the lock
+	for _, tunnel := range activeTunnels {
+		// Use a separate goroutine to avoid blocking if one tunnel is slow
+		go tunnel.WriteToConn(data)
 	}
 }
 

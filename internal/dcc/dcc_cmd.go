@@ -71,15 +71,10 @@ func (dt *DCCTunnel) processCommand(command string) {
 		return
 	}
 
-	// Use the tunnel's own mutex to ensure only one command is processed at a time per tunnel
-	// This allows commands on different bots to be processed independently
-	util.Debug("DCC: Acquiring tunnel mutex for %s on bot %s for command %s", dt.ownerNick, dt.bot.GetCurrentNick(), cmd)
-	dt.mu.Lock()
-	util.Debug("DCC: Acquired tunnel mutex for %s on bot %s for command %s", dt.ownerNick, dt.bot.GetCurrentNick(), cmd)
-	defer func() {
-		util.Debug("DCC: Releasing tunnel mutex for %s on bot %s for command %s", dt.ownerNick, dt.bot.GetCurrentNick(), cmd)
-		dt.mu.Unlock()
-	}()
+	// IMPORTANT: We don't lock the mutex for the entire command execution
+	// Instead, we create a context and execute the command in a separate goroutine
+	// This allows multiple commands to be processed concurrently on different tunnels
+	util.Debug("DCC: Setting up command execution for %s on bot %s for command %s", dt.ownerNick, dt.bot.GetCurrentNick(), cmd)
 
 	// Execute the command with a longer timeout
 	doneChan := make(chan struct{})
@@ -98,6 +93,7 @@ func (dt *DCCTunnel) processCommand(command string) {
 		}()
 
 		// Execute the command handler
+		// Each handler is responsible for its own locking if needed
 		handler(args)
 	}()
 

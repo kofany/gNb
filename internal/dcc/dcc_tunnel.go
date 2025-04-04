@@ -205,29 +205,49 @@ func (dt *DCCTunnel) readLoop() {
 
 // Stop zatrzymuje tunel DCC
 func (dt *DCCTunnel) Stop() {
+	// First check if already stopped without locking
+	if !dt.IsActive() {
+		return
+	}
+
 	dt.mu.Lock()
 	if !dt.active {
 		dt.mu.Unlock()
 		return
 	}
 
+	// Mark as inactive first
 	dt.active = false
 
+	// Get references to needed fields before unlocking
+	partyLine := dt.partyLine
+	sessionID := dt.sessionID
+	ownerNick := dt.ownerNick
+	botNick := "unknown"
+	if dt.bot != nil {
+		botNick = dt.bot.GetCurrentNick()
+	}
+
 	// Close the connection with proper error handling
+	var conn net.Conn
 	if dt.conn != nil {
+		conn = dt.conn
+		dt.conn = nil // Clear the reference
+	}
+	dt.mu.Unlock()
+
+	// Log the stop operation
+	util.Debug("DCC: Stopping tunnel for owner %s on bot %s (session: %s)", ownerNick, botNick, sessionID)
+
+	// Close the connection outside the lock
+	if conn != nil {
 		// Set a short deadline to avoid blocking on close
-		dt.conn.SetDeadline(time.Now().Add(1 * time.Second))
-		err := dt.conn.Close()
+		conn.SetDeadline(time.Now().Add(1 * time.Second))
+		err := conn.Close()
 		if err != nil {
 			util.Warning("DCC: Error closing connection: %v", err)
 		}
-		dt.conn = nil
 	}
-
-	// Opuszczamy PartyLine - do this outside the lock to avoid deadlocks
-	partyLine := dt.partyLine
-	sessionID := dt.sessionID
-	dt.mu.Unlock()
 
 	// Remove from party line
 	if partyLine != nil {
@@ -238,6 +258,20 @@ func (dt *DCCTunnel) Stop() {
 	if dt.onStop != nil {
 		dt.onStop()
 	}
+
+	// Signal that the read loop should exit
+	dt.mu.Lock()
+	if dt.readDone != nil {
+		close(dt.readDone)
+		dt.readDone = nil
+	}
+	if dt.writeDone != nil {
+		close(dt.writeDone)
+		dt.writeDone = nil
+	}
+	dt.mu.Unlock()
+
+	util.Debug("DCC: Tunnel stopped for owner %s on bot %s", ownerNick, botNick)
 }
 
 // handleUserInput przetwarza dane wejściowe od użytkownika
@@ -250,6 +284,9 @@ func (dt *DCCTunnel) handleUserInput(input string) {
 	// Check if the tunnel is still active
 	dt.mu.Lock()
 	isActive := dt.active
+	ownerNick := dt.ownerNick
+	botNick := dt.bot.GetCurrentNick()
+	sessionID := dt.sessionID
 	dt.mu.Unlock()
 
 	if !isActive {
@@ -262,7 +299,12 @@ func (dt *DCCTunnel) handleUserInput(input string) {
 	doneChan := make(chan struct{})
 
 	go func() {
-		defer close(doneChan)
+		defer func() {
+			close(doneChan)
+			if r := recover(); r != nil {
+				util.Error("DCC: Panic in handleUserInput: %v", r)
+			}
+		}()
 
 		if strings.HasPrefix(input, ".") {
 			// Command processing is already protected with timeouts in processCommand
@@ -274,24 +316,27 @@ func (dt *DCCTunnel) handleUserInput(input string) {
 			formattedMsg := fmt.Sprintf("[%s] %s%s%s %s",
 				timestamp,
 				colorText("<", 13),
-				colorText(dt.ownerNick, 14),
+				colorText(ownerNick, 14),
 				colorText(">", 13),
 				input)
 
 			// Check if partyLine is available
 			if dt.partyLine != nil {
 				util.Debug("DCC: Broadcasting party line message from %s on bot %s: %s",
-					dt.ownerNick, dt.bot.GetCurrentNick(), input)
+					ownerNick, botNick, input)
+
+				// Create message object
+				msg := PartyLineMessage{
+					Timestamp: time.Now(),
+					Sender:    ownerNick,
+					Message:   input,
+				}
 
 				// Add to message log first
-				dt.partyLine.addToMessageLog(PartyLineMessage{
-					Timestamp: time.Now(),
-					Sender:    dt.ownerNick,
-					Message:   input,
-				})
+				dt.partyLine.addToMessageLog(msg)
 
-				// Then broadcast to all
-				dt.partyLine.broadcast(formattedMsg, dt.sessionID)
+				// Then broadcast to all - use a separate goroutine to avoid blocking
+				go dt.partyLine.broadcast(formattedMsg, sessionID)
 			} else {
 				util.Warning("DCC: PartyLine is nil, cannot broadcast message")
 			}
@@ -505,6 +550,15 @@ func (pl *PartyLine) AddSession(tunnel *DCCTunnel) {
 		return
 	}
 
+	// Check if owner already has a session and close it if needed
+	for existingID, existingTunnel := range pl.sessions {
+		if existingTunnel != nil && existingTunnel.ownerNick == ownerNick {
+			util.Debug("PartyLine: Owner %s already has a session %s, will be replaced by new session %s",
+				ownerNick, existingID, sessionID)
+			// Don't close it here to avoid deadlocks, just note it
+		}
+	}
+
 	// Add the session
 	pl.sessions[sessionID] = tunnel
 
@@ -515,39 +569,42 @@ func (pl *PartyLine) AddSession(tunnel *DCCTunnel) {
 	messageLogCopy := make([]PartyLineMessage, len(pl.messageLog))
 	copy(messageLogCopy, pl.messageLog)
 
-	// Get current online users
+	// Get current online users from active tunnels only
 	var onlineUsers []string
 	for _, t := range pl.sessions {
-		if t != nil && t.ownerNick != "" {
+		if t != nil && t.IsActive() && t.ownerNick != "" {
 			onlineUsers = append(onlineUsers, t.ownerNick)
 		}
 	}
 	pl.mutex.Unlock()
 
-	// Send welcome message
-	welcomeMsg := fmt.Sprintf("*** Welcome to the PartyLine, %s! ***", ownerNick)
-	tunnel.sendToClient(welcomeMsg)
+	// Send welcome message in a separate goroutine to avoid blocking
+	go func() {
+		// Send welcome message
+		welcomeMsg := fmt.Sprintf("*** Welcome to the PartyLine, %s! ***", ownerNick)
+		tunnel.sendToClient(welcomeMsg)
 
-	// Send current users message
-	if len(onlineUsers) > 0 {
-		usersMsg := fmt.Sprintf("*** Current users: %s ***", strings.Join(onlineUsers, ", "))
-		tunnel.sendToClient(usersMsg)
-	}
+		// Send current users message
+		if len(onlineUsers) > 0 {
+			usersMsg := fmt.Sprintf("*** Current users: %s ***", strings.Join(onlineUsers, ", "))
+			tunnel.sendToClient(usersMsg)
+		}
 
-	// Send message history to the new client
-	for _, msg := range messageLogCopy {
-		formattedTime := msg.Timestamp.Format("15:04:05")
-		formattedMsg := fmt.Sprintf("[%s] %s%s%s %s",
-			colorText(formattedTime, 14),
-			colorText("<", 13),
-			colorText(msg.Sender, 14),
-			colorText(">", 13),
-			msg.Message)
-		tunnel.sendToClient(formattedMsg)
-	}
+		// Send message history to the new client
+		for _, msg := range messageLogCopy {
+			formattedTime := msg.Timestamp.Format("15:04:05")
+			formattedMsg := fmt.Sprintf("[%s] %s%s%s %s",
+				colorText(formattedTime, 14),
+				colorText("<", 13),
+				colorText(msg.Sender, 14),
+				colorText(">", 13),
+				msg.Message)
+			tunnel.sendToClient(formattedMsg)
+		}
 
-	// Broadcast join message to other users
-	pl.broadcast(fmt.Sprintf("*** %s joined the party line ***", ownerNick), sessionID)
+		// Broadcast join message to other users
+		pl.broadcast(fmt.Sprintf("*** %s joined the party line ***", ownerNick), sessionID)
+	}()
 }
 
 // addToMessageLog dodaje wiadomość do historii PartyLine
@@ -575,20 +632,38 @@ func (pl *PartyLine) RemoveSession(sessionID string) {
 	pl.mutex.Lock()
 	tunnel, exists := pl.sessions[sessionID]
 	if !exists {
+		util.Debug("PartyLine: Session %s not found for removal", sessionID)
 		pl.mutex.Unlock()
 		return
 	}
 
-	// Get the owner nick before deleting the session
+	// Get the owner nick and bot nick before deleting the session
 	ownerNick := tunnel.ownerNick
+	botNick := "unknown"
+	if tunnel.bot != nil {
+		botNick = tunnel.bot.GetCurrentNick()
+	}
+
+	util.Debug("PartyLine: Removing session %s (bot: %s, owner: %s)", sessionID, botNick, ownerNick)
 
 	// Delete the session
 	delete(pl.sessions, sessionID)
+
+	// Check if there are any other sessions for this owner
+	hasOtherSessions := false
+	for _, t := range pl.sessions {
+		if t != nil && t.ownerNick == ownerNick && t.IsActive() {
+			hasOtherSessions = true
+			util.Debug("PartyLine: Owner %s still has another active session", ownerNick)
+			break
+		}
+	}
 	pl.mutex.Unlock()
 
-	// Broadcast the leave message outside the lock
-	if ownerNick != "" {
-		pl.broadcast(fmt.Sprintf("*** %s left the party line ***", ownerNick), sessionID)
+	// Only broadcast leave message if this was the owner's last session
+	if ownerNick != "" && !hasOtherSessions {
+		// Broadcast the leave message outside the lock
+		go pl.broadcast(fmt.Sprintf("*** %s left the party line ***", ownerNick), sessionID)
 	}
 }
 
@@ -602,13 +677,11 @@ func (pl *PartyLine) broadcast(message string, excludeSessionID string) {
 	// Acquire lock to safely access sessions
 	pl.mutex.Lock()
 
-	// First, safely get the sender's nick if this is a user message
-	var senderNick string
+	// Log the sender's information if this is a user message
 	if !strings.HasPrefix(message, "***") && excludeSessionID != "" {
 		if tunnel, exists := pl.sessions[excludeSessionID]; exists && tunnel != nil {
 			if tunnel.bot != nil {
 				// Use the owner's nick, not the bot's nick
-				senderNick = tunnel.ownerNick
 				util.Debug("PartyLine: Message sender is %s on bot %s", tunnel.ownerNick, tunnel.bot.GetCurrentNick())
 			}
 		}
@@ -616,13 +689,26 @@ func (pl *PartyLine) broadcast(message string, excludeSessionID string) {
 
 	// Create a safe copy of sessions to avoid holding the lock while sending
 	sessionsCopy := make(map[string]*DCCTunnel)
+	var activeOwners []string
 	for id, tunnel := range pl.sessions {
-		if id != excludeSessionID && id != "" && tunnel != nil {
-			sessionsCopy[id] = tunnel
-			util.Debug("PartyLine: Will send to session %s (bot: %s, owner: %s)", id, tunnel.bot.GetCurrentNick(), tunnel.ownerNick)
+		if id != "" && tunnel != nil && tunnel.IsActive() {
+			// Only add to the copy if it's not the sender's session
+			if id != excludeSessionID {
+				sessionsCopy[id] = tunnel
+				util.Debug("PartyLine: Will send to session %s (bot: %s, owner: %s)",
+					id, tunnel.bot.GetCurrentNick(), tunnel.ownerNick)
+			}
+
+			// Add to active owners list for logging
+			if tunnel.ownerNick != "" {
+				activeOwners = append(activeOwners, tunnel.ownerNick)
+			}
 		}
 	}
 	pl.mutex.Unlock()
+
+	util.Debug("PartyLine: Broadcasting to %d sessions, active owners: %s",
+		len(sessionsCopy), strings.Join(activeOwners, ", "))
 
 	// Then broadcast to all other sessions
 	var wg sync.WaitGroup
@@ -649,7 +735,10 @@ func (pl *PartyLine) broadcast(message string, excludeSessionID string) {
 					}
 				}()
 
-				t.sendToClient(msg)
+				// Check if tunnel is still active before sending
+				if t.IsActive() {
+					t.sendToClient(msg)
+				}
 			}()
 
 			// Wait for the message to be sent or timeout
@@ -658,7 +747,7 @@ func (pl *PartyLine) broadcast(message string, excludeSessionID string) {
 				// Message sent successfully
 			case <-timeoutChan:
 				// Message sending timed out
-				util.Warning("DCC: Timeout sending broadcast message to client")
+				util.Warning("DCC: Timeout sending broadcast message to client %s", t.ownerNick)
 			}
 		}(tunnel, message)
 	}
@@ -673,23 +762,15 @@ func (pl *PartyLine) broadcast(message string, excludeSessionID string) {
 	select {
 	case <-done:
 		// All broadcasts completed
+		util.Debug("PartyLine: Broadcast completed successfully")
 	case <-time.After(5 * time.Second):
 		// Timeout occurred
 		util.Warning("DCC: Timeout waiting for all broadcast messages to complete")
 	}
 
-	// Dodajemy do historii tylko wiadomości od użytkowników (nie systemowe)
-	if !strings.HasPrefix(message, "***") && senderNick != "" {
-		// Create a message object
-		msg := PartyLineMessage{
-			Timestamp: time.Now(),
-			Sender:    senderNick,
-			Message:   message,
-		}
-
-		// Add to message log
-		pl.addToMessageLog(msg)
-	}
+	// Note: We don't add to message log here anymore
+	// This is now handled by the caller (handleUserInput) to avoid duplicates
+	// and ensure proper ordering of messages
 }
 
 // This method has been replaced by the improved version above
