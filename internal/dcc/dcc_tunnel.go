@@ -607,8 +607,9 @@ func (pl *PartyLine) broadcast(message string, excludeSessionID string) {
 	if !strings.HasPrefix(message, "***") && excludeSessionID != "" {
 		if tunnel, exists := pl.sessions[excludeSessionID]; exists && tunnel != nil {
 			if tunnel.bot != nil {
-				senderNick = tunnel.bot.GetCurrentNick()
-				util.Debug("PartyLine: Message sender is %s on bot %s", tunnel.ownerNick, senderNick)
+				// Use the owner's nick, not the bot's nick
+				senderNick = tunnel.ownerNick
+				util.Debug("PartyLine: Message sender is %s on bot %s", tunnel.ownerNick, tunnel.bot.GetCurrentNick())
 			}
 		}
 	}
