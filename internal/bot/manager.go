@@ -26,7 +26,7 @@ type BotManager struct {
 	stopChan            chan struct{}
 	nickManager         types.NickManager
 	commandBotIndex     int
-	mutex               sync.Mutex
+	mutex               sync.RWMutex
 	lastMassCommand     map[string]time.Time
 	massCommandCooldown time.Duration
 	wordPool            []string
@@ -327,28 +327,37 @@ func (bm *BotManager) RemoveOwner(ownerMask string) error {
 }
 
 func (bm *BotManager) GetOwners() []string {
-	bm.mutex.Lock()
-	defer bm.mutex.Unlock()
-
+	// Używamy RLock zamiast Lock, aby umożliwić równoczesny odczyt
+	bm.mutex.RLock()
 	ownersCopy := make([]string, len(bm.owners.Owners))
 	copy(ownersCopy, bm.owners.Owners)
+	bm.mutex.RUnlock()
 	return ownersCopy
 }
 
 func (bm *BotManager) saveOwnersToFile() error {
+	// Najpierw przygotujmy dane do zapisu
 	jsonData, err := json.MarshalIndent(bm.owners, "", "  ")
 	if err != nil {
 		return err
 	}
 
+	// Zapisujemy do pliku bez blokowania mutexa
 	err = os.WriteFile("configs/owners.json", jsonData, 0644)
 	if err != nil {
 		return err
 	}
 
-	// Update owner list in bots
-	for _, bot := range bm.bots {
-		bot.SetOwnerList(bm.owners)
+	// Kopiujemy listę botów i listę właścicieli pod mutexem
+	bm.mutex.RLock()
+	botsCopy := make([]types.Bot, len(bm.bots))
+	copy(botsCopy, bm.bots)
+	ownersCopy := bm.owners
+	bm.mutex.RUnlock()
+
+	// Aktualizujemy listę właścicieli w botach bez blokowania mutexa
+	for _, bot := range botsCopy {
+		bot.SetOwnerList(ownersCopy)
 	}
 
 	return nil
@@ -356,11 +365,10 @@ func (bm *BotManager) saveOwnersToFile() error {
 
 // GetBots returns a copy of the bot slice
 func (bm *BotManager) GetBots() []types.Bot {
-	bm.mutex.Lock()
-	defer bm.mutex.Unlock()
-
+	bm.mutex.RLock()
 	botsCopy := make([]types.Bot, len(bm.bots))
 	copy(botsCopy, bm.bots)
+	bm.mutex.RUnlock()
 	return botsCopy
 }
 
@@ -441,14 +449,22 @@ func (bm *BotManager) cleanupReactionRequest(key string) {
 }
 
 func (bm *BotManager) SendSingleMsg(channel, message string) {
-	bm.mutex.Lock()
-	defer bm.mutex.Unlock()
-
+	// Pobieramy bota pod RLock
+	var bot types.Bot
+	bm.mutex.RLock()
 	if len(bm.bots) == 0 {
+		bm.mutex.RUnlock()
 		return
 	}
-	bot := bm.bots[bm.commandBotIndex]
+	bot = bm.bots[bm.commandBotIndex]
+	bm.mutex.RUnlock()
+
+	// Aktualizujemy indeks pod Lock
+	bm.mutex.Lock()
 	bm.commandBotIndex = (bm.commandBotIndex + 1) % len(bm.bots)
+	bm.mutex.Unlock()
+
+	// Wysyłamy wiadomość bez blokowania mutexa
 	bot.SendMessage(channel, message)
 }
 
