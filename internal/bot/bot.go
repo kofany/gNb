@@ -938,29 +938,24 @@ func (b *Bot) SendMessage(target, message string) {
 	// Log the message being sent
 	util.Debug("Bot %s is sending message to %s: %s", b.CurrentNick, target, message)
 
-	// Use a non-blocking select to check if we can acquire the semaphore
+	// Use a timeout to acquire the semaphore instead of dropping messages
 	select {
-	// Try to acquire the semaphore
 	case sendMessageSemaphore <- struct{}{}:
 		// Semaphore acquired, proceed with sending the message
-		go func(t, m string) {
-			// Ensure we release the semaphore when done
-			defer func() {
+		defer func() {
+			// Create a separate goroutine to avoid blocking if releasing fails
+			go func() {
 				<-sendMessageSemaphore // Release the semaphore
-				if r := recover(); r != nil {
-					util.Error("Panic in SendMessage: %v", r)
-				}
 			}()
+		}()
 
-			// Send the message directly without a nested goroutine
-			// Set a deadline on the connection to prevent blocking
-			b.Connection.Privmsg(t, m)
-			util.Debug("SendMessage: Message sent successfully to %s via bot %s", t, b.CurrentNick)
-		}(target, message)
+		// Send the message directly
+		b.Connection.Privmsg(target, message)
+		util.Debug("SendMessage: Message sent successfully to %s via bot %s", target, b.CurrentNick)
 
-	default:
-		// Semaphore full, log a warning and drop the message
-		util.Warning("SendMessage: Too many concurrent messages, dropping message to %s", target)
+	case <-time.After(2 * time.Second): // Wait up to 2 seconds to acquire the semaphore
+		// Semaphore acquisition timed out
+		util.Warning("SendMessage: Timed out waiting to send message to %s", target)
 	}
 }
 

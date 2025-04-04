@@ -283,3 +283,60 @@ We've implemented several improvements to prevent potential deadlocks in the sys
 4. **Timeout Protection**: Added context-based timeouts to prevent indefinite waiting in critical operations.
 
 These improvements ensure the system remains responsive even when multiple owners are connected via DCC and issuing commands simultaneously.
+
+### Enhanced Stability (v1.5.0)
+
+We've implemented several significant improvements to enhance stability during concurrent operations:
+
+1. **Command Coordination System**: Implemented a robust coordination mechanism for channel commands to prevent multiple bots responding simultaneously while ensuring commands are properly handled.
+
+2. **ISON Request Resiliency**: Added circuit breaker patterns and token-based limiting to ISON requests to gracefully handle failures and prevent system-wide impacts.
+
+3. **Reliable Message Delivery**: Enhanced message sending with proper timeouts and retries rather than dropping messages, ensuring commands and responses are delivered.
+
+4. **Resource Management**: Implemented concurrency controls for resource-intensive operations, with:
+   - Token-based limits for concurrent operations
+   - Smart handling of failing resources with automatic retry mechanisms
+   - Non-blocking operations with appropriate timeouts for critical functions
+
+5. **Deadlock Prevention**: Improved mutex usage pattern for critical sections of code, replacing global locks with more targeted approaches.
+
+These changes significantly improve stability when handling multiple commands from different sources simultaneously, particularly in scenarios with multiple owners connected via both channels and DCC tunnels.
+
+## Recent Updates
+
+### Enhanced Stability (v1.5.0)
+
+We've implemented several significant improvements to enhance stability during concurrent operations:
+
+1. **Command Coordination System**: Implemented a robust coordination mechanism for channel commands to prevent multiple bots responding simultaneously while ensuring commands are properly handled.
+
+2. **ISON Request Resiliency**: Added circuit breaker patterns and token-based limiting to ISON requests to gracefully handle failures and prevent system-wide impacts.
+
+3. **Reliable Message Delivery**: Enhanced message sending with proper timeouts and retries rather than dropping messages, ensuring commands and responses are delivered.
+
+4. **Resource Management**: Implemented concurrency controls for resource-intensive operations, with:
+   - Token-based limits for concurrent operations
+   - Smart handling of failing resources with automatic retry mechanisms
+   - Non-blocking operations with appropriate timeouts for critical functions
+
+5. **Deadlock Prevention**: Improved mutex usage pattern for critical sections of code, replacing global locks with more targeted approaches.
+
+These changes significantly improve stability when handling multiple commands from different sources simultaneously, particularly in scenarios with multiple owners connected via both channels and DCC tunnels.
+
+### Deadlock Prevention (v1.4.0)
+
+We've implemented several improvements to prevent potential deadlocks in the system:
+
+1. **Non-blocking Command Handling**: DCC commands like `listowners` now use timeouts and separate goroutines to prevent blocking the entire system.
+
+2. **Improved Lock Management**: Replaced global lock with read-write locks (RWMutex) in critical components to allow concurrent read operations.
+
+3. **Optimized ISON Processing**:
+   - The NickManager now uses timeouts to prevent hanging on ISON requests
+   - Better data copying to minimize lock times
+   - Using non-blocking goroutines for nick monitoring operations
+
+4. **Timeout Protection**: Added context-based timeouts to prevent indefinite waiting in critical operations.
+
+These improvements ensure the system remains responsive even when multiple owners are connected via DCC and issuing commands simultaneously.

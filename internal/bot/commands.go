@@ -76,7 +76,7 @@ func (b *Bot) HandleCommands(e *irc.Event) {
 	util.Debug("Command %s recognized for bot %s", cmdName, b.GetCurrentNick())
 
 	// For channel commands, use the coordination mechanism to prevent multiple responses
-	if isChannelMsg && !b.GetBotManager().CoordinateChannelCommand(b, sender, target, cmdName, args[1:]) {
+	if isChannelMsg && !b.GetBotManager().CoordinateChannelCommand(b, sender, target, cmdName, args) {
 		util.Debug("Command %s not executed by bot %s due to channel coordination", cmdName, b.GetCurrentNick())
 		return
 	}
