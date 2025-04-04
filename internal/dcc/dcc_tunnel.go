@@ -3,7 +3,6 @@ package dcc
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"net"
 	"strings"
 	"sync"
@@ -241,22 +240,6 @@ func (dt *DCCTunnel) Stop() {
 	}
 }
 
-// readFromConn obsługuje odczyt danych z połączenia
-func (dt *DCCTunnel) readFromConn() {
-	defer dt.Stop()
-
-	scanner := bufio.NewScanner(dt.conn)
-	for scanner.Scan() {
-		line := scanner.Text()
-		util.Debug("DCC: Received from DCC connection: %s", line)
-		dt.handleUserInput(line)
-	}
-
-	if err := scanner.Err(); err != nil {
-		util.Error("DCC: Error reading from DCC Chat connection: %v", err)
-	}
-}
-
 // handleUserInput przetwarza dane wejściowe od użytkownika
 func (dt *DCCTunnel) handleUserInput(input string) {
 	// Sanitize input
@@ -418,25 +401,6 @@ func (dt *DCCTunnel) parseIRCMessage(raw string) string {
 	}
 }
 
-// shouldIgnoreEvent sprawdza czy dane zdarzenie powinno być ignorowane
-func (dt *DCCTunnel) shouldIgnoreEvent(data string) bool {
-	dt.mu.Lock()
-	defer dt.mu.Unlock()
-
-	// Ignoruj odpowiedzi ISON
-	if strings.Contains(data, " 303 ") {
-		return true
-	}
-
-	for event := range dt.ignoredEvents {
-		if strings.Contains(data, " "+event+" ") {
-			return true
-		}
-	}
-
-	return false
-}
-
 // sendToClient wysyła wiadomość do klienta DCC
 func (dt *DCCTunnel) sendToClient(message string) {
 	// Quick check without lock first
@@ -508,90 +472,7 @@ func (dt *DCCTunnel) GetBot() types.Bot {
 	return dt.bot
 }
 
-// updateFormatter aktualizuje formatter wiadomości (np. po zmianie nicka)
-func (dt *DCCTunnel) updateFormatter(newNick string) {
-	dt.mu.Lock()
-	defer dt.mu.Unlock()
-	dt.formatter = NewMessageFormatter(newNick)
-}
-
-// Funkcje pomocnicze do debugowania i logowania
-
-// logDebug loguje wiadomość debugowania
-func (dt *DCCTunnel) logDebug(format string, args ...interface{}) {
-	botNick := dt.bot.GetCurrentNick()
-	message := fmt.Sprintf(format, args...)
-	util.Debug("DCC[%s]: %s", botNick, message)
-}
-
-// logError loguje błąd
-func (dt *DCCTunnel) logError(format string, args ...interface{}) {
-	botNick := dt.bot.GetCurrentNick()
-	message := fmt.Sprintf(format, args...)
-	util.Error("DCC[%s]: %s", botNick, message)
-}
-
-// logWarning loguje ostrzeżenie
-func (dt *DCCTunnel) logWarning(format string, args ...interface{}) {
-	botNick := dt.bot.GetCurrentNick()
-	message := fmt.Sprintf(format, args...)
-	util.Warning("DCC[%s]: %s", botNick, message)
-}
-
-// handleConnectionError obsługuje błędy połączenia
-func (dt *DCCTunnel) handleConnectionError(err error) {
-	if err != nil && err != io.EOF {
-		dt.logError("Connection error: %v", err)
-	}
-	dt.Stop()
-}
-
-// isValidCommand sprawdza czy komenda jest poprawna
-func (dt *DCCTunnel) isValidCommand(command string) bool {
-	if !strings.HasPrefix(command, ".") {
-		return false
-	}
-
-	cmd := strings.Fields(command)
-	if len(cmd) == 0 {
-		return false
-	}
-
-	// Usuń prefiks "." i przekonwertuj na wielkie litery
-	cmdName := strings.ToUpper(strings.TrimPrefix(cmd[0], "."))
-
-	// Lista dozwolonych komend
-	validCommands := map[string]bool{
-		"MSG": true, "JOIN": true, "PART": true,
-		"MODE": true, "KICK": true, "QUIT": true,
-		"NICK": true, "RAW": true, "HELP": true,
-		"MJOIN": true, "MPART": true, "MRECONNECT": true,
-		"ADDNICK": true, "DELNICK": true, "LISTNICKS": true,
-		"ADDOWNER": true, "DELOWNER": true, "LISTOWNERS": true,
-		"CFLO": true, "NFLO": true, "INFO": true,
-	}
-
-	return validCommands[cmdName]
-}
-
-// validateInput sprawdza i czyści dane wejściowe
-func (dt *DCCTunnel) validateInput(input string) string {
-	// Usuń znaki nowej linii i powrotu karetki
-	input = strings.TrimSpace(input)
-	input = strings.ReplaceAll(input, "\r", "")
-	input = strings.ReplaceAll(input, "\n", "")
-
-	// Ogranicz długość wejścia
-	maxLength := 512 // Standardowe ograniczenie IRC
-	if len(input) > maxLength {
-		input = input[:maxLength]
-	}
-
-	return input
-}
-
 // PARTYLINE
-
 func GetGlobalPartyLine() *PartyLine {
 	partyLineOnce.Do(func() {
 		globalPartyLine = &PartyLine{

@@ -15,7 +15,6 @@ import (
 )
 
 // We no longer use a global mutex for command processing
-// Each tunnel uses its own mutex to allow commands to be processed independently
 
 // processCommand przetwarza komendy od użytkownika
 func (dt *DCCTunnel) processCommand(command string) {

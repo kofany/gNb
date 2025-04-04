@@ -45,39 +45,6 @@ func boldText(text string) string {
 	return fmt.Sprintf("\x02%s\x02", text)
 }
 
-func underlineText(text string) string {
-	return fmt.Sprintf("\x1F%s\x1F", text)
-}
-
-// FormatMessage formats a raw IRC message
-func (mf *MessageFormatter) FormatMessage(raw string) string {
-	event := irc.ParseIRCMessage(raw)
-	if event == nil {
-		return ""
-	}
-
-	switch event.Command {
-	case "PRIVMSG":
-		return mf.formatPrivMsg(event)
-	case "NOTICE":
-		return mf.formatNotice(event)
-	case "JOIN":
-		return mf.formatJoin(event)
-	case "PART":
-		return mf.formatPart(event)
-	case "QUIT":
-		return mf.formatQuit(event)
-	case "NICK":
-		return mf.formatNick(event)
-	case "MODE":
-		return mf.formatMode(event)
-	case "KICK":
-		return mf.formatKick(event)
-	default:
-		return mf.formatOther(event)
-	}
-}
-
 // formatPrivMsg formats private messages
 func (mf *MessageFormatter) formatPrivMsg(event *irc.Event) string {
 	timestamp := colorText(time.Now().Format(mf.timeFormat), 14)
