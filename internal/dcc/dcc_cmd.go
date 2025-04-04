@@ -199,14 +199,16 @@ func (dt *DCCTunnel) handleMassJoinCommand(args []string) {
 	if len(args) >= 1 {
 		channel := args[0]
 		if bm := dt.bot.GetBotManager(); bm != nil {
+			msg := fmt.Sprintf("All bots are joining channel %s", channel)
+			msgPtr := &msg
 			bm.CollectReactions(
 				dt.bot.GetCurrentNick(),
-				fmt.Sprintf("All bots are joining channel %s", channel),
-				func() error {
+				msgPtr,
+				func() (string, error) {
 					for _, bot := range bm.GetBots() {
 						bot.JoinChannel(channel)
 					}
-					return nil
+					return "", nil
 				},
 			)
 		}
@@ -221,14 +223,16 @@ func (dt *DCCTunnel) handleMassPartCommand(args []string) {
 	if len(args) >= 1 {
 		channel := args[0]
 		if bm := dt.bot.GetBotManager(); bm != nil {
+			msg := fmt.Sprintf("All bots are leaving channel %s", channel)
+			msgPtr := &msg
 			bm.CollectReactions(
 				dt.bot.GetCurrentNick(),
-				fmt.Sprintf("All bots are leaving channel %s", channel),
-				func() error {
+				msgPtr,
+				func() (string, error) {
 					for _, bot := range bm.GetBots() {
 						bot.PartChannel(channel)
 					}
-					return nil
+					return "", nil
 				},
 			)
 		}
@@ -239,14 +243,16 @@ func (dt *DCCTunnel) handleMassPartCommand(args []string) {
 
 func (dt *DCCTunnel) handleMassReconnectCommand(_ []string) {
 	if bm := dt.bot.GetBotManager(); bm != nil {
+		msg := "All bots are reconnecting..."
+		msgPtr := &msg
 		bm.CollectReactions(
 			dt.bot.GetCurrentNick(),
-			"All bots are reconnecting...",
-			func() error {
+			msgPtr,
+			func() (string, error) {
 				for _, bot := range bm.GetBots() {
 					go bot.Reconnect()
 				}
-				return nil
+				return "", nil
 			},
 		)
 	}
@@ -256,10 +262,15 @@ func (dt *DCCTunnel) handleAddNickCommand(args []string) {
 	if len(args) >= 1 {
 		nick := args[0]
 		if bm := dt.bot.GetBotManager(); bm != nil {
+			msg := fmt.Sprintf("Nick '%s' has been added.", nick)
+			msgPtr := &msg
 			bm.CollectReactions(
 				dt.bot.GetCurrentNick(),
-				fmt.Sprintf("Nick '%s' has been added.", nick),
-				func() error { return dt.bot.GetNickManager().AddNick(nick) },
+				msgPtr,
+				func() (string, error) {
+					err := dt.bot.GetNickManager().AddNick(nick)
+					return "", err
+				},
 			)
 		}
 	} else {
@@ -271,10 +282,15 @@ func (dt *DCCTunnel) handleDelNickCommand(args []string) {
 	if len(args) >= 1 {
 		nick := args[0]
 		if bm := dt.bot.GetBotManager(); bm != nil {
+			msg := fmt.Sprintf("Nick '%s' has been removed.", nick)
+			msgPtr := &msg
 			bm.CollectReactions(
 				dt.bot.GetCurrentNick(),
-				fmt.Sprintf("Nick '%s' has been removed.", nick),
-				func() error { return dt.bot.GetNickManager().RemoveNick(nick) },
+				msgPtr,
+				func() (string, error) {
+					err := dt.bot.GetNickManager().RemoveNick(nick)
+					return "", err
+				},
 			)
 		}
 	} else {
@@ -293,10 +309,15 @@ func (dt *DCCTunnel) handleAddOwnerCommand(args []string) {
 	if len(args) >= 1 {
 		ownerMask := args[0]
 		if bm := dt.bot.GetBotManager(); bm != nil {
+			msg := fmt.Sprintf("Owner '%s' has been added.", ownerMask)
+			msgPtr := &msg
 			bm.CollectReactions(
 				dt.bot.GetCurrentNick(),
-				fmt.Sprintf("Owner '%s' has been added.", ownerMask),
-				func() error { return bm.AddOwner(ownerMask) },
+				msgPtr,
+				func() (string, error) {
+					err := bm.AddOwner(ownerMask)
+					return "", err
+				},
 			)
 		}
 	} else {
@@ -308,10 +329,15 @@ func (dt *DCCTunnel) handleDelOwnerCommand(args []string) {
 	if len(args) >= 1 {
 		ownerMask := args[0]
 		if bm := dt.bot.GetBotManager(); bm != nil {
+			msg := fmt.Sprintf("Owner '%s' has been removed.", ownerMask)
+			msgPtr := &msg
 			bm.CollectReactions(
 				dt.bot.GetCurrentNick(),
-				fmt.Sprintf("Owner '%s' has been removed.", ownerMask),
-				func() error { return bm.RemoveOwner(ownerMask) },
+				msgPtr,
+				func() (string, error) {
+					err := bm.RemoveOwner(ownerMask)
+					return "", err
+				},
 			)
 		}
 	} else {

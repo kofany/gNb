@@ -59,13 +59,11 @@ type BotManager interface {
 	GetTotalCreatedBots() int
 	SetMassCommandCooldown(duration time.Duration)
 	GetMassCommandCooldown() time.Duration
-	CollectReactions(channel, message string, action func() error)
+	CollectReactions(channel string, defaultSuccessMessage *string, action func() (string, error))
 	SendSingleMsg(channel, message string)
 }
 
 type ReactionRequest struct {
 	Channel   string
-	Message   string
 	Timestamp time.Time
-	Action    func() error
 }

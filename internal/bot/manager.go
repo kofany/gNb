@@ -383,11 +383,20 @@ func (bm *BotManager) GetMassCommandCooldown() time.Duration {
 	return bm.massCommandCooldown
 }
 
-func (bm *BotManager) CollectReactions(channel, message string, action func() error) {
+func (bm *BotManager) CollectReactions(channel string, defaultSuccessMessage *string, action func() (string, error)) {
 	// 1. Acquire main lock
 	bm.mutex.Lock()
 
-	key := channel + ":" + message
+	// Generate key based on channel and action (or default message if action is nil)
+	// This helps differentiate calls that might have nil defaultSuccessMessage but different actions
+	var keyActionPart string
+	if action != nil {
+		// Note: This relies on func pointer being consistent, might not be perfect for closures
+		keyActionPart = fmt.Sprintf("%p", action)
+	} else if defaultSuccessMessage != nil {
+		keyActionPart = *defaultSuccessMessage
+	}
+	key := channel + ":" + keyActionPart // Klucz teraz uwzględnia akcję lub wiadomość
 	now := time.Now()
 
 	// 2. Check duplicates (briefly locking reactionMutex)
@@ -398,11 +407,11 @@ func (bm *BotManager) CollectReactions(channel, message string, action func() er
 		util.Debug("Duplicate reaction request ignored for key: %s", key)
 		return
 	}
-	// Register request
+	// Register request (store only timestamp and key relevant info)
 	bm.reactionRequests[key] = types.ReactionRequest{
 		Channel:   channel,
-		Message:   message, // Store message to know if we need to send later
 		Timestamp: now,
+		// Message and Action are handled below
 	}
 	bm.reactionMutex.Unlock() // Release reaction lock
 
@@ -410,14 +419,26 @@ func (bm *BotManager) CollectReactions(channel, message string, action func() er
 	go bm.cleanupReactionRequest(key)
 
 	// 3. Execute action (holding main lock)
+	var actionResult string
 	var actionErr error
 	if action != nil {
-		actionErr = action()
+		actionResult, actionErr = action() // <- ZMIANA: Przechwycenie wyniku action
+	}
+
+	// Determine the final message to send (if any)
+	messageToSend := ""
+	if actionErr == nil {
+		if actionResult != "" {
+			messageToSend = actionResult // Use result from action
+		} else if defaultSuccessMessage != nil {
+			messageToSend = *defaultSuccessMessage // Use default success message
+		}
+		// If both actionResult and defaultSuccessMessage are empty/nil, messageToSend remains ""
 	}
 
 	// Prepare for message sending
 	var botToSend types.Bot
-	shouldSendMessage := message != "" && actionErr == nil
+	shouldSendMessage := messageToSend != "" && actionErr == nil
 	shouldSendError := actionErr != nil
 	var errorMessage string
 
@@ -456,7 +477,7 @@ func (bm *BotManager) CollectReactions(channel, message string, action func() er
 			botToSend.SendMessage(channel, errorMessage)
 		}
 	} else if shouldSendMessage && botToSend != nil {
-		botToSend.SendMessage(channel, message)
+		botToSend.SendMessage(channel, messageToSend) // <- ZMIANA: Używamy messageToSend
 	}
 }
 
