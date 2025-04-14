@@ -21,7 +21,7 @@ import (
 	"github.com/sevlyar/go-daemon"
 )
 
-var version = "v1.4.1"
+var version = "v1.4.2"
 
 var (
 	devMode         = flag.Bool("dev", false, "run in development mode (non-daemon)")
@@ -73,10 +73,7 @@ func isDebian() bool {
 		return false
 	}
 	content := string(data)
-	if strings.Contains(content, "ID=debian") {
-		return true
-	}
-	return false
+	return strings.Contains(content, "ID=debian")
 }
 
 func main() {
