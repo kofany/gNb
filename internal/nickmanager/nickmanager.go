@@ -19,6 +19,7 @@ type NickManager struct {
 	bots                 []types.Bot
 	connectedBots        []types.Bot // Nowe pole dla połączonych botów
 	botIndex             int
+	isonInterval         time.Duration
 	tempUnavailableNicks map[string]time.Time
 	NoLettersServers     map[string]bool
 	mutex                sync.RWMutex  // Zmiana na RWMutex dla lepszej wydajności
@@ -426,6 +427,32 @@ func (nm *NickManager) cleanupTempUnavailableNicks(currentTime time.Time) {
 			delete(nm.tempUnavailableNicks, nick)
 		}
 	}
+}
+
+// filterAvailableNicks - wersja z blokadą mutexa
+func (nm *NickManager) filterAvailableNicks(nicks []string, onlineNicks []string) []string {
+	currentTime := time.Now()
+	var available []string
+
+	for _, nick := range nicks {
+		lowerNick := strings.ToLower(nick)
+		if !util.ContainsIgnoreCase(onlineNicks, nick) {
+			// Sprawdź czy nick nie jest zablokowany
+			if blockTime, exists := nm.tempUnavailableNicks[lowerNick]; exists {
+				if currentTime.After(blockTime) {
+					// Blokada wygasła, usuń ją
+					delete(nm.tempUnavailableNicks, lowerNick)
+					available = append(available, nick)
+					util.Debug("Nick %s block expired, removing block", nick)
+				} else {
+					util.Debug("Nick %s still blocked for %v", nick, blockTime.Sub(currentTime))
+				}
+			} else {
+				available = append(available, nick)
+			}
+		}
+	}
+	return available
 }
 
 // filterAvailableNicksNonLocking - wersja bez blokady mutexa

@@ -6,3 +6,5 @@ bot_dev.log
 .DS_Store
 .cursor/
 .specstory/
+data/nicks.json
+configs/owners.json
