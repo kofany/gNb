@@ -1,7 +1,6 @@
 package nickmanager
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -21,7 +20,6 @@ type NickManager struct {
 	bots                 []types.Bot
 	connectedBots        []types.Bot // Nowe pole dla połączonych botów
 	botIndex             int32       // Zmienione na int32 dla atomic operations
-	isonInterval         time.Duration
 	tempUnavailableNicks map[string]time.Time
 	NoLettersServers     map[string]bool
 	mutex                sync.RWMutex  // Zmiana na RWMutex dla lepszej wydajności
@@ -159,29 +157,6 @@ func (nm *NickManager) processISON() {
 	// Wykonujemy ISON bezpośrednio tutaj, bez dodatkowych goroutyn
 	if onlineNicks, err := bot.RequestISON(nicksCopy); err == nil {
 		nm.handleISONResponse(onlineNicks)
-	}
-}
-
-func (nm *NickManager) safeISONRequest(bot types.Bot, nicks []string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	done := make(chan struct{})
-	go func() {
-		if onlineNicks, err := bot.RequestISON(nicks); err == nil {
-			nm.handleISONResponse(onlineNicks)
-		} else {
-			util.Error("Error requesting ISON from bot %s: %v", bot.GetCurrentNick(), err)
-		}
-		close(done)
-	}()
-
-	select {
-	case <-ctx.Done():
-		util.Warning("NickManager: ISON request to bot %s timed out", bot.GetCurrentNick())
-		return
-	case <-done:
-		return
 	}
 }
 
@@ -454,32 +429,6 @@ func (nm *NickManager) cleanupTempUnavailableNicks(currentTime time.Time) {
 		delete(nm.tempUnavailableNicks, nick)
 		util.Debug("Nick %s block expired, removing block", nick)
 	}
-}
-
-// filterAvailableNicks - wersja z blokadą mutexa
-func (nm *NickManager) filterAvailableNicks(nicks []string, onlineNicks []string) []string {
-	currentTime := time.Now()
-	var available []string
-
-	for _, nick := range nicks {
-		lowerNick := strings.ToLower(nick)
-		if !util.ContainsIgnoreCase(onlineNicks, nick) {
-			// Sprawdź czy nick nie jest zablokowany
-			if blockTime, exists := nm.tempUnavailableNicks[lowerNick]; exists {
-				if currentTime.After(blockTime) {
-					// Blokada wygasła, usuń ją
-					delete(nm.tempUnavailableNicks, lowerNick)
-					available = append(available, nick)
-					util.Debug("Nick %s block expired, removing block", nick)
-				} else {
-					util.Debug("Nick %s still blocked for %v", nick, blockTime.Sub(currentTime))
-				}
-			} else {
-				available = append(available, nick)
-			}
-		}
-	}
-	return available
 }
 
 // filterAvailableNicksNonLocking - wersja bez blokady mutexa
