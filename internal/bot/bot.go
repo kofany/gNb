@@ -16,7 +16,6 @@ import (
 	"github.com/kofany/gNb/internal/bnc"
 	"github.com/kofany/gNb/internal/config"
 	"github.com/kofany/gNb/internal/dcc"
-	"github.com/kofany/gNb/internal/nickmanager"
 	"github.com/kofany/gNb/internal/types"
 	"github.com/kofany/gNb/internal/util"
 	irc "github.com/kofany/go-ircevo"
@@ -390,9 +389,7 @@ func (b *Bot) addCallbacks() {
 						unavailableNick, b.ServerName)
 
 					// Oznacz nick jako tymczasowo niedostępny
-					if nm, ok := b.nickManager.(*nickmanager.NickManager); ok {
-						nm.MarkNickAsTemporarilyUnavailable(unavailableNick)
-					}
+					b.nickManager.MarkNickAsTemporarilyUnavailable(unavailableNick)
 				}
 			}
 		}
@@ -592,6 +589,11 @@ func (b *Bot) handleISONResponse(e *irc.Event) {
 		default:
 			util.Error("Bot %s still cannot send ISON response", b.CurrentNick)
 		}
+	}
+
+	// Resetujemy licznik nieudanych zapytań ISON w NickManagerze
+	if b.nickManager != nil {
+		b.nickManager.ResetFailedRequestCount(b)
 	}
 }
 
@@ -824,10 +826,17 @@ func shuffleNick(nick string) string {
 }
 
 func (b *Bot) handleReconnect() {
+	util.Info("Bot %s is attempting to reconnect", b.CurrentNick)
+
 	b.isReconnecting = true
 	defer func() {
 		b.isReconnecting = false
 	}()
+
+	// Resetujemy licznik nieudanych zapytań ISON w NickManagerze
+	if b.nickManager != nil {
+		b.nickManager.ResetFailedRequestCount(b)
+	}
 
 	maxRetries := b.GlobalConfig.ReconnectRetries
 	baseRetryInterval := time.Duration(b.GlobalConfig.ReconnectInterval) * time.Second
@@ -848,6 +857,11 @@ func (b *Bot) handleReconnect() {
 			// Ensure we rejoin all channels
 			time.Sleep(5 * time.Second) // Give the server a moment
 			b.checkAndRejoinChannels()
+
+			// Aktualizujemy listę połączonych botów w NickManagerze
+			if b.nickManager != nil {
+				b.nickManager.UpdateConnectedBots()
+			}
 			return
 		}
 
@@ -889,6 +903,11 @@ func (b *Bot) handleReconnect() {
 			// Ensure we rejoin all channels
 			time.Sleep(5 * time.Second) // Give the server a moment
 			b.checkAndRejoinChannels()
+
+			// Aktualizujemy listę połączonych botów w NickManagerze
+			if b.nickManager != nil {
+				b.nickManager.UpdateConnectedBots()
+			}
 			return
 		}
 		util.Error("Attempt %d failed: %v", attempts+1, err)
@@ -897,6 +916,11 @@ func (b *Bot) handleReconnect() {
 
 	util.Error("Bot %s could not reconnect after %d attempts", b.CurrentNick, maxRetries)
 	b.gaveUp = true
+
+	// Wyrejestruj bota z NickManagera, jeśli nie udało się połączyć
+	if b.nickManager != nil {
+		b.nickManager.UnregisterBot(b)
+	}
 }
 
 func (b *Bot) SendMessage(target, message string) {
