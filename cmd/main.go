@@ -21,7 +21,7 @@ import (
 	"github.com/sevlyar/go-daemon"
 )
 
-var version = "v1.3.0"
+var version = "v1.4.1"
 
 var (
 	devMode         = flag.Bool("dev", false, "run in development mode (non-daemon)")

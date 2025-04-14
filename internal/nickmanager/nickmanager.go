@@ -121,7 +121,11 @@ func (nm *NickManager) monitorNicks() {
 		case <-updateTicker.C:
 			nm.updateConnectedBots()
 		case <-isonTicker.C:
-			nm.processISON()
+			// Uruchamiamy processISON w osobnej goroutinie aby nie blokować głównej pętli
+			go nm.processISON()
+		default:
+			// Dodajemy default aby uniknąć blokowania
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 }
@@ -139,7 +143,6 @@ func (nm *NickManager) processISON() {
 	nm.connectedBotsMutex.RUnlock()
 
 	if !bot.IsConnected() {
-		util.Warning("NickManager: Bot %s is no longer connected, skipping ISON request", bot.GetCurrentNick())
 		return
 	}
 
@@ -147,16 +150,16 @@ func (nm *NickManager) processISON() {
 	nm.mutex.RLock()
 	if len(nm.nicksToCatch) == 0 {
 		nm.mutex.RUnlock()
-		util.Debug("NickManager: No nicks to catch, skipping ISON request")
 		return
 	}
-
 	nicksCopy := make([]string, len(nm.nicksToCatch))
 	copy(nicksCopy, nm.nicksToCatch)
 	nm.mutex.RUnlock()
 
-	// Wysyłamy zapytanie ISON w osobnej goroutine z kontekstem
-	go nm.safeISONRequest(bot, nicksCopy)
+	// Wykonujemy ISON bezpośrednio tutaj, bez dodatkowych goroutyn
+	if onlineNicks, err := bot.RequestISON(nicksCopy); err == nil {
+		nm.handleISONResponse(onlineNicks)
+	}
 }
 
 func (nm *NickManager) safeISONRequest(bot types.Bot, nicks []string) {
