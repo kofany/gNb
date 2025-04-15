@@ -1057,17 +1057,25 @@ func (b *Bot) handlePrivMsg(e *irc.Event) {
 }
 
 func (b *Bot) SetOwnerList(owners auth.OwnerList) {
+	// Pobierz nick przed zablokowaniem mutexa
+	currentNick := b.GetCurrentNick()
+
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
 	b.owners = owners
-	util.Debug("Bot %s set owners: %v", b.GetCurrentNick(), owners)
+	b.mutex.Unlock()
+
+	util.Debug("Bot %s set owners: %v", currentNick, owners)
 }
 
 func (b *Bot) SetChannels(channels []string) {
+	// Pobierz nick przed zablokowaniem mutexa
+	currentNick := b.GetCurrentNick()
+
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
 	b.channels = channels
-	util.Debug("Bot %s set channels: %v", b.GetCurrentNick(), channels)
+	b.mutex.Unlock()
+
+	util.Debug("Bot %s set channels: %v", currentNick, channels)
 }
 
 func (b *Bot) GetCurrentNick() string {
