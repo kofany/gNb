@@ -236,12 +236,13 @@ func (b *Bot) Connect() error {
 }
 
 func (b *Bot) Quit(message string) {
+	// Get the current nick before locking the mutex
+	currentNick := b.GetCurrentNick()
+
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 
 	// Store current nick as previous nick for potential recovery
-	// Always use GetCurrentNick() as it prioritizes the connection's nick
-	currentNick := b.GetCurrentNick()
 	if currentNick != "" {
 		b.PreviousNick = currentNick
 		util.Debug("Stored previous nick %s for potential recovery", b.PreviousNick)
@@ -531,12 +532,12 @@ func (b *Bot) addCallbacks() {
 
 	// Callback for disconnection
 	b.Connection.AddCallback("DISCONNECTED", func(e *irc.Event) {
+		// Get the current nick before any locks
 		currentNick := b.GetCurrentNick()
 		util.Warning("Bot %s disconnected from server %s", currentNick, b.ServerName)
 
 		// Store current nick for potential recovery
 		b.mutex.Lock()
-		// Always use GetCurrentNick() result as it prioritizes the connection's nick
 		b.PreviousNick = currentNick
 		util.Debug("Stored previous nick %s for potential recovery during disconnect", b.PreviousNick)
 		b.mutex.Unlock()
@@ -562,7 +563,10 @@ func (b *Bot) RemoveBot() {
 
 	// Usuwamy bota z managera
 	if b.botManager != nil {
-		b.botManager.(*BotManager).RemoveBotFromManager(b)
+		// Use type assertion outside of the lock to avoid potential deadlocks
+		if bm, ok := b.botManager.(*BotManager); ok {
+			bm.RemoveBotFromManager(b)
+		}
 	}
 
 	// Czyścimy referencje
@@ -999,14 +1003,16 @@ func (b *Bot) SetOwnerList(owners auth.OwnerList) {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	b.owners = owners
-	util.Debug("Bot %s set owners: %v", b.GetCurrentNick(), owners)
+	// Use b.CurrentNick directly since we already have the mutex locked
+	util.Debug("Bot %s set owners: %v", b.CurrentNick, owners)
 }
 
 func (b *Bot) SetChannels(channels []string) {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	b.channels = channels
-	util.Debug("Bot %s set channels: %v", b.GetCurrentNick(), channels)
+	// Use b.CurrentNick directly since we already have the mutex locked
+	util.Debug("Bot %s set channels: %v", b.CurrentNick, channels)
 }
 
 func (b *Bot) GetCurrentNick() string {
