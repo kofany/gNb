@@ -1071,11 +1071,14 @@ func (b *Bot) SetChannels(channels []string) {
 }
 
 func (b *Bot) GetCurrentNick() string {
-	if b.Connection != nil && b.IsConnected() {
-		// Zawsze preferujemy nick z biblioteki, gdy połączenie jest aktywne
+	// Najpierw sprawdzamy czy mamy połączenie bez wywoływania IsConnected()
+	// aby uniknąć potencjalnego zakleszczenia
+	if b.Connection != nil && b.isConnected.Load() {
+		// Preferujemy nick z biblioteki, gdy połączenie jest aktywne
 		return b.Connection.GetNick()
 	}
-	// Fallback do lokalnego stanu tylko jeśli nie ma połączenia
+
+	// Fallback do lokalnego stanu
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	return b.CurrentNick
@@ -1083,7 +1086,8 @@ func (b *Bot) GetCurrentNick() string {
 
 // syncNickState synchronizuje lokalny stan nicka (CurrentNick) z aktualnym nickiem na serwerze
 func (b *Bot) syncNickState() {
-	if b.Connection != nil && b.IsConnected() {
+	// Podobnie jak w GetCurrentNick(), unikamy wywołania IsConnected()
+	if b.Connection != nil && b.isConnected.Load() {
 		actualNick := b.Connection.GetNick()
 		b.mutex.Lock()
 		oldNick := b.CurrentNick
