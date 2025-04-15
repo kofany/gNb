@@ -194,10 +194,14 @@ func (b *Bot) connectWithRetry() error {
 		select {
 		case <-b.connected:
 			util.Info("Bot %s successfully connected", b.CurrentNick)
+			// Start channel checker to ensure we're in all channels
+			b.startChannelChecker()
 			return nil
 		case <-time.After(45 * time.Second): // Increased timeout for connection establishment
 			if b.IsConnected() {
 				util.Info("Bot %s is fully connected, proceeding", b.CurrentNick)
+				// Start channel checker to ensure we're in all channels
+				b.startChannelChecker()
 				return nil
 			}
 			lastError = fmt.Errorf("connection timeout")
@@ -256,8 +260,9 @@ func (b *Bot) Quit(message string) {
 		b.channelCheckTicker = nil
 	}
 
-	// Clear joined channels map
-	b.joinedChannels = make(map[string]bool)
+	// We don't clear joined channels map anymore to preserve state for reconnection
+	// This allows us to know which channels to rejoin after reconnection
+	util.Debug("Bot %s preserving channel state before quit: %v", b.CurrentNick, b.joinedChannels)
 
 	if b.Connection != nil {
 		b.Connection.QuitMessage = message
@@ -539,6 +544,31 @@ func (b *Bot) addCallbacks() {
 			util.Info("Bot %s was already disconnected from %s", b.CurrentNick, b.ServerName)
 		}
 	})
+
+	// Callback for QUIT events
+	b.Connection.AddCallback("QUIT", func(e *irc.Event) {
+		// Only handle if it's our own QUIT
+		if e.Nick == b.Connection.GetNick() {
+			util.Warning("Bot %s received QUIT event, preparing for reconnection", b.CurrentNick)
+
+			// Save channel state for rejoining after reconnection
+			b.mutex.Lock()
+			util.Debug("Bot %s saving channel state before QUIT: %v", b.CurrentNick, b.joinedChannels)
+			// We don't clear joinedChannels here as we'll use it to rejoin after reconnection
+			b.mutex.Unlock()
+		}
+	})
+
+	// Callback for ERROR events
+	b.Connection.AddCallback("ERROR", func(e *irc.Event) {
+		util.Warning("Bot %s received ERROR from server: %s", b.CurrentNick, e.Message())
+
+		// Save channel state for rejoining after reconnection
+		b.mutex.Lock()
+		util.Debug("Bot %s saving channel state before ERROR: %v", b.CurrentNick, b.joinedChannels)
+		// We don't clear joinedChannels here as we'll use it to rejoin after reconnection
+		b.mutex.Unlock()
+	})
 }
 
 // RemoveBot implementuje interfejs types.Bot
@@ -700,18 +730,26 @@ func (b *Bot) startChannelChecker() {
 	// Check channels every 5 minutes
 	b.channelCheckTicker = time.NewTicker(5 * time.Minute)
 
+	util.Debug("Bot %s started channel checker", b.CurrentNick)
+
+	// Also perform an immediate check to ensure we're in all channels
+	go b.checkAndRejoinChannels()
+
 	go func() {
 		for {
 			select {
 			case <-b.channelCheckTicker.C:
 				if !b.IsConnected() {
+					util.Debug("Bot %s channel checker tick - bot not connected, skipping", b.CurrentNick)
 					continue
 				}
 
+				util.Debug("Bot %s channel checker tick - checking channels", b.CurrentNick)
 				b.checkAndRejoinChannels()
 
 			case <-b.connected:
 				// Channel closed, bot disconnected
+				util.Debug("Bot %s channel checker stopping - bot disconnected", b.CurrentNick)
 				return
 			}
 		}
@@ -721,18 +759,28 @@ func (b *Bot) startChannelChecker() {
 // checkAndRejoinChannels checks if the bot is in all required channels and rejoins if necessary
 func (b *Bot) checkAndRejoinChannels() {
 	if !b.IsConnected() {
+		util.Debug("Bot %s cannot check channels - not connected", b.CurrentNick)
 		return
 	}
 
 	b.mutex.Lock()
 	channels := make([]string, len(b.channels))
 	copy(channels, b.channels)
+	joinedChannelsCopy := make(map[string]bool)
+	for k, v := range b.joinedChannels {
+		joinedChannelsCopy[k] = v
+	}
 	b.mutex.Unlock()
+
+	util.Debug("Bot %s checking channels - configured: %v, joined: %v",
+		b.CurrentNick, channels, joinedChannelsCopy)
 
 	for _, channel := range channels {
 		if !b.isChannelJoined(channel) {
 			util.Info("Bot %s is not in channel %s, rejoining", b.CurrentNick, channel)
 			b.JoinChannel(channel)
+			// Add a small delay between joins to avoid flooding
+			time.Sleep(500 * time.Millisecond)
 		}
 	}
 }
@@ -832,7 +880,14 @@ func (b *Bot) handleReconnect() {
 		b.isReconnecting = false
 	}()
 
-	// Nie ma już potrzeby resetowania licznika nieudanych zapytań
+	// Save the current channel state for rejoining after reconnection
+	b.mutex.Lock()
+	joinedChannelsCopy := make(map[string]bool)
+	for k, v := range b.joinedChannels {
+		joinedChannelsCopy[k] = v
+	}
+	b.mutex.Unlock()
+	util.Debug("Bot %s saved channel state before reconnect: %v", b.CurrentNick, joinedChannelsCopy)
 
 	maxRetries := b.GlobalConfig.ReconnectRetries
 	baseRetryInterval := time.Duration(b.GlobalConfig.ReconnectInterval) * time.Second
@@ -852,6 +907,7 @@ func (b *Bot) handleReconnect() {
 
 			// Ensure we rejoin all channels
 			time.Sleep(5 * time.Second) // Give the server a moment
+			util.Debug("Bot %s attempting to rejoin channels after reconnect: %v", b.CurrentNick, joinedChannelsCopy)
 			b.checkAndRejoinChannels()
 
 			// Aktualizujemy listę połączonych botów w NickManagerze
@@ -898,6 +954,7 @@ func (b *Bot) handleReconnect() {
 
 			// Ensure we rejoin all channels
 			time.Sleep(5 * time.Second) // Give the server a moment
+			util.Debug("Bot %s attempting to rejoin channels after reconnect: %v", b.CurrentNick, joinedChannelsCopy)
 			b.checkAndRejoinChannels()
 
 			// Aktualizujemy listę połączonych botów w NickManagerze
