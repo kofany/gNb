@@ -629,14 +629,14 @@ func (b *Bot) handleISONResponse(e *irc.Event) {
 	util.Debug("Bot %s received ISON response: %v", b.GetCurrentNick(), isonResponse)
 
 	// Zawsze opróżniamy kanał przed wysłaniem nowej odpowiedzi
+drainLoop:
 	for {
 		select {
 		case <-b.isonResponse: // Opróżniamy kanał
 			continue
 		default: // Kanał jest już pusty
-			break
+			break drainLoop
 		}
-		break
 	}
 
 	// Wysyłamy odpowiedź do kanału bez blokowania
@@ -668,14 +668,14 @@ func (b *Bot) RequestISON(nicks []string) ([]string, error) {
 	}
 
 	// Zawsze opróżniamy kanał przed wysłaniem nowego zapytania
+drainLoop:
 	for {
 		select {
 		case <-b.isonResponse: // Opróżniamy kanał
 			continue
 		default: // Kanał jest już pusty
-			break
+			break drainLoop
 		}
-		break
 	}
 
 	// Wysyłamy zapytanie ISON
