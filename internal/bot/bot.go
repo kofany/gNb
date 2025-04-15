@@ -571,29 +571,24 @@ func (b *Bot) handleISONResponse(e *irc.Event) {
 	isonResponse := strings.Fields(e.Message())
 	util.Debug("Bot %s received ISON response: %v", b.CurrentNick, isonResponse)
 
-	// Nieblokujące wysyłanie do kanału z timeoutem
+	// Zawsze opróżniamy kanał przed wysłaniem nowej odpowiedzi
+	for {
+		select {
+		case <-b.isonResponse: // Opróżniamy kanał
+			continue
+		default: // Kanał jest już pusty
+			break
+		}
+		break
+	}
+
+	// Wysyłamy odpowiedź do kanału bez blokowania
 	select {
 	case b.isonResponse <- isonResponse:
 		// Wysłano pomyślnie
-	case <-time.After(100 * time.Millisecond):
-		// Timeout - kanał jest pełny lub nikt nie czyta
-		util.Warning("Bot %s isonResponse channel is full or no one is reading", b.CurrentNick)
-		// Opróżniamy kanał, jeśli jest pełny
-		select {
-		case <-b.isonResponse: // Próbujemy opróżnić kanał
-		default: // Kanał jest już pusty
-		}
-		// Próbujemy ponownie wysłać
-		select {
-		case b.isonResponse <- isonResponse:
-		default:
-			util.Error("Bot %s still cannot send ISON response", b.CurrentNick)
-		}
-	}
-
-	// Resetujemy licznik nieudanych zapytań ISON w NickManagerze
-	if b.nickManager != nil {
-		b.nickManager.ResetFailedRequestCount(b)
+	default:
+		// Kanał pełny, ale nie blokujemy - po prostu logujemy
+		util.Warning("Bot %s isonResponse channel is full, dropping response", b.CurrentNick)
 	}
 }
 
@@ -615,11 +610,15 @@ func (b *Bot) RequestISON(nicks []string) ([]string, error) {
 		return nil, fmt.Errorf("bot %s is not connected", b.CurrentNick)
 	}
 
-	// Opróżniamy kanał przed wysłaniem nowego zapytania
-	select {
-	case <-b.isonResponse: // Próbujemy opróżnić kanał
-		util.Debug("Bot %s cleared old ISON response from channel", b.CurrentNick)
-	default: // Kanał jest już pusty
+	// Zawsze opróżniamy kanał przed wysłaniem nowego zapytania
+	for {
+		select {
+		case <-b.isonResponse: // Opróżniamy kanał
+			continue
+		default: // Kanał jest już pusty
+			break
+		}
+		break
 	}
 
 	// Wysyłamy zapytanie ISON
@@ -631,7 +630,7 @@ func (b *Bot) RequestISON(nicks []string) ([]string, error) {
 	select {
 	case response := <-b.isonResponse:
 		return response, nil
-	case <-time.After(5 * time.Second): // Zmniejszamy timeout z 10 do 5 sekund
+	case <-time.After(5 * time.Second): // 5 sekund timeoutu
 		util.Warning("Bot %s did not receive ISON response in time", b.CurrentNick)
 		return []string{}, fmt.Errorf("bot %s did not receive ISON response in time", b.CurrentNick)
 	}
@@ -833,10 +832,7 @@ func (b *Bot) handleReconnect() {
 		b.isReconnecting = false
 	}()
 
-	// Resetujemy licznik nieudanych zapytań ISON w NickManagerze
-	if b.nickManager != nil {
-		b.nickManager.ResetFailedRequestCount(b)
-	}
+	// Nie ma już potrzeby resetowania licznika nieudanych zapytań
 
 	maxRetries := b.GlobalConfig.ReconnectRetries
 	baseRetryInterval := time.Duration(b.GlobalConfig.ReconnectInterval) * time.Second

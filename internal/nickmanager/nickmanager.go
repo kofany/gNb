@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/kofany/gNb/internal/types"
@@ -21,16 +22,18 @@ type NickManager struct {
 	botIndex             int
 	tempUnavailableNicks map[string]time.Time
 	NoLettersServers     map[string]bool
-	mutex                sync.RWMutex   // Zmiana na RWMutex dla lepszej wydajności
-	connectedBotsMutex   sync.RWMutex   // Osobny mutex dla listy połączonych botów
-	lastConnectedUpdate  time.Time      // Timestamp ostatniej aktualizacji listy
-	updateInterval       time.Duration  // Interwał odświeżania listy połączonych botów
-	isonTicker           *time.Ticker   // Ticker dla zapytań ISON
-	updateTicker         *time.Ticker   // Ticker dla aktualizacji listy botów
-	failedISONRequests   map[string]int // Licznik nieudanych zapytań ISON dla każdego bota
-	failedRequestsMutex  sync.RWMutex   // Mutex dla licznika nieudanych zapytań
-	isRunning            bool           // Flaga wskazująca, czy monitorowanie jest aktywne
-	stopChan             chan struct{}  // Kanał do zatrzymania monitorowania
+	mutex                sync.RWMutex  // Zmiana na RWMutex dla lepszej wydajności
+	connectedBotsMutex   sync.RWMutex  // Osobny mutex dla listy połączonych botów
+	lastConnectedUpdate  time.Time     // Timestamp ostatniej aktualizacji listy
+	updateInterval       time.Duration // Interwał odświeżania listy połączonych botów
+	isonTicker           *time.Ticker  // Ticker dla zapytań ISON
+	updateTicker         *time.Ticker  // Ticker dla aktualizacji listy botów
+	isRunning            bool          // Flaga wskazująca, czy monitorowanie jest aktywne
+	stopChan             chan struct{} // Kanał do zatrzymania monitorowania
+	// Statystyki dla debugowania
+	isonRequestsSent      int64      // Licznik wysłanych zapytań ISON
+	isonResponsesReceived int64      // Licznik otrzymanych odpowiedzi ISON
+	isonStats             sync.Mutex // Mutex dla statystyk ISON
 }
 
 type NicksData struct {
@@ -45,7 +48,6 @@ func NewNickManager() *NickManager {
 		NoLettersServers:     make(map[string]bool),
 		connectedBots:        make([]types.Bot, 0, 1000), // Prealokacja z przewidywanym rozmiarem
 		updateInterval:       10 * time.Second,           // Aktualizacja co 10 sekund
-		failedISONRequests:   make(map[string]int),       // Inicjalizacja licznika nieudanych zapytań
 		stopChan:             make(chan struct{}),        // Inicjalizacja kanału stop
 	}
 }
@@ -65,19 +67,7 @@ func (nm *NickManager) UpdateConnectedBots() {
 	for _, bot := range allBots {
 		// Dodajemy dodatkowe sprawdzenie, czy bot nie jest nil
 		if bot != nil && bot.IsConnected() {
-			// Sprawdzamy, czy bot nie ma zbyt wielu nieudanych zapytań
-			botID := bot.GetCurrentNick() + "@" + bot.GetServerName()
-
-			nm.failedRequestsMutex.RLock()
-			failCount := nm.failedISONRequests[botID]
-			nm.failedRequestsMutex.RUnlock()
-
-			if failCount < 3 {
-				newConnected = append(newConnected, bot)
-			} else {
-				util.Warning("NickManager: Bot %s has too many failed requests (%d), skipping",
-					bot.GetCurrentNick(), failCount)
-			}
+			newConnected = append(newConnected, bot)
 		}
 	}
 
@@ -238,6 +228,18 @@ func (nm *NickManager) performISONRequest(currentBot types.Bot) {
 	copy(nicksCopy, nm.nicksToCatch)
 	nm.mutex.RUnlock()
 
+	// Aktualizujemy licznik wysłanych zapytań ISON
+	nm.isonStats.Lock()
+	nm.isonRequestsSent++
+	requestCount := nm.isonRequestsSent
+	nm.isonStats.Unlock()
+
+	// Logujemy co 100 zapytań
+	if requestCount%100 == 0 {
+		util.Info("NickManager: ISON stats - Sent: %d, Received: %d",
+			requestCount, atomic.LoadInt64(&nm.isonResponsesReceived))
+	}
+
 	// Wysyłamy zapytanie ISON z timeoutem
 	doneChan := make(chan struct{})
 	var onlineNicks []string
@@ -254,48 +256,28 @@ func (nm *NickManager) performISONRequest(currentBot types.Bot) {
 		// Zapytanie zakończone
 		if err != nil {
 			util.Error("Error requesting ISON from bot %s: %v", currentBot.GetCurrentNick(), err)
-			// Zwiększamy licznik nieudanych zapytań dla tego bota
-			nm.IncrementFailedRequestCount(currentBot)
 		} else {
-			// Resetujemy licznik nieudanych zapytań
-			nm.ResetFailedRequestCount(currentBot)
+			// Aktualizujemy licznik otrzymanych odpowiedzi
+			atomic.AddInt64(&nm.isonResponsesReceived, 1)
 			// Przetwarzamy odpowiedź
 			nm.handleISONResponse(onlineNicks)
 		}
 	case <-time.After(6 * time.Second):
 		// Timeout - zapytanie trwa zbyt długo
 		util.Warning("NickManager: ISON request to bot %s timed out", currentBot.GetCurrentNick())
-		// Zwiększamy licznik nieudanych zapytań
-		nm.IncrementFailedRequestCount(currentBot)
 	}
 }
 
-// IncrementFailedRequestCount zwiększa licznik nieudanych zapytań dla bota
+// IncrementFailedRequestCount - implementacja interfejsu, ale nie używana
 func (nm *NickManager) IncrementFailedRequestCount(bot types.Bot) {
-	botID := bot.GetCurrentNick() + "@" + bot.GetServerName()
-
-	nm.failedRequestsMutex.Lock()
-	nm.failedISONRequests[botID]++
-	failCount := nm.failedISONRequests[botID]
-	nm.failedRequestsMutex.Unlock()
-
-	// Jeśli bot ma zbyt wiele nieudanych zapytań, usuwamy go z listy połączonych
-	if failCount >= 3 {
-		util.Warning("NickManager: Bot %s has %d consecutive failed ISON requests, removing from connected list",
-			bot.GetCurrentNick(), failCount)
-
-		// Aktualizujemy listę połączonych botów
-		nm.UpdateConnectedBots()
-	}
+	// Funkcja pozostawiona dla zgodności z interfejsem, ale nie robi nic
+	// Usunięto koncepcję nieudanych prób ISON
 }
 
-// ResetFailedRequestCount resetuje licznik nieudanych zapytań dla bota
+// ResetFailedRequestCount - implementacja interfejsu, ale nie używana
 func (nm *NickManager) ResetFailedRequestCount(bot types.Bot) {
-	botID := bot.GetCurrentNick() + "@" + bot.GetServerName()
-
-	nm.failedRequestsMutex.Lock()
-	delete(nm.failedISONRequests, botID)
-	nm.failedRequestsMutex.Unlock()
+	// Funkcja pozostawiona dla zgodności z interfejsem, ale nie robi nic
+	// Usunięto koncepcję nieudanych prób ISON
 }
 
 // Zmodyfikowana funkcja do rejestracji bota
@@ -351,7 +333,11 @@ func (nm *NickManager) handleISONResponse(onlineNicks []string) {
 	// Blokujemy mutex tylko na czas niezbędnych operacji
 	nm.mutex.Lock()
 
-	util.Debug("NickManager received ISON response: %v", onlineNicks)
+	// Logujemy co 100 odpowiedzi
+	responseCount := atomic.LoadInt64(&nm.isonResponsesReceived)
+	if responseCount%100 == 0 {
+		util.Debug("NickManager received ISON response #%d: %v", responseCount, onlineNicks)
+	}
 
 	currentTime := time.Now()
 	nm.cleanupTempUnavailableNicks(currentTime)
