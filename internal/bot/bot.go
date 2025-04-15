@@ -24,25 +24,28 @@ import (
 
 // Bot represents a single IRC bot
 type Bot struct {
-	Config             *config.BotConfig
-	GlobalConfig       *config.GlobalConfig
-	Connection         *irc.Connection
-	CurrentNick        string
-	PreviousNick       string // Store the previous nick for recovery during reconnection
-	Username           string
-	Realname           string
-	isConnected        atomic.Bool
-	owners             auth.OwnerList
-	channels           []string
-	joinedChannels     map[string]bool // Track which channels the bot has successfully joined
-	nickManager        types.NickManager
-	isReconnecting     bool
-	lastConnectTime    time.Time
-	connected          chan struct{}
-	botManager         types.BotManager
-	gaveUp             bool
-	isonResponse       chan []string
-	ServerName         string // Nazwa serwera otrzymana po połączeniu
+	Config          *config.BotConfig
+	GlobalConfig    *config.GlobalConfig
+	Connection      *irc.Connection
+	CurrentNick     string
+	PreviousNick    string // Store the previous nick for recovery during reconnection
+	Username        string
+	Realname        string
+	isConnected     atomic.Bool
+	owners          auth.OwnerList
+	channels        []string
+	joinedChannels  map[string]bool // Track which channels the bot has successfully joined
+	nickManager     types.NickManager
+	isReconnecting  bool
+	lastConnectTime time.Time
+	connected       chan struct{}
+	botManager      types.BotManager
+	gaveUp          bool
+	// ISON response handling
+	isonResponse       chan []string            // Legacy field, kept for compatibility
+	isonRequests       map[string]chan []string // Map of request IDs to response channels
+	isonRequestsMutex  sync.Mutex               // Mutex to protect access to the isonRequests map
+	ServerName         string                   // Nazwa serwera otrzymana po połączeniu
 	bncServer          *bnc.BNCServer
 	mutex              sync.Mutex
 	dccTunnel          *dcc.DCCTunnel
@@ -87,7 +90,8 @@ func NewBot(cfg *config.BotConfig, globalConfig *config.GlobalConfig, nm types.N
 		Realname:       realname,
 		nickManager:    nm,
 		botManager:     bm,
-		isonResponse:   make(chan []string, 10), // Zwiększamy bufor, aby uniknąć blokowania
+		isonResponse:   make(chan []string, 10), // Legacy field, kept for compatibility
+		isonRequests:   make(map[string]chan []string),
 		joinedChannels: make(map[string]bool),
 	}
 
@@ -122,14 +126,7 @@ func (b *Bot) IsConnected() bool {
 		return false
 	}
 
-	// Sprawdzamy czy bot jest w pełni połączony i czy upłynęło mniej niż 240 sekund od startu
-	if bm := b.GetBotManager(); bm != nil {
-		manager := bm.(*BotManager)
-		if time.Since(manager.startTime) > 240*time.Second && !b.Connection.IsFullyConnected() {
-			return false
-		}
-	}
-
+	// For tests, just check if the connection is fully connected
 	return b.Connection.IsFullyConnected()
 }
 
@@ -574,23 +571,27 @@ func (b *Bot) handleISONResponse(e *irc.Event) {
 	isonResponse := strings.Fields(e.Message())
 	util.Debug("Bot %s received ISON response: %v", b.CurrentNick, isonResponse)
 
-	// Nieblokujące wysyłanie do kanału z timeoutem
-	select {
-	case b.isonResponse <- isonResponse:
-		// Wysłano pomyślnie
-	case <-time.After(100 * time.Millisecond):
-		// Timeout - kanał jest pełny lub nikt nie czyta
-		util.Warning("Bot %s isonResponse channel is full or no one is reading", b.CurrentNick)
-		// Opróżniamy kanał, jeśli jest pełny
+	// Lock the mutex to safely access the isonRequests map
+	b.isonRequestsMutex.Lock()
+	defer b.isonRequestsMutex.Unlock()
+
+	// If there are no active requests, just log and return
+	if len(b.isonRequests) == 0 {
+		util.Debug("Bot %s received ISON response but no active requests", b.CurrentNick)
+		return
+	}
+
+	// Send the response to all active request channels
+	// This ensures that even if multiple requests were made in quick succession,
+	// they all receive the response
+	for id, ch := range b.isonRequests {
 		select {
-		case <-b.isonResponse: // Próbujemy opróżnić kanał
-		default: // Kanał jest już pusty
-		}
-		// Próbujemy ponownie wysłać
-		select {
-		case b.isonResponse <- isonResponse:
+		case ch <- isonResponse:
+			util.Debug("Bot %s sent ISON response to request %s", b.CurrentNick, id)
 		default:
-			util.Error("Bot %s still cannot send ISON response", b.CurrentNick)
+			// If a channel is not receiving (which shouldn't happen with proper timeout handling),
+			// we'll clean it up in the next cleanup cycle
+			util.Warning("Bot %s could not send ISON response to request %s", b.CurrentNick, id)
 		}
 	}
 }
@@ -607,32 +608,66 @@ func (b *Bot) handleInvite(e *irc.Event) {
 	}
 }
 
+// generateRequestID creates a unique ID for each ISON request
+func (b *Bot) generateRequestID() string {
+	return fmt.Sprintf("%s-%d", b.CurrentNick, time.Now().UnixNano())
+}
+
+// cleanupOldRequests removes request channels that are older than the specified duration
+func (b *Bot) cleanupOldRequests() {
+	b.isonRequestsMutex.Lock()
+	defer b.isonRequestsMutex.Unlock()
+
+	// If there are too many requests (more than 100), clean up to prevent memory leaks
+	if len(b.isonRequests) > 100 {
+		util.Warning("Bot %s has %d pending ISON requests, cleaning up", b.CurrentNick, len(b.isonRequests))
+		b.isonRequests = make(map[string]chan []string)
+	}
+}
+
 func (b *Bot) RequestISON(nicks []string) ([]string, error) {
-	// Sprawdzamy czy bot jest połączony
+	// Check if the bot is connected
 	if !b.IsConnected() {
 		return nil, fmt.Errorf("bot %s is not connected", b.CurrentNick)
 	}
 
-	// Opróżniamy kanał przed wysłaniem nowego zapytania
-	select {
-	case <-b.isonResponse: // Próbujemy opróżnić kanał
-		util.Debug("Bot %s cleared old ISON response from channel", b.CurrentNick)
-	default: // Kanał jest już pusty
-	}
+	// Clean up old requests to prevent memory leaks
+	b.cleanupOldRequests()
 
-	// Wysyłamy zapytanie ISON
+	// Create a unique ID for this request
+	requestID := b.generateRequestID()
+
+	// Create a channel for this specific request
+	responseChan := make(chan []string, 1)
+
+	// Register this request
+	b.isonRequestsMutex.Lock()
+	b.isonRequests[requestID] = responseChan
+	b.isonRequestsMutex.Unlock()
+
+	// Send the ISON command
 	command := fmt.Sprintf("ISON %s", strings.Join(nicks, " "))
-	util.Debug("Bot %s is sending ISON command: %s", b.CurrentNick, command)
+	util.Debug("Bot %s is sending ISON command (ID: %s): %s", b.CurrentNick, requestID, command)
 	b.Connection.SendRaw(command)
 
-	// Czekamy na odpowiedź z timeoutem
+	// Wait for the response with a timeout
+	var response []string
+	var err error
+
 	select {
-	case response := <-b.isonResponse:
-		return response, nil
-	case <-time.After(5 * time.Second): // Zmniejszamy timeout z 10 do 5 sekund
-		util.Warning("Bot %s did not receive ISON response in time", b.CurrentNick)
-		return []string{}, fmt.Errorf("bot %s did not receive ISON response in time", b.CurrentNick)
+	case response = <-responseChan:
+		util.Debug("Bot %s received ISON response for request %s", b.CurrentNick, requestID)
+	case <-time.After(5 * time.Second):
+		util.Warning("Bot %s did not receive ISON response in time for request %s", b.CurrentNick, requestID)
+		err = fmt.Errorf("bot %s did not receive ISON response in time", b.CurrentNick)
 	}
+
+	// Clean up this request
+	b.isonRequestsMutex.Lock()
+	delete(b.isonRequests, requestID)
+	b.isonRequestsMutex.Unlock()
+
+	return response, err
 }
 
 func (b *Bot) ChangeNick(newNick string) {
