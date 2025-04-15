@@ -35,7 +35,6 @@ type Bot interface {
 
 type NickManager interface {
 	RegisterBot(bot Bot)
-	UnregisterBot(bot Bot)
 	ReturnNickToPool(nick string)
 	SetBots(bots []Bot)
 	GetNicksToCatch() []string
@@ -46,11 +45,6 @@ type NickManager interface {
 	NotifyNickChange(oldNick, newNick string)
 	MarkServerNoLetters(serverName string)
 	Start()
-	Stop()
-	Restart()
-	UpdateConnectedBots()
-	ResetFailedRequestCount(bot Bot)
-	IncrementFailedRequestCount(bot Bot)
 }
 
 type BotManager interface {
