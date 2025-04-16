@@ -44,6 +44,8 @@ type NickManager interface {
 	MarkNickAsTemporarilyUnavailable(nick string)
 	NotifyNickChange(oldNick, newNick string)
 	MarkServerNoLetters(serverName string)
+	NickChangeFailed(bot Bot, oldNick string, targetNick string)
+	SetISONInterval(seconds int)
 	Start()
 }
 

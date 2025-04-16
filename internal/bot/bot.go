@@ -714,6 +714,14 @@ func (b *Bot) ChangeNick(newNick string) {
 			}
 		} else {
 			util.Warning("Failed to change nick for bot %s from %s to %s", oldNick, oldNick, newNick)
+
+			// Notify the nick manager about the failed nick change
+			if b.nickManager != nil {
+				// Call the new NickChangeFailed method
+				b.nickManager.NickChangeFailed(b, oldNick, newNick)
+			} else {
+				util.Warning("NickManager is not set for bot %s, cannot report nick change failure", oldNick)
+			}
 		}
 	} else {
 		util.Debug("Bot %s is not connected; cannot change nick", b.GetCurrentNick())
@@ -982,6 +990,10 @@ func (b *Bot) AttemptNickChange(nick string) {
 		b.ChangeNick(nick)
 	} else {
 		util.Debug("Bot %s decided not to change nick to %s", currentNick, nick)
+		// Notify the nick manager that we're not attempting the change
+		if b.nickManager != nil {
+			b.nickManager.NickChangeFailed(b, currentNick, nick)
+		}
 		b.nickManager.ReturnNickToPool(nick)
 	}
 }

@@ -61,6 +61,9 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 		}
 	}
 
+	// Set the ISON interval from global config
+	nm.SetISONInterval(cfg.Global.IsonInterval)
+
 	manager := &BotManager{
 		bots:                make([]types.Bot, len(cfg.Bots)),
 		totalCreatedBots:    len(cfg.Bots),

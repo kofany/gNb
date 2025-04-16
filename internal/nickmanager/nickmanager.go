@@ -22,10 +22,12 @@ type NickManager struct {
 	isonInterval         time.Duration
 	tempUnavailableNicks map[string]time.Time
 	NoLettersServers     map[string]bool
-	mutex                sync.RWMutex  // Zmiana na RWMutex dla lepszej wydajności
-	connectedBotsMutex   sync.RWMutex  // Osobny mutex dla listy połączonych botów
-	lastConnectedUpdate  time.Time     // Timestamp ostatniej aktualizacji listy
-	updateInterval       time.Duration // Interwał odświeżania listy połączonych botów
+	mutex                sync.RWMutex         // Zmiana na RWMutex dla lepszej wydajności
+	connectedBotsMutex   sync.RWMutex         // Osobny mutex dla listy połączonych botów
+	lastConnectedUpdate  time.Time            // Timestamp ostatniej aktualizacji listy
+	updateInterval       time.Duration        // Interwał odświeżania listy połączonych botów
+	expectedNicks        map[types.Bot]string // Map tracking expected nicks for bots
+	activeISONQueries    sync.Map             // Map tracking active ISON queries per bot
 }
 
 type NicksData struct {
@@ -40,6 +42,8 @@ func NewNickManager() *NickManager {
 		NoLettersServers:     make(map[string]bool),
 		connectedBots:        make([]types.Bot, 0, 1000), // Prealokacja z przewidywanym rozmiarem
 		updateInterval:       10 * time.Second,           // Aktualizacja co 10 sekund
+		expectedNicks:        make(map[types.Bot]string),
+		isonInterval:         3 * time.Second, // Default interval, will be overridden by config
 	}
 }
 
@@ -105,11 +109,18 @@ func (nm *NickManager) Start() {
 
 func (nm *NickManager) monitorNicks() {
 	updateTicker := time.NewTicker(nm.updateInterval)
-	isonTicker := time.NewTicker(1 * time.Second)
+	isonTicker := time.NewTicker(nm.isonInterval)
+	verifyTicker := time.NewTicker(5 * time.Minute) // New ticker for periodic state verification
 
 	go func() {
 		for range updateTicker.C {
 			nm.updateConnectedBots()
+		}
+	}()
+
+	go func() {
+		for range verifyTicker.C {
+			nm.verifyAllBotsNickState()
 		}
 	}()
 
@@ -128,9 +139,17 @@ func (nm *NickManager) monitorNicks() {
 		nm.botIndex = (nm.botIndex + 1) % botsCount
 		nm.connectedBotsMutex.RUnlock()
 
+		// Check if bot is already running an ISON query
+		if _, busy := nm.activeISONQueries.LoadOrStore(bot, true); busy {
+			util.Debug("NickManager: Bot %s is already running an ISON query, skipping", bot.GetCurrentNick())
+			continue
+		}
+
 		// Request ISON and wait for response
 		// Wykonujemy w osobnej goroutine, aby nie blokować głównej pętli
 		go func(currentBot types.Bot) {
+			defer nm.activeISONQueries.Delete(currentBot) // Always remove the flag when done
+
 			// Sprawdzamy, czy bot jest nadal połączony
 			if !currentBot.IsConnected() {
 				util.Warning("NickManager: Bot %s is no longer connected, skipping ISON request", currentBot.GetCurrentNick())
@@ -159,7 +178,7 @@ func (nm *NickManager) monitorNicks() {
 				close(doneChan)
 			}()
 
-			// Czekamy na zakończenie zapytania z timeoutem
+			// Czekamy na zakończenie zapytania z timeoutem - reduced from 6 to 2 seconds
 			select {
 			case <-doneChan:
 				// Zapytanie zakończone
@@ -168,7 +187,7 @@ func (nm *NickManager) monitorNicks() {
 				} else {
 					nm.handleISONResponse(onlineNicks)
 				}
-			case <-time.After(6 * time.Second):
+			case <-time.After(2 * time.Second):
 				// Timeout - zapytanie trwa zbyt długo
 				util.Warning("NickManager: ISON request to bot %s timed out", currentBot.GetCurrentNick())
 			}
@@ -280,6 +299,10 @@ func (nm *NickManager) handleISONResponse(onlineNicks []string) {
 
 		assignedBots++
 		util.Debug("Assigning priority nick %s to bot %s on server %s", nick, bot.GetCurrentNick(), bot.GetServerName())
+
+		// Track the expected nick before attempting the change
+		nm.expectedNicks[bot] = nick
+
 		go bot.AttemptNickChange(nick)
 	}
 
@@ -297,6 +320,10 @@ func (nm *NickManager) handleISONResponse(onlineNicks []string) {
 
 		assignedBots++
 		util.Debug("Assigning secondary nick %s to bot %s on server %s", nick, bot.GetCurrentNick(), bot.GetServerName())
+
+		// Track the expected nick before attempting the change
+		nm.expectedNicks[bot] = nick
+
 		go bot.AttemptNickChange(nick)
 	}
 
@@ -308,6 +335,12 @@ func (nm *NickManager) SetBots(bots []types.Bot) {
 	nm.mutex.Lock()
 	defer nm.mutex.Unlock()
 	nm.bots = bots
+
+	// Check if we need to use the default ISON interval
+	if nm.isonInterval == 0 {
+		nm.isonInterval = 3 * time.Second // Default if not set
+		util.Warning("NickManager: ISON interval was not set, using default: %v", nm.isonInterval)
+	}
 }
 
 func (nm *NickManager) getAvailableBots() []types.Bot {
@@ -527,4 +560,62 @@ func (nm *NickManager) MarkServerNoLetters(serverName string) {
 	nm.mutex.Lock()
 	defer nm.mutex.Unlock()
 	nm.NoLettersServers[serverName] = true
+}
+
+// NickChangeFailed is called when a nick change attempt fails
+func (nm *NickManager) NickChangeFailed(bot types.Bot, oldNick string, targetNick string) {
+	nm.mutex.Lock()
+	defer nm.mutex.Unlock()
+
+	util.Debug("NickManager: Handling failed nick change for bot %s from %s to %s",
+		bot.GetCurrentNick(), oldNick, targetNick)
+
+	// Remove the expected nick for this bot
+	delete(nm.expectedNicks, bot)
+
+	// Remove from temporarily unavailable, so it can be caught again
+	delete(nm.tempUnavailableNicks, strings.ToLower(targetNick))
+
+	// If it was a target nick, make it available for other bots
+	if util.IsTargetNick(targetNick, nm.nicksToCatch) {
+		util.Debug("NickManager: Target nick %s returned to pool after failed change", targetNick)
+	}
+}
+
+// verifyAllBotsNickState checks if all bots have the expected nicks
+func (nm *NickManager) verifyAllBotsNickState() {
+	nm.mutex.RLock()
+	expectedNicksCopy := make(map[types.Bot]string)
+	for bot, expectedNick := range nm.expectedNicks {
+		expectedNicksCopy[bot] = expectedNick
+	}
+	nm.mutex.RUnlock()
+
+	util.Debug("NickManager: Verifying nickname state consistency for %d bots", len(expectedNicksCopy))
+
+	for bot, expectedNick := range expectedNicksCopy {
+		if !bot.IsConnected() {
+			continue
+		}
+
+		currentNick := bot.GetCurrentNick()
+		if currentNick != expectedNick {
+			util.Warning("NickManager: Bot has inconsistent nick state. Expected: %s, Actual: %s",
+				expectedNick, currentNick)
+
+			// Clear the expected nick since it's inconsistent
+			nm.mutex.Lock()
+			delete(nm.expectedNicks, bot)
+			nm.mutex.Unlock()
+		}
+	}
+}
+
+func (nm *NickManager) SetISONInterval(seconds int) {
+	nm.mutex.Lock()
+	defer nm.mutex.Unlock()
+
+	interval := time.Duration(seconds) * time.Second
+	nm.isonInterval = interval
+	util.Debug("NickManager: Set ISON interval to %v", interval)
 }
