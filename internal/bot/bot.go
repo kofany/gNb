@@ -627,10 +627,7 @@ func (b *Bot) handleInvite(e *irc.Event) {
 	}
 }
 
-// generateRequestID creates a unique ID for each ISON request
-func (b *Bot) generateRequestID() string {
-	return fmt.Sprintf("%s-%d", b.GetCurrentNick(), time.Now().UnixNano())
-}
+// Removed unused generateRequestID method
 
 // cleanupOldRequests removes request channels that are older than the specified duration
 func (b *Bot) cleanupOldRequests() {
@@ -650,11 +647,14 @@ func (b *Bot) RequestISON(nicks []string) ([]string, error) {
 		return nil, fmt.Errorf("bot %s is not connected", b.GetCurrentNick())
 	}
 
+	// Pobierz aktualny nick bota (nie oczekiwany)
+	currentNick := b.GetCurrentNick()
+
 	// Clean up old requests to prevent memory leaks
 	b.cleanupOldRequests()
 
-	// Create a unique ID for this request
-	requestID := b.generateRequestID()
+	// Create a unique ID for this request - używamy aktualnego nicka
+	requestID := fmt.Sprintf("%s-%d", currentNick, time.Now().UnixNano())
 
 	// Create a channel for this specific request
 	responseChan := make(chan []string, 1)
@@ -666,7 +666,7 @@ func (b *Bot) RequestISON(nicks []string) ([]string, error) {
 
 	// Send the ISON command
 	command := fmt.Sprintf("ISON %s", strings.Join(nicks, " "))
-	util.Debug("Bot %s is sending ISON command (ID: %s): %s", b.GetCurrentNick(), requestID, command)
+	util.Debug("Bot %s is sending ISON command (ID: %s): %s", currentNick, requestID, command)
 	b.Connection.SendRaw(command)
 
 	// Wait for the response with a timeout
@@ -675,10 +675,10 @@ func (b *Bot) RequestISON(nicks []string) ([]string, error) {
 
 	select {
 	case response = <-responseChan:
-		util.Debug("Bot %s received ISON response for request %s", b.GetCurrentNick(), requestID)
+		util.Debug("Bot %s received ISON response for request %s", currentNick, requestID)
 	case <-time.After(5 * time.Second):
-		util.Warning("Bot %s did not receive ISON response in time for request %s", b.GetCurrentNick(), requestID)
-		err = fmt.Errorf("bot %s did not receive ISON response in time", b.GetCurrentNick())
+		util.Warning("Bot %s did not receive ISON response in time for request %s", currentNick, requestID)
+		err = fmt.Errorf("bot %s did not receive ISON response in time", currentNick)
 	}
 
 	// Clean up this request
