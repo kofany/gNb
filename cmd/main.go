@@ -208,6 +208,8 @@ func main() {
 
 	color.Blue("Creating and initializing NickManager")
 	nm := nickmanager.NewNickManager()
+	// Ustaw interwał ISON z konfiguracji
+	nm.SetISONInterval(time.Duration(cfg.Global.IsonInterval) * time.Second)
 	err = nm.LoadNicks("data/nicks.json")
 	if err != nil {
 		color.Red("Failed to load nicks: %v", err)

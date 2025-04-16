@@ -45,6 +45,10 @@ type NickManager interface {
 	NotifyNickChange(oldNick, newNick string)
 	MarkServerNoLetters(serverName string)
 	Start()
+	// Nowa metoda do obsługi niepowodzeń zmiany nicka
+	NickChangeFailed(oldNick, newNick string)
+	// Metoda do ustawiania interwału zapytań ISON
+	SetISONInterval(interval time.Duration)
 }
 
 type BotManager interface {
