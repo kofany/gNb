@@ -10,6 +10,7 @@ import (
 
 	"github.com/kofany/gNb/internal/types"
 	"github.com/kofany/gNb/internal/util"
+	irc "github.com/kofany/go-ircevo"
 )
 
 type NickManager struct {
@@ -156,8 +157,14 @@ func (nm *NickManager) monitorNicks() {
 		nm.botIndex = (nm.botIndex + 1) % botsCount
 		nm.connectedBotsMutex.RUnlock()
 
-		// Pobierz aktualny nick bota (nie oczekiwany)
-		currentNick := bot.GetCurrentNick()
+		// Pobierz aktualny nick bota z NickStatus
+		var currentNick string
+		if conn, ok := bot.GetConnection().(*irc.Connection); ok {
+			status := conn.GetNickStatus()
+			currentNick = status.Current
+		} else {
+			currentNick = bot.GetCurrentNick()
+		}
 
 		// Sprawdź czy bot nie ma już aktywnego zapytania ISON
 		if _, busy := nm.activeISONRequests.LoadOrStore(bot, true); busy {
@@ -397,8 +404,26 @@ func (nm *NickManager) getAvailableBots() []types.Bot {
 			continue
 		}
 
-		// Pobierz aktualny nick bota
-		currentNick := bot.GetCurrentNick()
+		// Pobierz aktualny nick bota z NickStatus
+		var currentNick string
+		if conn, ok := bot.GetConnection().(*irc.Connection); ok {
+			status := conn.GetNickStatus()
+			currentNick = status.Current
+
+			// Jeśli jest oczekująca zmiana nicka, pomijamy tego bota
+			if status.PendingChange {
+				util.Debug("Bot %s has a pending nick change, skipping for assignment", currentNick)
+				continue
+			}
+
+			// Jeśli jest błąd związany z nickiem, pomijamy tego bota
+			if status.Error != "" {
+				util.Debug("Bot %s has a nick error: %s, skipping for assignment", currentNick, status.Error)
+				continue
+			}
+		} else {
+			currentNick = bot.GetCurrentNick()
+		}
 
 		// Sprawdź czy aktualny nick nie jest już z puli do złapania
 		if !util.IsTargetNick(currentNick, nm.nicksToCatch) {
@@ -591,9 +616,22 @@ func (nm *NickManager) MarkNickAsTemporarilyUnavailable(nick string) {
 
 	// Sprawdź czy któryś bot ma już ten nick
 	for _, bot := range allBots {
-		if bot.IsConnected() && strings.EqualFold(bot.GetCurrentNick(), nick) {
+		if !bot.IsConnected() {
+			continue
+		}
+
+		// Pobierz aktualny nick bota z NickStatus
+		var currentNick string
+		if conn, ok := bot.GetConnection().(*irc.Connection); ok {
+			status := conn.GetNickStatus()
+			currentNick = status.Current
+		} else {
+			currentNick = bot.GetCurrentNick()
+		}
+
+		if strings.EqualFold(currentNick, nick) {
 			util.Debug("Not marking nick %s as unavailable because bot %s already has it",
-				nick, bot.GetCurrentNick())
+				nick, currentNick)
 			return
 		}
 	}
@@ -624,7 +662,16 @@ func (nm *NickManager) NotifyNickChange(oldNick, newNick string) {
 
 	// Aktualizuj oczekiwany nick dla bota
 	for _, bot := range nm.bots {
-		if bot.GetCurrentNick() == newNick {
+		// Pobierz aktualny nick bota z NickStatus
+		var currentNick string
+		if conn, ok := bot.GetConnection().(*irc.Connection); ok {
+			status := conn.GetNickStatus()
+			currentNick = status.Current
+		} else {
+			currentNick = bot.GetCurrentNick()
+		}
+
+		if currentNick == newNick {
 			nm.expectedNickMutex.Lock()
 			nm.expectedNicks[bot] = newNick
 			nm.expectedNickMutex.Unlock()
@@ -657,7 +704,16 @@ func (nm *NickManager) NickChangeFailed(oldNick, newNick string) {
 
 	// Znajdź bota, który próbował zmienić nick i zaktualizuj jego oczekiwany nick
 	for _, bot := range nm.bots {
-		if bot.GetCurrentNick() == oldNick {
+		// Pobierz aktualny nick bota z NickStatus
+		var currentNick string
+		if conn, ok := bot.GetConnection().(*irc.Connection); ok {
+			status := conn.GetNickStatus()
+			currentNick = status.Current
+		} else {
+			currentNick = bot.GetCurrentNick()
+		}
+
+		if currentNick == oldNick {
 			nm.expectedNickMutex.Lock()
 			// Ustaw oczekiwany nick na aktualny nick (nie na ten, który nie udało się ustawić)
 			nm.expectedNicks[bot] = oldNick
@@ -697,33 +753,92 @@ func (nm *NickManager) verifyAllBotsNickState() {
 			continue
 		}
 
-		currentNick := bot.GetCurrentNick()
-		expectedNick, exists := expectedNicksCopy[bot]
-
-		// Jeśli nie ma oczekiwanego nicka, zaktualizuj go
-		if !exists {
-			nm.expectedNickMutex.Lock()
-			nm.expectedNicks[bot] = currentNick
-			nm.expectedNickMutex.Unlock()
-			continue
+		// Pobierz status nicka bota z go-ircevo 1.0.8
+		var status *irc.NickStatus
+		if conn, ok := bot.GetConnection().(*irc.Connection); ok {
+			status = conn.GetNickStatus()
 		}
 
-		// Jeśli aktualny nick nie zgadza się z oczekiwanym
-		if currentNick != expectedNick {
-			util.Warning("NickManager: Nick state inconsistency detected for bot %s (current: %s, expected: %s)",
-				currentNick, currentNick, expectedNick)
+		if status == nil {
+			// Fallback do starej metody, jeśli nie można pobrać statusu
+			currentNick := bot.GetCurrentNick()
+			expectedNick, exists := expectedNicksCopy[bot]
 
-			// Aktualizuj oczekiwany nick, aby odzwierciedlał rzeczywistość
-			nm.expectedNickMutex.Lock()
-			nm.expectedNicks[bot] = currentNick
-			nm.expectedNickMutex.Unlock()
+			// Jeśli nie ma oczekiwanego nicka, zaktualizuj go
+			if !exists {
+				nm.expectedNickMutex.Lock()
+				nm.expectedNicks[bot] = currentNick
+				nm.expectedNickMutex.Unlock()
+				continue
+			}
 
-			// Jeśli oczekiwany nick był z puli do złapania, zwróć go do puli
-			if util.IsTargetNick(expectedNick, nicksToCatch) {
-				util.Debug("NickManager: Returning nick %s to pool after inconsistency detection", expectedNick)
-				nm.ReturnNickToPool(expectedNick)
+			// Jeśli aktualny nick nie zgadza się z oczekiwanym
+			if currentNick != expectedNick {
+				util.Warning("NickManager: Nick state inconsistency detected for bot %s (current: %s, expected: %s)",
+					currentNick, currentNick, expectedNick)
+
+				// Aktualizuj oczekiwany nick, aby odzwierciedlał rzeczywistość
+				nm.expectedNickMutex.Lock()
+				nm.expectedNicks[bot] = currentNick
+				nm.expectedNickMutex.Unlock()
+
+				// Jeśli oczekiwany nick był z puli do złapania, zwróć go do puli
+				if util.IsTargetNick(expectedNick, nicksToCatch) {
+					util.Debug("NickManager: Returning nick %s to pool after inconsistency detection", expectedNick)
+					nm.ReturnNickToPool(expectedNick)
+				}
+			}
+		} else {
+			// Użyj nowego statusu nicka z go-ircevo 1.0.8
+			currentNick := status.Current
+			desiredNick := status.Desired
+			expectedNick, exists := expectedNicksCopy[bot]
+
+			// Jeśli jest oczekująca zmiana nicka, poczekaj na jej zakończenie
+			if status.PendingChange {
+				util.Debug("NickManager: Bot %s has a pending nick change, skipping verification", currentNick)
+				continue
+			}
+
+			// Jeśli nie ma oczekiwanego nicka, zaktualizuj go
+			if !exists {
+				nm.expectedNickMutex.Lock()
+				nm.expectedNicks[bot] = currentNick
+				nm.expectedNickMutex.Unlock()
+				continue
+			}
+
+			// Jeśli aktualny nick nie zgadza się z oczekiwanym
+			if currentNick != expectedNick {
+				util.Warning("NickManager: Nick state inconsistency detected for bot %s (current: %s, expected: %s, desired: %s)",
+					currentNick, currentNick, expectedNick, desiredNick)
+
+				// Aktualizuj oczekiwany nick, aby odzwierciedlał rzeczywistość
+				nm.expectedNickMutex.Lock()
+				nm.expectedNicks[bot] = currentNick
+				nm.expectedNickMutex.Unlock()
+
+				// Jeśli oczekiwany nick był z puli do złapania, zwróć go do puli
+				if util.IsTargetNick(expectedNick, nicksToCatch) {
+					util.Debug("NickManager: Returning nick %s to pool after inconsistency detection", expectedNick)
+					nm.ReturnNickToPool(expectedNick)
+				}
+			}
+
+			// Sprawdź czy nie ma błędu związanego z nickiem
+			if status.Error != "" {
+				util.Warning("NickManager: Bot %s has nick error: %s", currentNick, status.Error)
+
+				// Jeśli błąd dotyczy nicka z puli do złapania, zwróć go do puli
+				if util.IsTargetNick(desiredNick, nicksToCatch) {
+					util.Debug("NickManager: Returning nick %s to pool due to error: %s", desiredNick, status.Error)
+					nm.ReturnNickToPool(desiredNick)
+				}
 			}
 		}
+
+		// Pobierz aktualny nick (niezależnie od metody)
+		currentNick := bot.GetCurrentNick()
 
 		// Sprawdź czy bot nie ma nicka z puli, który jest oznaczony jako niedostępny
 		if util.IsTargetNick(currentNick, nicksToCatch) {

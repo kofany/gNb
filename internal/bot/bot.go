@@ -647,8 +647,9 @@ func (b *Bot) RequestISON(nicks []string) ([]string, error) {
 		return nil, fmt.Errorf("bot %s is not connected", b.GetCurrentNick())
 	}
 
-	// Pobierz aktualny nick bota (nie oczekiwany)
-	currentNick := b.GetCurrentNick()
+	// Pobierz aktualny nick bota z NickStatus
+	status := b.Connection.GetNickStatus()
+	currentNick := status.Current
 
 	// Clean up old requests to prevent memory leaks
 	b.cleanupOldRequests()
@@ -697,9 +698,12 @@ func (b *Bot) ChangeNick(newNick string) {
 
 		time.Sleep(1 * time.Second)
 
-		// Check if the nick change was successful by checking the connection's nick
-		if b.Connection.GetNick() == newNick {
-			util.Info("Bot successfully changed nick from %s to %s", oldNick, newNick)
+		// Użyj nowej metody GetNickStatus() z go-ircevo 1.0.8
+		status := b.Connection.GetNickStatus()
+
+		// Sprawdź czy zmiana nicka zakończyła się sukcesem
+		if status.Current == newNick && status.Confirmed {
+			util.Info("Bot successfully changed nick from %s to %s (confirmed by server)", oldNick, newNick)
 
 			// Update our internal state to match the connection
 			b.mutex.Lock()
@@ -713,7 +717,12 @@ func (b *Bot) ChangeNick(newNick string) {
 				util.Warning("NickManager is not set for bot %s", oldNick)
 			}
 		} else {
-			util.Warning("Failed to change nick for bot %s from %s to %s", oldNick, oldNick, newNick)
+			// Zmiana nicka nie powiodła się
+			errorMsg := "unknown error"
+			if status.Error != "" {
+				errorMsg = status.Error
+			}
+			util.Warning("Failed to change nick for bot %s from %s to %s: %s", oldNick, oldNick, newNick, errorMsg)
 
 			// Powiadom NickManager o niepowodzeniu zmiany nicka
 			if b.nickManager != nil {
@@ -1030,12 +1039,19 @@ func (b *Bot) SetChannels(channels []string) {
 
 func (b *Bot) GetCurrentNick() string {
 	if b.Connection != nil {
-		return b.Connection.GetNick()
+		// Użyj nowej metody GetNickStatus() z go-ircevo 1.0.8
+		status := b.Connection.GetNickStatus()
+		return status.Current
 	}
 	// Fallback do lokalnego stanu tylko jeśli nie ma połączenia
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	return b.CurrentNick
+}
+
+// GetConnection zwraca obiekt Connection
+func (b *Bot) GetConnection() interface{} {
+	return b.Connection
 }
 
 // BNC

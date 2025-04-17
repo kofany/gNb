@@ -31,6 +31,8 @@ type Bot interface {
 	StopBNC()
 	SendRaw(message string)
 	RemoveBot()
+	// Nowa metoda do pobierania obiektu Connection
+	GetConnection() interface{}
 }
 
 type NickManager interface {
