@@ -695,10 +695,11 @@ func (b *Bot) ChangeNick(newNick string) {
 		util.Info("Bot %s is attempting to change nick to %s", oldNick, newNick)
 		b.Connection.Nick(newNick)
 
-		time.Sleep(1 * time.Second)
+		// Instead of using a time delay, use the new NickStatus API to check
+		// if the nickname change was confirmed
+		status := b.Connection.GetNickStatus()
 
-		// Check if the nick change was successful by checking the connection's nick
-		if b.Connection.GetNick() == newNick {
+		if status.Current == newNick && status.Confirmed {
 			util.Info("Bot successfully changed nick from %s to %s", oldNick, newNick)
 
 			// Update our internal state to match the connection
@@ -714,6 +715,9 @@ func (b *Bot) ChangeNick(newNick string) {
 			}
 		} else {
 			util.Warning("Failed to change nick for bot %s from %s to %s", oldNick, oldNick, newNick)
+			if status.Error != "" {
+				util.Warning("Nickname error: %s", status.Error)
+			}
 
 			// Notify the nick manager about the failed nick change
 			if b.nickManager != nil {
@@ -858,12 +862,30 @@ func (b *Bot) Reconnect() {
 				util.Error("Failed to reconnect bot with shuffled nick %s: %v", shuffledNick, err)
 			} else {
 				util.Info("Bot successfully reconnected with shuffled nick: %s", shuffledNick)
+
+				// After successful reconnection, check nick status
+				status := b.Connection.GetNickStatus()
+				if status.Confirmed {
+					util.Info("Nick %s confirmed by server", shuffledNick)
+				} else if status.Error != "" {
+					util.Warning("Nick %s has an issue: %s", shuffledNick, status.Error)
+				}
+
 				if b.nickManager != nil {
 					b.nickManager.NotifyNickChange(oldNick, shuffledNick)
 				}
 			}
 		} else {
 			util.Info("Bot %s successfully reconnected with new nick: %s", oldNick, newNick)
+
+			// After successful reconnection, check nick status
+			status := b.Connection.GetNickStatus()
+			if status.Confirmed {
+				util.Info("Nick %s confirmed by server", newNick)
+			} else if status.Error != "" {
+				util.Warning("Nick %s has an issue: %s", newNick, status.Error)
+			}
+
 			if b.nickManager != nil {
 				b.nickManager.NotifyNickChange(oldNick, newNick)
 			}
@@ -985,8 +1007,31 @@ func (b *Bot) SendMessage(target, message string) {
 func (b *Bot) AttemptNickChange(nick string) {
 	currentNick := b.GetCurrentNick()
 	util.Debug("Bot %s received request to change nick to %s", currentNick, nick)
+
 	if b.shouldChangeNick(nick) {
 		util.Info("Bot %s is attempting to change nick to %s", currentNick, nick)
+
+		// First check if there's already a pending change
+		if b.Connection != nil {
+			status := b.Connection.GetNickStatus()
+			if status.PendingChange {
+				util.Warning("Bot %s already has a pending nick change to %s, not attempting new change to %s",
+					currentNick, status.Desired, nick)
+
+				// Return the requested nick to the pool
+				if b.nickManager != nil {
+					b.nickManager.ReturnNickToPool(nick)
+				}
+				return
+			}
+
+			// If there was a previous error with a nickname, let's log it
+			if status.Error != "" {
+				util.Debug("Bot %s had previous nickname error: %s", currentNick, status.Error)
+			}
+		}
+
+		// Proceed with the nick change
 		b.ChangeNick(nick)
 	} else {
 		util.Debug("Bot %s decided not to change nick to %s", currentNick, nick)

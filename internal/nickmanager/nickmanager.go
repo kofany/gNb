@@ -570,16 +570,19 @@ func (nm *NickManager) NickChangeFailed(bot types.Bot, oldNick string, targetNic
 	util.Debug("NickManager: Handling failed nick change for bot %s from %s to %s",
 		bot.GetCurrentNick(), oldNick, targetNick)
 
+	// We know a nick change failed, but we don't have direct access to the error details
+	// from go-ircevo v1.0.8 without making unsafe type assertions.
+	// Instead, we'll handle it based on what we know.
+
+	// We can assume the nick might be in use if the change failed
+	if util.IsTargetNick(targetNick, nm.nicksToCatch) {
+		// Make priority nicks temporarily unavailable for a short time
+		nm.tempUnavailableNicks[strings.ToLower(targetNick)] = time.Now().Add(20 * time.Second)
+		util.Debug("NickManager: Nick %s temporarily unavailable for 20 seconds after failed change", targetNick)
+	}
+
 	// Remove the expected nick for this bot
 	delete(nm.expectedNicks, bot)
-
-	// Remove from temporarily unavailable, so it can be caught again
-	delete(nm.tempUnavailableNicks, strings.ToLower(targetNick))
-
-	// If it was a target nick, make it available for other bots
-	if util.IsTargetNick(targetNick, nm.nicksToCatch) {
-		util.Debug("NickManager: Target nick %s returned to pool after failed change", targetNick)
-	}
 }
 
 // verifyAllBotsNickState checks if all bots have the expected nicks
