@@ -151,9 +151,19 @@ func (nc *NickCatcher) checkNicks() {
 
 	// Wybierz kolejny bot z rotacji
 	nc.mutex.Lock()
+	// Upewnij się, że botIndex jest w zakresie
+	if nc.botIndex >= len(bots) {
+		nc.botIndex = 0
+	}
 	botIndex := nc.botIndex
 	nc.botIndex = (nc.botIndex + 1) % len(bots)
 	nc.mutex.Unlock()
+
+	// Dodatkowe sprawdzenie, czy botIndex jest nadal w zakresie
+	if botIndex >= len(bots) {
+		util.Warning("Bot index %d is out of range (bots length: %d), resetting to 0", botIndex, len(bots))
+		botIndex = 0
+	}
 
 	bot := bots[botIndex]
 	if !bot.IsConnected() {
