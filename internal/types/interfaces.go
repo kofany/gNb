@@ -24,33 +24,10 @@ type Bot interface {
 	HandleCommands(e *irc.Event)
 	SetBotManager(manager BotManager)
 	GetBotManager() BotManager
-	SetNickManager(manager NickManager)
-	GetNickManager() NickManager
+
 	GetServerName() string
-	StartBNC() (int, string, error)
-	StopBNC()
 	SendRaw(message string)
 	RemoveBot()
-	// Nowa metoda do pobierania obiektu Connection
-	GetConnection() interface{}
-}
-
-type NickManager interface {
-	RegisterBot(bot Bot)
-	ReturnNickToPool(nick string)
-	SetBots(bots []Bot)
-	GetNicksToCatch() []string
-	AddNick(nick string) error
-	RemoveNick(nick string) error
-	GetNicks() []string
-	MarkNickAsTemporarilyUnavailable(nick string)
-	NotifyNickChange(oldNick, newNick string)
-	MarkServerNoLetters(serverName string)
-	Start()
-	// Nowa metoda do obsługi niepowodzeń zmiany nicka
-	NickChangeFailed(oldNick, newNick string)
-	// Metoda do ustawiania interwału zapytań ISON
-	SetISONInterval(interval time.Duration)
 }
 
 type BotManager interface {
@@ -61,12 +38,18 @@ type BotManager interface {
 	RemoveOwner(ownerMask string) error
 	GetOwners() []string
 	GetBots() []Bot
-	GetNickManager() NickManager
+
 	GetTotalCreatedBots() int
 	SetMassCommandCooldown(duration time.Duration)
 	GetMassCommandCooldown() time.Duration
 	CollectReactions(channel, message string, action func() error)
 	SendSingleMsg(channel, message string)
+
+	// Methods for reconnection storm prevention
+	DetectMassDisconnect() bool
+	HandleNetworkOutage()
+	RemoveBotFromManager(bot Bot)
+	IsBotInManager(bot Bot) bool
 }
 
 type ReactionRequest struct {

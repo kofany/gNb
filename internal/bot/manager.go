@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/kofany/gNb/internal/auth"
 	"github.com/kofany/gNb/internal/config"
-	"github.com/kofany/gNb/internal/nickmanager"
 	"github.com/kofany/gNb/internal/types"
 	"github.com/kofany/gNb/internal/util"
 )
@@ -24,7 +24,6 @@ type BotManager struct {
 	owners              auth.OwnerList
 	wg                  sync.WaitGroup
 	stopChan            chan struct{}
-	nickManager         types.NickManager
 	commandBotIndex     int
 	mutex               sync.RWMutex
 	lastMassCommand     map[string]time.Time
@@ -39,10 +38,16 @@ type BotManager struct {
 	errorMutex          sync.Mutex // Mutex do kontrolowania dostępu do errorHandled
 	totalCreatedBots    int
 	startTime           time.Time
+	// For reconnection storm prevention
+	recentDisconnects []time.Time
+	disconnectMutex   sync.Mutex
 }
 
 // NewBotManager creates a new BotManager instance
-func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManager) *BotManager {
+func NewBotManager(cfg *config.Config, owners auth.OwnerList) *BotManager {
+	// Initialize random number generator with a time-based seed for jitter calculations
+	// Note: In Go 1.20+ rand.Seed is deprecated, but we keep it for compatibility
+	// with older Go versions. In newer versions, the random source is auto-seeded.
 	ctx, cancel := context.WithCancel(context.Background())
 	requiredWords := len(cfg.Bots)*3 + 10 // 3 words per bot (nick, ident, realname) + 10 spare
 
@@ -66,7 +71,6 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 		totalCreatedBots:    len(cfg.Bots),
 		owners:              owners,
 		stopChan:            make(chan struct{}),
-		nickManager:         nm,
 		lastMassCommand:     make(map[string]time.Time),
 		massCommandCooldown: time.Duration(cfg.Global.MassCommandCooldown) * time.Second,
 		wordPool:            wordPool,
@@ -75,20 +79,18 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 		ctx:                 ctx,
 		cancel:              cancel,
 		startTime:           time.Now(),
+		recentDisconnects:   make([]time.Time, 0),
 	}
 
 	// Creating bots
 	for i, botCfg := range cfg.Bots {
-		bot := NewBot(&botCfg, &cfg.Global, nm, manager)
+		bot := NewBot(&botCfg, &cfg.Global, manager)
 		bot.SetOwnerList(manager.owners)
 		bot.SetChannels(cfg.Channels)
 		bot.SetBotManager(manager)
-		bot.SetNickManager(nm)
 		manager.bots[i] = bot
-		util.Debug("BotManager added bot %s", bot.GetCurrentNick())
+		util.Debug("BotManager added bot %s", bot.Connection.GetNick())
 	}
-
-	nm.SetBots(manager.bots)
 	go manager.cleanupDisconnectedBots()
 	return manager
 }
@@ -144,49 +146,148 @@ func (bm *BotManager) cleanupDisconnectedBots() {
 }
 
 func (bm *BotManager) StartBots() {
+	util.Info("=== STARTING BOT INITIALIZATION PROCESS ===")
+	util.Info("Initializing %d bots", len(bm.bots))
+
 	var wg sync.WaitGroup
 	connectedBots := make([]types.Bot, 0)
 	var connectedBotsMutex sync.Mutex
 
-	// Startujemy wszystkie boty asynchronicznie
-	for _, bot := range bm.bots {
+	// Log initial bot information
+	for i, bot := range bm.bots {
+		// Get nick safely for logging
+		currentNick := "unknown"
+		try := func() (nick string, ok bool) {
+			defer func() {
+				if r := recover(); r != nil {
+					ok = false
+				}
+			}()
+			return bot.GetCurrentNick(), true
+		}
+		if nick, ok := try(); ok {
+			currentNick = nick
+		}
+
+		util.Debug("Bot %d/%d: %s will be initialized", i+1, len(bm.bots), currentNick)
+	}
+
+	// Start bots with staggered delays
+	util.Info("Starting connection process for all bots with staggered delays")
+	totalBots := len(bm.bots)
+
+	// Calculate a more significant delay between bots to avoid rate limiting
+	// For many servers, connecting too many bots too quickly can trigger rate limiting
+	baseDelay := 5 * time.Second
+	maxTotalTime := 2 * time.Minute
+
+	// Ensure we don't exceed maxTotalTime for all bots
+	staggerInterval := baseDelay
+	if totalBots > 1 {
+		maxInterval := maxTotalTime / time.Duration(totalBots-1)
+		if baseDelay > maxInterval {
+			staggerInterval = maxInterval
+		}
+	}
+
+	util.Info("Using stagger interval of %v between bots (total startup time: ~%v)",
+		staggerInterval, staggerInterval*time.Duration(totalBots-1))
+
+	for i, bot := range bm.bots {
+		// Calculate staggered delay to prevent connection storms
+		delay := time.Duration(i) * staggerInterval
+		util.Debug("Bot %d/%d will start connecting in %v", i+1, len(bm.bots), delay)
+
 		wg.Add(1)
-		go func(bot types.Bot) {
+		go func(bot types.Bot, position int, startDelay time.Duration) {
 			defer wg.Done()
 
+			// Get nick safely for logging
+			currentNick := "unknown"
+			try := func() (nick string, ok bool) {
+				defer func() {
+					if r := recover(); r != nil {
+						ok = false
+					}
+				}()
+				return bot.GetCurrentNick(), true
+			}
+			if nick, ok := try(); ok {
+				currentNick = nick
+			}
+
+			// Apply staggered delay
+			util.Debug("Waiting %v before starting connection process for bot %s", startDelay, currentNick)
+			time.Sleep(startDelay)
+			util.Info("Starting connection process for bot %d/%d: %s", position+1, len(bm.bots), currentNick)
+
 			// Kanał do monitorowania timeout
-			timeoutChan := time.After(180 * time.Second)
+			timeoutDuration := 180 * time.Second
+			timeoutChan := time.After(timeoutDuration)
 			connectChan := make(chan bool)
+			util.Debug("Connection timeout set to %v for bot %s", timeoutDuration, currentNick)
 
 			// Startujemy proces łączenia w osobnej goroutynie
 			go func() {
+				util.Debug("Starting connection retry process for bot %s", currentNick)
 				success := bm.startBotWithRetry(bot)
 				connectChan <- success
 			}()
 
 			// Czekamy na rezultat z timeoutem
+			util.Debug("Waiting for connection result or timeout for bot %s", currentNick)
 			select {
 			case success := <-connectChan:
 				if success {
-					connectedBotsMutex.Lock()
-					connectedBots = append(connectedBots, bot)
-					connectedBotsMutex.Unlock()
+					util.Info("Bot %s successfully connected and added to active bots", currentNick)
+					// Double-check that the bot is actually connected
+					if bot.IsConnected() {
+						connectedBotsMutex.Lock()
+						connectedBots = append(connectedBots, bot)
+						connectedBotsMutex.Unlock()
+					} else {
+						util.Warning("Bot %s reported success but IsConnected() returned false", currentNick)
+					}
+				} else {
+					util.Warning("Bot %s connection process failed", currentNick)
+					// Check if the bot is actually connected despite reporting failure
+					if bot.IsConnected() {
+						util.Warning("Bot %s reported failure but IsConnected() returned true, adding to connected bots", currentNick)
+						connectedBotsMutex.Lock()
+						connectedBots = append(connectedBots, bot)
+						connectedBotsMutex.Unlock()
+					}
 				}
 			case <-timeoutChan:
 				// Bot nie połączył się w wymaganym czasie
-				util.Warning("Bot %s failed to connect within timeout, removing", bot.GetCurrentNick())
-				bot.Quit("Connection timeout")
+				util.Warning("Bot %s failed to connect within timeout (%v)", currentNick, timeoutDuration)
+				// Check if the bot is actually connected despite the timeout
+				if bot.IsConnected() {
+					util.Warning("Bot %s is actually connected despite timeout, adding to connected bots", currentNick)
+					connectedBotsMutex.Lock()
+					connectedBots = append(connectedBots, bot)
+					connectedBotsMutex.Unlock()
+				} else {
+					util.Warning("Bot %s is not connected, removing", currentNick)
+					bot.Quit("Connection timeout")
+				}
 			}
-		}(bot)
+		}(bot, i, delay)
 	}
 
 	// Czekamy na zakończenie wszystkich prób połączeń
+	util.Debug("Waiting for all bot connection attempts to complete")
 	wg.Wait()
+	util.Info("All bot connection attempts completed")
 
 	// Aktualizujemy listę botów tylko o te połączone
 	bm.mutex.Lock()
+	oldCount := len(bm.bots)
 	bm.bots = connectedBots
+	newCount := len(bm.bots)
 	bm.mutex.Unlock()
+
+	util.Info("=== BOT INITIALIZATION COMPLETE: %d/%d bots successfully connected ===", newCount, oldCount)
 }
 
 func (bm *BotManager) startBotWithRetry(bot types.Bot) bool {
@@ -194,26 +295,136 @@ func (bm *BotManager) startBotWithRetry(bot types.Bot) bool {
 	maxTime := 120 * time.Second
 	startTime := time.Now()
 
+	// Get bot nick safely for logging
+	currentNick := "unknown"
+	try := func() (nick string, ok bool) {
+		defer func() {
+			if r := recover(); r != nil {
+				ok = false
+			}
+		}()
+		return bot.GetCurrentNick(), true
+	}
+	if nick, ok := try(); ok {
+		currentNick = nick
+	}
+
+	util.Debug("=== STARTING BOT CONNECTION PROCESS FOR %s ===", currentNick)
+	util.Debug("Max connection time: %v, Retry interval: %v", maxTime, retryInterval)
+
+	attemptCount := 0
 	for {
+		attemptCount++
+		util.Debug("Connection attempt #%d for bot %s", attemptCount, currentNick)
+
 		if time.Since(startTime) > maxTime {
+			util.Warning("Connection process for bot %s timed out after %v", currentNick, maxTime)
 			return false
 		}
 
-		err := bot.Connect()
-		if err == nil {
-			// Czekamy na pełne połączenie (fully connected)
-			for attempts := 0; attempts < 10; attempts++ { // 10 prób sprawdzenia stanu
-				if bot.IsConnected() {
-					util.Info("Bot %s successfully connected and ready", bot.GetCurrentNick())
-					return true
+		// Use defer/recover to catch any panics during connection
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					util.Error("Recovered from panic in startBotWithRetry: %v", r)
 				}
-				time.Sleep(1 * time.Second)
+			}()
+
+			// Try to connect
+			util.Debug("Calling Connect() for bot %s", currentNick)
+			err := bot.Connect()
+			if err == nil {
+				util.Debug("Connect() succeeded for bot %s, waiting for full connection", currentNick)
+
+				// Wait for full connection
+				for attempts := 0; attempts < 10; attempts++ {
+					util.Debug("Checking connection status for bot %s (attempt %d/10)", currentNick, attempts+1)
+
+					// Check if bot is still in the manager (not banned/removed)
+					if !bm.IsBotInManager(bot) {
+						util.Warning("Bot %s was removed from manager during connection process", currentNick)
+						return
+					}
+
+					// Check connection status
+					util.Debug("Checking if bot %s is connected (attempt %d/10)", currentNick, attempts+1)
+					if bot.IsConnected() {
+						// Get nick safely
+						currentNick := "unknown"
+						try := func() (nick string, ok bool) {
+							defer func() {
+								if r := recover(); r != nil {
+									ok = false
+								}
+							}()
+							return bot.GetCurrentNick(), true
+						}
+						if nick, ok := try(); ok {
+							currentNick = nick
+						}
+
+						util.Info("Bot %s successfully connected and ready", currentNick)
+						util.Debug("=== BOT CONNECTION PROCESS COMPLETED SUCCESSFULLY FOR %s ===", currentNick)
+
+						// Verify the bot is in the manager's list
+						if !bm.IsBotInManager(bot) {
+							util.Warning("Bot %s is connected but not in the manager's list, adding it back", currentNick)
+							bm.mutex.Lock()
+							bm.bots = append(bm.bots, bot)
+							bm.mutex.Unlock()
+						}
+
+						return
+					}
+					util.Debug("Bot %s not fully connected yet, waiting 1 second", currentNick)
+					time.Sleep(1 * time.Second)
+				}
+
+				util.Warning("Bot %s connected but did not become fully connected within timeout", currentNick)
 			}
+
+			// Get nick safely for error message
+			currentNick := "unknown"
+			try := func() (nick string, ok bool) {
+				defer func() {
+					if r := recover(); r != nil {
+						ok = false
+					}
+				}()
+				return bot.GetCurrentNick(), true
+			}
+			if nick, ok := try(); ok {
+				currentNick = nick
+			}
+
+			if err != nil {
+				util.Warning("Bot %s connection attempt failed: %v", currentNick, err)
+			}
+		}()
+
+		// Check if bot is still in the manager (not banned/removed)
+		if !bm.IsBotInManager(bot) {
+			util.Warning("Bot %s was removed from manager, stopping retry attempts", currentNick)
+			return false
 		}
 
-		util.Warning("Bot %s connection attempt failed: %v", bot.GetCurrentNick(), err)
+		util.Debug("Waiting %v before next connection attempt for bot %s", retryInterval, currentNick)
 		time.Sleep(retryInterval)
 	}
+}
+
+// IsBotInManager checks if a bot is still in the manager
+func (bm *BotManager) IsBotInManager(botToCheck types.Bot) bool {
+	bm.mutex.RLock()
+	defer bm.mutex.RUnlock()
+
+	for _, bot := range bm.bots {
+		if bot == botToCheck {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Stop safely shuts down all bots
@@ -231,13 +442,11 @@ func (bm *BotManager) Stop() {
 func (bm *BotManager) RemoveBotFromManager(botToRemove types.Bot) {
 	// Najpierw sprawdzamy, czy bot istnieje w liście
 	var found bool
-	var currentNick string
 
 	bm.mutex.RLock()
 	for _, bot := range bm.bots {
 		if bot == botToRemove {
 			found = true
-			currentNick = botToRemove.GetCurrentNick()
 			break
 		}
 	}
@@ -277,18 +486,6 @@ func (bm *BotManager) RemoveBotFromManager(botToRemove types.Bot) {
 		bm.commandBotIndex = 0
 	}
 	bm.mutex.Unlock()
-
-	// Aktualizujemy NickManager w osobnej goroutine, aby nie blokować
-	if bm.nickManager != nil {
-		go func() {
-			// Zwracamy nick do puli
-			bm.nickManager.ReturnNickToPool(currentNick)
-
-			// Wyrejestrowujemy bota z NickManagera
-			nm := bm.nickManager.(*nickmanager.NickManager)
-			nm.UnregisterBot(botToRemove)
-		}()
-	}
 
 	util.Info("Bot %s has been removed from BotManager", botToRemove.GetCurrentNick())
 }
@@ -394,11 +591,6 @@ func (bm *BotManager) GetBots() []types.Bot {
 	return botsCopy
 }
 
-// GetNickManager returns the NickManager
-func (bm *BotManager) GetNickManager() types.NickManager {
-	return bm.nickManager
-}
-
 // SetMassCommandCooldown sets the cooldown duration for mass commands
 func (bm *BotManager) SetMassCommandCooldown(duration time.Duration) {
 	bm.mutex.Lock()
@@ -492,4 +684,96 @@ func (bm *BotManager) SendSingleMsg(channel, message string) {
 
 func (bm *BotManager) GetTotalCreatedBots() int {
 	return bm.totalCreatedBots
+}
+
+// DetectMassDisconnect checks if there have been multiple disconnects in a short time period
+func (bm *BotManager) DetectMassDisconnect() bool {
+	const threshold = 3                 // Number of disconnects to consider it a mass disconnect
+	const timeWindow = 10 * time.Second // Time window to count disconnects
+
+	bm.disconnectMutex.Lock()
+	defer bm.disconnectMutex.Unlock()
+
+	// Count recent disconnects
+	now := time.Now()
+	recentDisconnects := 0
+
+	for _, disconnectTime := range bm.recentDisconnects {
+		if now.Sub(disconnectTime) < timeWindow {
+			recentDisconnects++
+		}
+	}
+
+	// Add current disconnect
+	bm.recentDisconnects = append(bm.recentDisconnects, now)
+
+	// Clean up old entries
+	newList := make([]time.Time, 0)
+	for _, t := range bm.recentDisconnects {
+		if now.Sub(t) < timeWindow {
+			newList = append(newList, t)
+		}
+	}
+	bm.recentDisconnects = newList
+
+	return recentDisconnects >= threshold
+}
+
+// HandleNetworkOutage implements staggered reconnection with jitter to prevent reconnection storms
+func (bm *BotManager) HandleNetworkOutage() {
+	util.Warning("Network outage detected! Implementing staggered reconnection strategy")
+
+	// Get all disconnected bots
+	disconnectedBots := bm.getDisconnectedBots()
+	totalBots := len(disconnectedBots)
+
+	if totalBots == 0 {
+		return
+	}
+
+	// Base parameters for reconnection timing
+	maxTotalReconnectTime := 3 * time.Minute
+
+	util.Info("Staggering reconnection of %d bots over %v", totalBots, maxTotalReconnectTime)
+
+	for i, bot := range disconnectedBots {
+		// Calculate staggered delay
+		staggerPosition := float64(i) / float64(totalBots)
+		baseStaggerDelay := time.Duration(staggerPosition * float64(maxTotalReconnectTime))
+
+		// Add jitter (±30%)
+		jitterFactor := 0.7 + 0.6*rand.Float64()
+		finalDelay := time.Duration(float64(baseStaggerDelay) * jitterFactor)
+
+		// Schedule reconnection
+		go func(b types.Bot, delay time.Duration, position int) {
+			util.Debug("Bot %s scheduled to reconnect in %v (position %d/%d)",
+				b.GetCurrentNick(), delay, position+1, totalBots)
+			time.Sleep(delay)
+
+			// Try to reconnect
+			util.Info("Staggered reconnection: attempting to reconnect bot %s", b.GetCurrentNick())
+			err := b.Connect()
+			if err != nil {
+				util.Error("Staggered reconnection failed for bot %s: %v", b.GetCurrentNick(), err)
+			} else {
+				util.Info("Staggered reconnection successful for bot %s", b.GetCurrentNick())
+			}
+		}(bot, finalDelay, i)
+	}
+}
+
+// getDisconnectedBots returns a list of bots that are currently disconnected
+func (bm *BotManager) getDisconnectedBots() []types.Bot {
+	bm.mutex.RLock()
+	defer bm.mutex.RUnlock()
+
+	disconnectedBots := make([]types.Bot, 0)
+	for _, bot := range bm.bots {
+		if !bot.IsConnected() {
+			disconnectedBots = append(disconnectedBots, bot)
+		}
+	}
+
+	return disconnectedBots
 }

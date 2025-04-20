@@ -15,13 +15,13 @@ import (
 	"github.com/kofany/gNb/internal/auth"
 	"github.com/kofany/gNb/internal/bot"
 	"github.com/kofany/gNb/internal/config"
-	"github.com/kofany/gNb/internal/nickmanager"
+	"github.com/kofany/gNb/internal/nickcatcher"
 	"github.com/kofany/gNb/internal/oidentd"
 	"github.com/kofany/gNb/internal/util"
 	"github.com/sevlyar/go-daemon"
 )
 
-var version = "v1.3.0"
+var version = "v0.0.1"
 
 var (
 	devMode         = flag.Bool("dev", false, "run in development mode (non-daemon)")
@@ -73,10 +73,7 @@ func isDebian() bool {
 		return false
 	}
 	content := string(data)
-	if strings.Contains(content, "ID=debian") {
-		return true
-	}
-	return false
+	return strings.Contains(content, "ID=debian")
 }
 
 func main() {
@@ -206,26 +203,27 @@ func main() {
 	}
 	util.Debug("Owners loaded: %+v", owners)
 
-	color.Blue("Creating and initializing NickManager")
-	nm := nickmanager.NewNickManager()
-	// Ustaw interwał ISON z konfiguracji
-	nm.SetISONInterval(time.Duration(cfg.Global.IsonInterval) * time.Second)
-	err = nm.LoadNicks("data/nicks.json")
-	if err != nil {
-		color.Red("Failed to load nicks: %v", err)
-		return
-	}
-	util.Debug("NickManager initialized with nicks: %+v", nm.GetNicksToCatch())
-
 	color.Blue("Creating BotManager")
-	botManager := bot.NewBotManager(cfg, owners, nm)
+	botManager := bot.NewBotManager(cfg, owners)
 
 	// Uruchomienie botów
 	color.Blue("Starting bots")
 	go botManager.StartBots()
 
-	color.Blue("Starting NickManager's monitoring loop")
-	go nm.Start()
+	// Inicjalizacja i uruchomienie systemu przechwytywania nicków
+	color.Blue("Initializing nick catcher system")
+	nickCatcher, err := nickcatcher.NewNickCatcher(botManager)
+	if err != nil {
+		color.Red("Failed to initialize nick catcher: %v", err)
+	} else {
+		color.Green("Nick catcher initialized successfully")
+		color.Blue("Starting nick catcher system")
+		nickCatcher.Start()
+		color.Green("Nick catcher system started")
+
+		// Ustawienie globalnej instancji NickCatcher
+		nickcatcher.SetGlobalInstance(nickCatcher)
+	}
 
 	util.Debug("Configuration loaded: %+v", cfg)
 
@@ -246,6 +244,14 @@ func main() {
 
 	// Zamykanie aplikacji
 	color.Yellow("Shutdown signal received")
+
+	// Zatrzymanie systemu przechwytywania nicków
+	if nickCatcher != nil {
+		color.Blue("Stopping nick catcher system")
+		nickCatcher.Stop()
+		color.Green("Nick catcher system stopped")
+	}
+
 	botManager.Stop()
 	util.Info("Application has been shut down.")
 	color.Green("Application has been shut down.")

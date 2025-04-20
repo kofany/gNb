@@ -31,18 +31,14 @@ func init() {
 		"join":       {Type: MassCommand, Handler: handleJoinCommand},
 		"part":       {Type: MassCommand, Handler: handlePartCommand},
 		"reconnect":  {Type: MassCommand, Handler: handleReconnectCommand},
-		"addnick":    {Type: SingleCommand, Handler: handleAddNickCommand},
-		"delnick":    {Type: SingleCommand, Handler: handleDelNickCommand},
-		"listnicks":  {Type: SingleCommand, Handler: handleListNicksCommand},
 		"addowner":   {Type: SingleCommand, Handler: handleAddOwnerCommand},
 		"delowner":   {Type: SingleCommand, Handler: handleDelOwnerCommand},
-		"bnc":        {Type: SingleCommand, Handler: handleBNCCommand},
 		"listowners": {Type: SingleCommand, Handler: handleListOwnersCommand},
 	}
 }
 
 func (b *Bot) HandleCommands(e *irc.Event) {
-	util.Debug("Received command for bot %s: %s", b.GetCurrentNick(), e.Message())
+	util.Debug("Received command for bot %s: %s", b.Connection.GetNick(), e.Message())
 
 	message := e.Message()
 	sender := e.Nick
@@ -73,15 +69,15 @@ func (b *Bot) HandleCommands(e *irc.Event) {
 		return
 	}
 
-	util.Debug("Command %s recognized for bot %s", cmdName, b.GetCurrentNick())
+	util.Debug("Command %s recognized for bot %s", cmdName, b.Connection.GetNick())
 
 	switch cmd.Type {
 	case SingleCommand:
-		util.Debug("Executing command %s for bot %s", cmdName, b.GetCurrentNick())
+		util.Debug("Executing command %s for bot %s", cmdName, b.Connection.GetNick())
 		cmd.Handler(b, e, args[1:])
 	case MassCommand:
 		if b.GetBotManager().CanExecuteMassCommand(cmdName) {
-			util.Debug("Executing mass command %s for bot %s", cmdName, b.GetCurrentNick())
+			util.Debug("Executing mass command %s for bot %s", cmdName, b.Connection.GetNick())
 			cmd.Handler(b, e, args[1:])
 		} else {
 			util.Debug("Mass command %s not executed due to cooldown", cmdName)
@@ -94,7 +90,9 @@ func (b *Bot) sendReply(isChannelMsg bool, target, sender, message string) {
 		b.GetBotManager().CollectReactions(target, message, nil)
 	} else {
 		util.Debug("SendReply reciver: sender: %s, message: %s", sender, message)
-		b.SendMessage(sender, message)
+		if b.Connection != nil {
+			b.Connection.Privmsg(sender, message)
+		}
 	}
 }
 
@@ -127,7 +125,9 @@ func handleSayCommand(b *Bot, e *irc.Event, args []string) {
 		if strings.HasPrefix(targetChannel, "#") {
 			b.GetBotManager().CollectReactions(targetChannel, msg, nil)
 		} else {
-			b.SendMessage(targetChannel, msg)
+			if b.Connection != nil {
+				b.Connection.Privmsg(targetChannel, msg)
+			}
 		}
 	} else {
 		b.sendReply(isChannelMsg, target, sender, "Usage: say <channel/nick> <message>")
@@ -149,7 +149,9 @@ func handleJoinCommand(b *Bot, e *irc.Event, args []string) {
 				return nil
 			})
 		} else {
-			b.JoinChannel(channel)
+			if b.Connection != nil {
+				b.Connection.Join(channel)
+			}
 			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Joined channel %s", channel))
 		}
 	} else {
@@ -172,7 +174,9 @@ func handlePartCommand(b *Bot, e *irc.Event, args []string) {
 				return nil
 			})
 		} else {
-			b.PartChannel(channel)
+			if b.Connection != nil {
+				b.Connection.Part(channel)
+			}
 			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Left channel %s", channel))
 		}
 	} else {
@@ -194,63 +198,13 @@ func handleReconnectCommand(b *Bot, e *irc.Event, args []string) {
 		})
 	} else {
 		b.sendReply(isChannelMsg, target, sender, "Reconnecting with a new nick...")
-		b.Reconnect()
-	}
-}
-
-func handleAddNickCommand(b *Bot, e *irc.Event, args []string) {
-	sender := e.Nick
-	target := e.Arguments[0]
-	isChannelMsg := strings.HasPrefix(target, "#")
-
-	if len(args) >= 1 {
-		nick := args[0]
-		b.GetBotManager().CollectReactions(
-			target,
-			fmt.Sprintf("Nick '%s' has been added.", nick),
-			func() error { return b.GetNickManager().AddNick(nick) },
-		)
-	} else {
-		b.sendReply(isChannelMsg, target, sender, "Usage: addnick <nick>")
-	}
-}
-
-func handleDelNickCommand(b *Bot, e *irc.Event, args []string) {
-	sender := e.Nick
-	target := e.Arguments[0]
-	isChannelMsg := strings.HasPrefix(target, "#")
-
-	if len(args) >= 1 {
-		nick := args[0]
-		b.GetBotManager().CollectReactions(
-			target,
-			fmt.Sprintf("Nick '%s' has been removed.", nick),
-			func() error { return b.GetNickManager().RemoveNick(nick) },
-		)
-	} else {
-		b.sendReply(isChannelMsg, target, sender, "Usage: delnick <nick>")
-	}
-}
-
-func handleListNicksCommand(b *Bot, e *irc.Event, args []string) {
-	sender := e.Nick
-	target := e.Arguments[0]
-	isChannelMsg := strings.HasPrefix(target, "#")
-
-	if isChannelMsg {
-		b.GetBotManager().CollectReactions(
-			target,
-			"",
-			func() error {
-				nicks := b.GetNickManager().GetNicks()
-				message := fmt.Sprintf("Current nicks: %s", strings.Join(nicks, ", "))
-				b.GetBotManager().SendSingleMsg(target, message)
-				return nil
-			},
-		)
-	} else {
-		nicks := b.GetNickManager().GetNicks()
-		b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Current nicks: %s", strings.Join(nicks, ", ")))
+		// Call Reconnect method
+		if b.IsConnected() {
+			oldNick := b.Connection.GetNick()
+			b.Quit("Reconnecting")
+			time.Sleep(5 * time.Second)
+			b.connectWithNewNick(oldNick)
+		}
 	}
 }
 
@@ -307,36 +261,5 @@ func handleListOwnersCommand(b *Bot, e *irc.Event, args []string) {
 	} else {
 		owners := b.GetBotManager().GetOwners()
 		b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Current owners: %s", strings.Join(owners, ", ")))
-	}
-}
-
-func handleBNCCommand(b *Bot, e *irc.Event, args []string) {
-	sender := e.Nick
-	target := e.Arguments[0]
-	isChannelMsg := strings.HasPrefix(target, "#")
-
-	if len(args) < 1 {
-		b.sendReply(isChannelMsg, target, sender, "Usage: !bnc <start|stop>")
-		return
-	}
-
-	switch args[0] {
-	case "start":
-		port, password, err := b.StartBNC()
-		if err != nil {
-			util.Debug("Failed to start BNC")
-			b.sendReply(isChannelMsg, target, sender, fmt.Sprintf("Failed to start BNC: %v", err))
-		} else {
-			b.sendReply(false, sender, sender, "BNC started successfully. Use the following command to connect:")
-			sshCommand := fmt.Sprintf("ssh -p %d %s@%s %s", port, b.GetCurrentNick(), b.Config.Vhost, password)
-			time.Sleep(1 * time.Second)
-			util.Debug("sendReply: %s, %s, %s", sender, sender, sshCommand)
-			b.sendReply(false, sender, sender, sshCommand)
-		}
-	case "stop":
-		b.StopBNC()
-		b.sendReply(isChannelMsg, target, sender, "BNC stopped")
-	default:
-		b.sendReply(isChannelMsg, target, sender, "Invalid BNC command. Use 'start' or 'stop'")
 	}
 }

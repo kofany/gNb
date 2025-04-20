@@ -15,11 +15,22 @@ global: # Please do not play with global values if you are not sure what you are
   mass_command_cooldown: 5
   
 bots:
-  - server: ircnet.hostsailor.com #example server 
+  - server: irc.al #example server 
     port: 6667
     ssl: false
-    vhost: 192.168.176.35 # example IPv4
-
+    vhost: 192.168.1.45 # example IPv4
+  - server: irc.al #example server 
+    port: 6667
+    ssl: false
+    vhost: 192.168.1.45 # example IPv4
+  - server: irc.al #example server 
+    port: 6667
+    ssl: false
+    vhost: 192.168.1.45 # example IPv4
+  - server: irc.al #example server 
+    port: 6667
+    ssl: false
+    vhost: 192.168.1.45 # example IPv4
 
 channels:
-  - "#tahion" #example channel
+  - "#tahio" #example channel

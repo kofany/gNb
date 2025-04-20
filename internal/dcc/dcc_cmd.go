@@ -55,12 +55,6 @@ func (dt *DCCTunnel) processCommand(command string) {
 		dt.handleMassPartCommand(fields[1:])
 	case "MRECONNECT":
 		dt.handleMassReconnectCommand(fields[1:])
-	case "ADDNICK":
-		dt.handleAddNickCommand(fields[1:])
-	case "DELNICK":
-		dt.handleDelNickCommand(fields[1:])
-	case "LISTNICKS":
-		dt.handleListNicksCommand(fields[1:])
 	case "ADDOWNER":
 		dt.handleAddOwnerCommand(fields[1:])
 	case "DELOWNER":
@@ -73,6 +67,15 @@ func (dt *DCCTunnel) processCommand(command string) {
 		dt.handleBotsCommand(fields[1:])
 	case "SERVERS":
 		dt.handleServersCommand(fields[1:])
+	// Nick Catcher commands
+	case "NICKLIST":
+		dt.handleNickListCommand(fields[1:])
+	case "ADDNICK":
+		dt.handleAddNickCommand(fields[1:])
+	case "DELNICK":
+		dt.handleDelNickCommand(fields[1:])
+	case "NICKSTATUS":
+		dt.handleNickStatusCommand(fields[1:])
 	default:
 		dt.sendToClient(fmt.Sprintf("Unknown command: %s", cmd))
 	}
@@ -94,12 +97,28 @@ func (dt *DCCTunnel) handleBotsCommand(args []string) {
 	// Liczymy w pełni połączone boty
 	totalConnectedBots := 0
 	var connectedBotNicks []string
-	for _, bot := range bots {
-		if bot.IsConnected() {
+	var botStatusDetails []string
+
+	for i, bot := range bots {
+		// Get detailed connection status for debugging
+		nick := bot.GetCurrentNick()
+		isConnected := bot.IsConnected()
+		serverName := bot.GetServerName()
+
+		// Add to status details
+		botStatusDetails = append(botStatusDetails,
+			fmt.Sprintf("Bot %d: %s - Connected: %v, HasServerName: %v, ServerName: %s",
+				i+1, nick, isConnected, serverName != "", serverName))
+
+		// Count connected bots
+		if isConnected {
 			totalConnectedBots++
-			connectedBotNicks = append(connectedBotNicks, bot.GetCurrentNick())
+			connectedBotNicks = append(connectedBotNicks, nick)
 		}
 	}
+
+	// Log detailed status for debugging
+	util.Debug("Bot status details:\n%s", strings.Join(botStatusDetails, "\n"))
 
 	if len(args) == 0 {
 		// Bez dodatkowych argumentów, wyświetlamy podsumowanie
@@ -255,67 +274,6 @@ func (dt *DCCTunnel) handleMassReconnectCommand(_ []string) {
 			},
 		)
 	}
-}
-
-func (dt *DCCTunnel) handleAddNickCommand(args []string) {
-	if len(args) >= 1 {
-		nick := args[0]
-		if bm := dt.bot.GetBotManager(); bm != nil {
-			bm.CollectReactions(
-				dt.bot.GetCurrentNick(),
-				fmt.Sprintf("Nick '%s' has been added.", nick),
-				func() error { return dt.bot.GetNickManager().AddNick(nick) },
-			)
-		}
-	} else {
-		dt.sendToClient("Usage: .addnick <nick>")
-	}
-}
-
-func (dt *DCCTunnel) handleDelNickCommand(args []string) {
-	if len(args) >= 1 {
-		nick := args[0]
-		if bm := dt.bot.GetBotManager(); bm != nil {
-			bm.CollectReactions(
-				dt.bot.GetCurrentNick(),
-				fmt.Sprintf("Nick '%s' has been removed.", nick),
-				func() error { return dt.bot.GetNickManager().RemoveNick(nick) },
-			)
-		}
-	} else {
-		dt.sendToClient("Usage: .delnick <nick>")
-	}
-}
-
-func (dt *DCCTunnel) handleListNicksCommand(_ []string) {
-	util.Debug("DCC: Executing .listnicks command for bot %s", dt.bot.GetCurrentNick())
-
-	// Pobieramy BotManager
-	bm := dt.bot.GetBotManager()
-	if bm == nil {
-		util.Warning("DCC: BotManager is nil for bot %s", dt.bot.GetCurrentNick())
-		dt.sendToClient("Error: BotManager not available")
-		return
-	}
-
-	// Pobieramy NickManager
-	nm := dt.bot.GetNickManager()
-	if nm == nil {
-		util.Warning("DCC: NickManager is nil for bot %s", dt.bot.GetCurrentNick())
-		dt.sendToClient("Error: NickManager not available")
-		return
-	}
-
-	// Pobieramy listę nicków w osobnej goroutine, aby uniknąć blokowania
-	go func() {
-		util.Debug("DCC: Getting nicks list for bot %s", dt.bot.GetCurrentNick())
-		nicks := nm.GetNicks()
-		util.Debug("DCC: Got %d nicks for bot %s", len(nicks), dt.bot.GetCurrentNick())
-
-		// Wysyłamy odpowiedź do klienta
-		response := fmt.Sprintf("Current nicks: %s", strings.Join(nicks, ", "))
-		dt.sendToClient(response)
-	}()
 }
 
 func (dt *DCCTunnel) handleAddOwnerCommand(args []string) {
@@ -549,9 +507,7 @@ func (dt *DCCTunnel) sendHelpMessage() {
 		colorCommand(".mreconnect", "- Reconnect all bots (including linked bots)") + "\n\n" +
 		colorText("[ Admin ] commands (For now only local node):", 10) + "\n" +
 		"-------------\n" +
-		colorCommand(".addnick <nick>", "- Add nick to catch list") + "\n" +
-		colorCommand(".delnick <nick>", "- Remove nick from catch list") + "\n" +
-		colorCommand(".listnicks", "- List nicks to catch") + "\n" +
+
 		colorCommand(".addowner <mask>", "- Add owner mask") + "\n" +
 		colorCommand(".delowner <mask>", "- Remove owner mask") + "\n" +
 		colorCommand(".listowners", "- List owner masks") + "\n" +
@@ -560,8 +516,14 @@ func (dt *DCCTunnel) sendHelpMessage() {
 		colorCommand(".bots n", "- Show list of connected bot nicknames") + "\n" +
 		colorCommand(".servers", "- Show server connection statistics") + "\n" +
 		colorCommand(".servers <nick>", "- Show server for specific bot") + "\n\n" +
-		colorText("ISON monitoring:", 10) + "\n" +
-		"--------------\n" +
+		colorText("[ NickCatcher ] commands:", 10) + "\n" +
+		"------------------\n" +
+		colorCommand(".nicklist", "- List priority nicks") + "\n" +
+		colorCommand(".addnick <nick>", "- Add nick to priority list") + "\n" +
+		colorCommand(".delnick <nick>", "- Remove nick from priority list") + "\n" +
+		colorCommand(".nickstatus", "- Show nick catcher status") + "\n" +
+		colorCommand(".nickstatus detail", "- Show detailed nick catcher status") + "\n\n" +
+
 		"Type " + boldText(".help") + " to see this message again.\n"
 
 	dt.sendToClient(helpMessage)
