@@ -65,7 +65,7 @@ func (nc *NickCatcher) GetNickCatcherStatus(detailed bool) NickStatusInfo {
 
 		if nc.IsPriorityNick(currentNick) {
 			priorityNicksCount++
-		} else if len(currentNick) == 1 && currentNick >= "a" && currentNick <= "z" {
+		} else if nc.isSingleLetterNick(currentNick) {
 			singleLetterNicksCount++
 		}
 	}

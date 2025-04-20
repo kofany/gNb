@@ -250,15 +250,40 @@ func (nc *NickCatcher) handleISONResponse(response, checkedNicks []string, reque
 		util.Warning("Bot %s that requested ISON is no longer connected", requestBot.GetCurrentNick())
 	}
 
-	// Logowanie informacji o znalezionych dostępnych nickach
-	util.Debug("Found %d available priority nicks and %d available single-letter nicks",
-		len(availablePriorityNicks), len(availableSingleLetterNicks))
+	// Zlicz boty z wartościowymi nickami
+	valuableNicksCount := 0
+	priorityNicksCount := 0
+	singleLetterNicksCount := 0
+	for _, bot := range connectedBots {
+		currentNick := bot.GetCurrentNick()
+		if nc.isPriorityNick(currentNick) {
+			priorityNicksCount++
+			valuableNicksCount++
+		} else if nc.isSingleLetterNick(currentNick) {
+			singleLetterNicksCount++
+			valuableNicksCount++
+		}
+	}
+
+	// Logowanie informacji o znalezionych dostępnych nickach i aktualnym stanie
+	util.Debug("Found %d available priority nicks and %d available single-letter nicks. Current state: %d bots with valuable nicks (%d priority, %d single-letter)",
+		len(availablePriorityNicks), len(availableSingleLetterNicks), valuableNicksCount, priorityNicksCount, singleLetterNicksCount)
 
 	// Przydziel nicki priorytetowe
 	nc.assignNicks(availablePriorityNicks, connectedBots, true)
 
 	// Przydziel nicki jednoliterowe
 	nc.assignNicks(availableSingleLetterNicks, connectedBots, false)
+}
+
+// isSingleLetterNick sprawdza, czy nick jest jednoliterowy (a-z)
+func (nc *NickCatcher) isSingleLetterNick(nick string) bool {
+	return len(nick) == 1 && nick >= "a" && nick <= "z"
+}
+
+// isValuableNick sprawdza, czy nick jest wartościowy (priorytetowy lub jednoliterowy)
+func (nc *NickCatcher) isValuableNick(nick string) bool {
+	return nc.isPriorityNick(nick) || nc.isSingleLetterNick(nick)
 }
 
 // assignNicks przydziela dostępne nicki do botów
@@ -284,10 +309,11 @@ func (nc *NickCatcher) assignNicks(availableNicks []string, bots []types.Bot, is
 				continue
 			}
 
-			// Sprawdź, czy bot już ma priorytetowy nick
+			// Sprawdź, czy bot już ma wartościowy nick (priorytetowy lub jednoliterowy)
 			currentNick := bot.GetCurrentNick()
-			if isPriority && nc.isPriorityNick(currentNick) {
-				continue // Bot już ma priorytetowy nick, nie zmieniaj
+			if nc.isValuableNick(currentNick) {
+				util.Debug("Bot %s already has valuable nick %s, skipping", bot.GetCurrentNick(), currentNick)
+				continue // Bot już ma wartościowy nick, nie zmieniaj
 			}
 
 			// Sprawdź, czy serwer obsługuje ten nick (dla jednoliterowych)
