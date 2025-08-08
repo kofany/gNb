@@ -503,7 +503,7 @@ Parent Process ID: %d`,
 func (dt *DCCTunnel) getExternalIP(network string) string {
 	client := &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
 			DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {
 				d := net.Dialer{Timeout: 5 * time.Second}
 				return d.DialContext(ctx, network, addr)

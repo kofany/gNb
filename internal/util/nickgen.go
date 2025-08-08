@@ -95,7 +95,7 @@ func GetWordsFromAPI(apiURL string, maxWordLength, timeout, count int) ([]string
 	client := &http.Client{
 		Timeout: time.Duration(timeout) * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
 		},
 	}
 	url := fmt.Sprintf("%s?count=%d&length=%d", apiURL, count, maxWordLength)
@@ -134,7 +134,7 @@ func GenerateRandomNick(apiURL string, maxWordLength int, timeoutSeconds int) (s
 	client := &http.Client{
 		Timeout: time.Duration(timeoutSeconds) * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
 		},
 	}
 	fullURL := fmt.Sprintf("%s?upto=%d&count=100", apiURL, maxWordLength)

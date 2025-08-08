@@ -1,12 +1,15 @@
 package bnc
 
 import (
+	"crypto/ed25519"
+	crand "crypto/rand"
 	"fmt"
-	"math/rand"
+	mrand "math/rand"
 	"net"
 	"time"
 
 	"github.com/gliderlabs/ssh"
+	sshcrypto "golang.org/x/crypto/ssh"
 	"github.com/kofany/gNb/internal/types"
 	"github.com/kofany/gNb/internal/util"
 )
@@ -84,13 +87,23 @@ func (s *BNCServer) listen() {
 		},
 	}
 
-	// Use an empty host key
-	s.server.SetOption(ssh.HostKeyFile(""))
-
-	var err error
-	s.listener, err = net.Listen("tcp", fmt.Sprintf(":%d", s.Port))
+	// Generate an in-memory ed25519 host key
+	_, priv, err := ed25519.GenerateKey(crand.Reader)
 	if err != nil {
-		util.Error("Failed to start BNC listener: %v", err)
+		util.Error("Failed to generate SSH host key: %v", err)
+		return
+	}
+	signer, err := sshcrypto.NewSignerFromKey(priv)
+	if err != nil {
+		util.Error("Failed to create SSH signer: %v", err)
+		return
+	}
+	s.server.AddHostKey(signer)
+
+	var listenErr error
+	s.listener, listenErr = net.Listen("tcp", fmt.Sprintf(":%d", s.Port))
+	if listenErr != nil {
+		util.Error("Failed to start BNC listener: %v", listenErr)
 		return
 	}
 
@@ -121,7 +134,7 @@ func (s *BNCServer) Stop() {
 }
 
 func randomPort() int {
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	r := mrand.New(mrand.NewSource(time.Now().UnixNano()))
 	return r.Intn(1000) + 4000 // Random port between 4000 and 4999
 }
 
@@ -129,7 +142,15 @@ func generatePassword() string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	password := make([]byte, 16)
 	for i := range password {
-		password[i] = charset[rand.Intn(len(charset))]
+		// crypto/rand for secure randomness
+		var b [1]byte
+		for {
+			if _, err := crand.Read(b[:]); err == nil {
+				idx := int(b[0]) % len(charset)
+				password[i] = charset[idx]
+				break
+			}
+		}
 	}
 	return string(password)
 }
