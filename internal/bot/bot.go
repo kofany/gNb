@@ -169,9 +169,7 @@ func (b *Bot) connectWithRetry() error {
 		b.Connection.RealName = b.Realname
 		// Increase timeout for better stability
 		b.Connection.Timeout = 2 * time.Minute
-		b.Connection.KeepAlive = 5 * time.Minute
-		// Set HandleErrorAsDisconnect to false to allow the library to handle reconnections
-		b.Connection.HandleErrorAsDisconnect = false
+		// Library 1.2.0 manages keepalive and reconnect internally; avoid overriding here
 
 		b.addCallbacks()
 
@@ -287,14 +285,8 @@ func (b *Bot) addCallbacks() {
 		b.ServerName = e.Source
 		b.lastConnectTime = time.Now()
 
-		// Synchronize internal state with the connection
-		connectionNick := b.Connection.GetNick()
-		b.mutex.Lock()
-		if b.CurrentNick != connectionNick {
-			util.Debug("Synchronizing internal nick state: %s -> %s", b.CurrentNick, connectionNick)
-			b.CurrentNick = connectionNick
-		}
-		b.mutex.Unlock()
+		// No manual sync needed: library tracks current nick internally
+
 
 		util.Info("Bot %s fully connected to %s as %s", b.GetCurrentNick(), b.ServerName, b.GetCurrentNick())
 
@@ -322,17 +314,11 @@ func (b *Bot) addCallbacks() {
 
 	// Callback for nick changes
 	b.Connection.AddCallback("NICK", func(e *irc.Event) {
-		// Get the current nick from the connection
-		oldNick := b.GetCurrentNick()
-
-		// Check if this nick change event is for our bot
-		if e.Nick == oldNick {
+		// Library updates connection nick internally. Treat this event as ours
+		// if the new nick equals the current connection nick.
+		if e.Message() == b.Connection.GetNick() {
+			oldNick := e.Nick
 			newNick := e.Message()
-
-			// Update our internal state to match the connection
-			b.mutex.Lock()
-			b.CurrentNick = newNick
-			b.mutex.Unlock()
 
 			// Notify the nick manager about the change
 			if b.nickManager != nil {
@@ -532,24 +518,10 @@ func (b *Bot) addCallbacks() {
 
 	// Callback for disconnection
 	b.Connection.AddCallback("DISCONNECTED", func(e *irc.Event) {
-		// Get the current nick before any locks
 		currentNick := b.GetCurrentNick()
 		util.Warning("Bot %s disconnected from server %s", currentNick, b.ServerName)
-
-		// Store current nick for potential recovery
-		b.mutex.Lock()
-		b.PreviousNick = currentNick
-		util.Debug("Stored previous nick %s for potential recovery during disconnect", b.PreviousNick)
-		b.mutex.Unlock()
-
-		wasConnected := b.isConnected.Swap(false)
 		b.markAsDisconnected()
-
-		if wasConnected {
-			go b.handleReconnect()
-		} else {
-			util.Info("Bot %s was already disconnected from %s", currentNick, b.ServerName)
-		}
+		// Library auto-reconnects; we only log here.
 	})
 }
 
@@ -701,12 +673,7 @@ func (b *Bot) ChangeNick(newNick string) {
 		if b.Connection.GetNick() == newNick {
 			util.Info("Bot successfully changed nick from %s to %s", oldNick, newNick)
 
-			// Update our internal state to match the connection
-			b.mutex.Lock()
-			b.CurrentNick = newNick
-			b.mutex.Unlock()
-
-			// Notify the nick manager about the change
+			// Library updates connection state; just notify NickManager
 			if b.nickManager != nil {
 				b.nickManager.NotifyNickChange(oldNick, newNick)
 			} else {
@@ -797,71 +764,9 @@ func (b *Bot) checkAndRejoinChannels() {
 }
 
 func (b *Bot) Reconnect() {
-	if b.IsConnected() {
-		oldNick := b.GetCurrentNick()
-
-		// Store the current nick as previous nick for potential recovery
-		b.PreviousNick = oldNick
-		util.Debug("Stored previous nick %s for potential recovery", b.PreviousNick)
-
+	// Delegate to library: send QUIT and let auto-reconnect kick in.
+	if b.Connection != nil {
 		b.Quit("Reconnecting")
-
-		if b.nickManager != nil {
-			b.nickManager.ReturnNickToPool(oldNick)
-		}
-
-		time.Sleep(5 * time.Second)
-
-		// First try to reconnect with the same nick
-		util.Info("Attempting to reconnect with the same nick: %s", oldNick)
-		b.mutex.Lock()
-		b.CurrentNick = oldNick
-		b.mutex.Unlock()
-
-		err := b.connectWithNewNick(oldNick)
-		if err == nil {
-			util.Info("Bot successfully reconnected with the same nick: %s", oldNick)
-			return
-		}
-		util.Warning("Failed to reconnect with the same nick %s: %v", oldNick, err)
-
-		// If that fails, try with a new random nick
-		newNick, err := util.GenerateRandomNick(b.GlobalConfig.NickAPI.URL, b.GlobalConfig.NickAPI.MaxWordLength, b.GlobalConfig.NickAPI.Timeout)
-		if err != nil {
-			newNick = util.GenerateFallbackNick()
-		}
-
-		b.mutex.Lock()
-		b.CurrentNick = newNick
-		b.mutex.Unlock()
-
-		util.Info("Attempting to reconnect with new nick: %s", newNick)
-
-		err = b.connectWithNewNick(newNick)
-		if err != nil {
-			util.Error("Failed to reconnect bot %s (new nick: %s): %v", oldNick, newNick, err)
-
-			// If that also fails, try with a shuffled version of the original nick
-			shuffledNick := shuffleNick(oldNick)
-			util.Info("Attempting to reconnect with shuffled nick: %s", shuffledNick)
-
-			err = b.connectWithNewNick(shuffledNick)
-			if err != nil {
-				util.Error("Failed to reconnect bot with shuffled nick %s: %v", shuffledNick, err)
-			} else {
-				util.Info("Bot successfully reconnected with shuffled nick: %s", shuffledNick)
-				if b.nickManager != nil {
-					b.nickManager.NotifyNickChange(oldNick, shuffledNick)
-				}
-			}
-		} else {
-			util.Info("Bot %s successfully reconnected with new nick: %s", oldNick, newNick)
-			if b.nickManager != nil {
-				b.nickManager.NotifyNickChange(oldNick, newNick)
-			}
-		}
-	} else {
-		util.Debug("Bot %s is not connected; cannot reconnect", b.GetCurrentNick())
 	}
 }
 
@@ -873,6 +778,7 @@ func (b *Bot) connectWithNewNick(nick string) error {
 	b.Connection.UseTLS = b.Config.SSL
 	b.Connection.RealName = b.Realname
 
+	// Use Connect() which now relies on library's internal reconnect/loop
 	return b.Connect()
 }
 
