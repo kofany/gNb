@@ -147,7 +147,7 @@ func (b *Bot) connectWithRetry() error {
 	baseRetryInterval := time.Duration(b.GlobalConfig.ReconnectInterval) * time.Second
 
 	var lastError error
-	for attempts := range maxRetries {
+	for attempts := 0; attempts < maxRetries; attempts++ {
 		// Exponential backoff with jitter
 		retryInterval := baseRetryInterval * time.Duration(1<<uint(attempts))
 		// Add jitter (±20%)
@@ -155,7 +155,7 @@ func (b *Bot) connectWithRetry() error {
 		retryInterval = time.Duration(jitter)
 
 		// Cap the retry interval at 5 minutes
-		retryInterval = min(retryInterval, 5*time.Minute)
+		retryInterval = minDuration(retryInterval, 5*time.Minute)
 
 		b.mutex.Lock()
 		b.connected = make(chan struct{})
@@ -924,7 +924,7 @@ func (b *Bot) handleReconnect() {
 	}
 
 	// If reconnecting with previous nick failed or wasn't possible, try with current nick or new nicks
-	for attempts := range maxRetries {
+	for attempts := 0; attempts < maxRetries; attempts++ {
 		// Exponential backoff with jitter for reconnection
 		retryInterval := baseRetryInterval * time.Duration(1<<uint(attempts))
 		// Add jitter (±20%)
@@ -932,7 +932,7 @@ func (b *Bot) handleReconnect() {
 		retryInterval = time.Duration(jitter)
 
 		// Cap the retry interval at 5 minutes
-		retryInterval = min(retryInterval, 5*time.Minute)
+		retryInterval = minDuration(retryInterval, 5*time.Minute)
 
 		// For the first attempt, try with current nick
 		// For subsequent attempts, try with new random nicks
@@ -1171,4 +1171,12 @@ func (b *Bot) handleCTCP(e *irc.Event) {
 	if strings.HasPrefix(ctcpMessage, "DCC ") {
 		b.handleDCCRequest(e)
 	}
+}
+
+// minDuration returns the smaller of two time.Duration values.
+func minDuration(a, b time.Duration) time.Duration {
+	if a < b {
+		return a
+	}
+	return b
 }
