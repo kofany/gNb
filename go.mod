@@ -5,7 +5,7 @@ go 1.23.2
 require (
 	github.com/fatih/color v1.17.0
 	github.com/gliderlabs/ssh v0.3.5
-	github.com/kofany/go-ircevo v1.2.1
+	github.com/kofany/go-ircevo v1.2.2
 	github.com/sevlyar/go-daemon v0.1.6
 	golang.org/x/crypto v0.39.0
 	gopkg.in/yaml.v2 v2.4.0
