@@ -94,8 +94,11 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 }
 
 func (bm *BotManager) cleanupDisconnectedBots() {
-	// Czekamy 240 sekund od startu
-	time.Sleep(240 * time.Second)
+	select {
+	case <-time.After(240 * time.Second):
+	case <-bm.ctx.Done():
+		return
+	}
 
 	util.Info("Starting cleanup of disconnected bots after startup grace period")
 
@@ -148,33 +151,16 @@ func (bm *BotManager) StartBots() {
 	connectedBots := make([]types.Bot, 0)
 	var connectedBotsMutex sync.Mutex
 
-	// Startujemy wszystkie boty asynchronicznie
 	for _, bot := range bm.bots {
 		wg.Add(1)
 		go func(bot types.Bot) {
 			defer wg.Done()
-
-			// Kanał do monitorowania timeout
-			timeoutChan := time.After(180 * time.Second)
-			connectChan := make(chan bool)
-
-			// Startujemy proces łączenia w osobnej goroutynie
-			go func() {
-				success := bm.startBotWithRetry(bot)
-				connectChan <- success
-			}()
-
-			// Czekamy na rezultat z timeoutem
-			select {
-			case success := <-connectChan:
-				if success {
-					connectedBotsMutex.Lock()
-					connectedBots = append(connectedBots, bot)
-					connectedBotsMutex.Unlock()
-				}
-			case <-timeoutChan:
-				// Bot nie połączył się w wymaganym czasie
-				util.Warning("Bot %s failed to connect within timeout, removing", bot.GetCurrentNick())
+			if bm.startBotWithRetry(bot) {
+				connectedBotsMutex.Lock()
+				connectedBots = append(connectedBots, bot)
+				connectedBotsMutex.Unlock()
+			} else {
+				util.Warning("Bot %s failed to connect within startup window, removing", bot.GetCurrentNick())
 				bot.Quit("Connection timeout")
 			}
 		}(bot)
@@ -218,9 +204,12 @@ func (bm *BotManager) startBotWithRetry(bot types.Bot) bool {
 
 // Stop safely shuts down all bots
 func (bm *BotManager) Stop() {
-	bm.cancel() // Anuluj kontekst, aby zasygnalizować wszystkim goroutynom, że powinny się zakończyć
+	bm.cancel()
 	close(bm.stopChan)
 	bm.wg.Wait()
+	if bm.nickManager != nil {
+		bm.nickManager.Stop()
+	}
 	for _, bot := range bm.bots {
 		bot.Quit("Shutting down")
 	}
@@ -471,22 +460,29 @@ func (bm *BotManager) cleanupReactionRequest(key string) {
 }
 
 func (bm *BotManager) SendSingleMsg(channel, message string) {
-	// Pobieramy bota pod RLock
-	var bot types.Bot
-	bm.mutex.RLock()
+	bm.mutex.Lock()
 	if len(bm.bots) == 0 {
-		bm.mutex.RUnlock()
+		bm.mutex.Unlock()
 		return
 	}
-	bot = bm.bots[bm.commandBotIndex]
-	bm.mutex.RUnlock()
 
-	// Aktualizujemy indeks pod Lock
-	bm.mutex.Lock()
-	bm.commandBotIndex = (bm.commandBotIndex + 1) % len(bm.bots)
+	start := bm.commandBotIndex % len(bm.bots)
+	var bot types.Bot
+	for i := 0; i < len(bm.bots); i++ {
+		idx := (start + i) % len(bm.bots)
+		candidate := bm.bots[idx]
+		if candidate != nil && candidate.IsConnected() {
+			bot = candidate
+			bm.commandBotIndex = (idx + 1) % len(bm.bots)
+			break
+		}
+	}
 	bm.mutex.Unlock()
 
-	// Wysyłamy wiadomość bez blokowania mutexa
+	if bot == nil {
+		return
+	}
+
 	bot.SendMessage(channel, message)
 }
 

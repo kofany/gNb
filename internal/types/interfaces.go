@@ -45,6 +45,7 @@ type NickManager interface {
 	NotifyNickChange(oldNick, newNick string)
 	MarkServerNoLetters(serverName string)
 	Start()
+	Stop()
 }
 
 type BotManager interface {
