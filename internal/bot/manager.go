@@ -48,7 +48,7 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 
 	wordPool, err := util.GetWordsFromAPI(
 		cfg.Global.NickAPI.URL,
-		cfg.Global.NickAPI.MaxWordLength,
+		cfg.Global.MaxNickLength,
 		cfg.Global.NickAPI.Timeout,
 		requiredWords,
 	)

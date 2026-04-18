@@ -1,23 +1,14 @@
 package util
 
 import (
-	"crypto/tls"
 	"encoding/gob"
-	"encoding/json"
 	"fmt"
-	"io"
 	"math/rand"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 )
-
-type APIResponse struct {
-	Words []string `json:"words"`
-}
 
 type LocalWordSource struct {
 	words []string
@@ -25,36 +16,76 @@ type LocalWordSource struct {
 }
 
 var (
-	localSource *LocalWordSource
-	sourceMu    sync.RWMutex
+	localSource     *LocalWordSource
+	sourceMu        sync.RWMutex
+	leadWords       []string
+	tailWords       []string
+	nickPartsMu     sync.RWMutex
+	recentNickMu    sync.Mutex
+	recentNickSet   = make(map[string]struct{})
+	recentNickQueue []string
 )
 
+const (
+	defaultNickLength = 15
+	maxNickLengthCap  = 15
+	recentNickWindow  = 512
+)
+
+var fallbackLeads = []string{
+	"silent", "rough", "fuzzy", "brave", "quick", "gritty", "nippy", "plain",
+	"wild", "fancy", "slick", "dusty", "shady", "stormy", "steady", "witty",
+	"smoky", "mellow", "nimble", "daring", "snug", "peachy", "weird", "neat",
+}
+
+var fallbackTails = []string{
+	"bull", "panda", "rider", "scout", "druid", "crab", "goat", "blaze",
+	"stalk", "drag", "manta", "troll", "beast", "owl", "raven", "wolf",
+	"otter", "badger", "falcon", "viper", "warden", "runner", "drake", "fox",
+}
+
 func init() {
-	// Inicjalizacja lokalnego źródła przy starcie
-	source, err := LoadWordsFromGob(filepath.Join("data", "words.gob"))
-	if err == nil {
+	if source, err := LoadWordsFromGob(filepath.Join("data", "words.gob")); err == nil {
 		sourceMu.Lock()
 		localSource = source
 		sourceMu.Unlock()
 	}
+
+	if words, err := loadStringSliceGob(filepath.Join("data", "nick_leads.gob")); err == nil && len(words) > 0 {
+		nickPartsMu.Lock()
+		leadWords = words
+		nickPartsMu.Unlock()
+	}
+	if words, err := loadStringSliceGob(filepath.Join("data", "nick_tails.gob")); err == nil && len(words) > 0 {
+		nickPartsMu.Lock()
+		tailWords = words
+		nickPartsMu.Unlock()
+	}
 }
 
 func LoadWordsFromGob(filepath string) (*LocalWordSource, error) {
-	file, err := os.Open(filepath)
+	words, err := loadStringSliceGob(filepath)
 	if err != nil {
 		return nil, fmt.Errorf("could not open words file: %v", err)
-	}
-	defer file.Close()
-
-	var words []string
-	decoder := gob.NewDecoder(file)
-	if err := decoder.Decode(&words); err != nil {
-		return nil, fmt.Errorf("error decoding words: %v", err)
 	}
 
 	return &LocalWordSource{
 		words: words,
 	}, nil
+}
+
+func loadStringSliceGob(path string) ([]string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var words []string
+	if err := gob.NewDecoder(file).Decode(&words); err != nil {
+		return nil, fmt.Errorf("error decoding words: %v", err)
+	}
+	return words, nil
 }
 
 func (lws *LocalWordSource) GetRandomWords(count int) ([]string, error) {
@@ -80,94 +111,153 @@ func (lws *LocalWordSource) GetRandomWords(count int) ([]string, error) {
 	return result, nil
 }
 
-func GetWordsFromAPI(apiURL string, maxWordLength, timeout, count int) ([]string, error) {
-	sourceMu.RLock()
-	if localSource != nil {
-		words, err := localSource.GetRandomWords(count)
-		sourceMu.RUnlock()
-		if err == nil {
-			return words, nil
-		}
-	} else {
-		sourceMu.RUnlock()
-	}
-
-	client := &http.Client{
-		Timeout: time.Duration(timeout) * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
-		},
-	}
-	url := fmt.Sprintf("%s?count=%d&length=%d", apiURL, count, maxWordLength)
-	resp, err := client.Get(url)
-	if err != nil {
-		return generateFallbackWords(count), nil
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return generateFallbackWords(count), nil
-	}
-
-	var response APIResponse
-	err = json.Unmarshal(body, &response)
-	if err != nil || len(response.Words) < count {
-		return generateFallbackWords(count), nil
-	}
-
-	return response.Words[:count], nil
+func GetWordsFromAPI(_ string, maxWordLength, _ int, count int) ([]string, error) {
+	return generateNickPool(count, normalizedNickLength(maxWordLength))
 }
 
-func GenerateRandomNick(apiURL string, maxWordLength int, timeoutSeconds int) (string, error) {
-	sourceMu.RLock()
-	if localSource != nil {
-		words, err := localSource.GetRandomWords(1)
-		sourceMu.RUnlock()
-		if err == nil && len(words) > 0 {
-			return capitalize(words[0]), nil
+func GenerateRandomNick(_ string, maxWordLength int, _ int) (string, error) {
+	return generateComposedNick(normalizedNickLength(maxWordLength))
+}
+
+func generateNickPool(count, maxWordLength int) ([]string, error) {
+	seen := make(map[string]struct{}, count)
+	nicks := make([]string, 0, count)
+
+	maxAttempts := count * 64
+	for attempts := 0; attempts < maxAttempts && len(nicks) < count; attempts++ {
+		nick, err := generateComposedNick(maxWordLength)
+		if err != nil {
+			continue
 		}
-	} else {
-		sourceMu.RUnlock()
+		if _, exists := seen[nick]; exists {
+			continue
+		}
+		seen[nick] = struct{}{}
+		nicks = append(nicks, nick)
 	}
 
-	client := &http.Client{
-		Timeout: time.Duration(timeoutSeconds) * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
-		},
+	if len(nicks) < count {
+		return nil, fmt.Errorf("generated only %d unique nicks out of %d requested", len(nicks), count)
 	}
-	fullURL := fmt.Sprintf("%s?upto=%d&count=100", apiURL, maxWordLength)
-	resp, err := client.Get(fullURL)
-	if err != nil {
-		return GenerateFallbackNick(), nil
-	}
-	defer resp.Body.Close()
+	return nicks, nil
+}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return GenerateFallbackNick(), nil
+func generateComposedNick(maxWordLength int) (string, error) {
+	leads, tails := getNickParts()
+	if len(leads) == 0 || len(tails) == 0 {
+		return "", fmt.Errorf("nick banks are empty")
 	}
 
-	var apiResp APIResponse
-	err = json.Unmarshal(body, &apiResp)
-	if err != nil || len(apiResp.Words) == 0 {
-		return GenerateFallbackNick(), nil
+	for attempts := 0; attempts < 256; attempts++ {
+		lead := leads[rand.Intn(len(leads))]
+		tail := tails[rand.Intn(len(tails))]
+
+		nick, ok := combineNickParts(lead, tail, maxWordLength)
+		if !ok || wasRecentlyGenerated(nick) {
+			continue
+		}
+
+		markRecentlyGenerated(nick)
+		return nick, nil
 	}
 
-	validWords := []string{}
-	for _, word := range apiResp.Words {
-		word = strings.TrimSpace(word)
-		if len(word) >= 3 && len(word) <= maxWordLength && isAlpha(word) {
-			validWords = append(validWords, capitalize(word))
+	return "", fmt.Errorf("failed to generate a valid nick")
+}
+
+func getNickParts() ([]string, []string) {
+	nickPartsMu.RLock()
+	defer nickPartsMu.RUnlock()
+
+	leads := leadWords
+	if len(leads) == 0 {
+		leads = fallbackLeads
+	}
+	tails := tailWords
+	if len(tails) == 0 {
+		tails = fallbackTails
+	}
+	return leads, tails
+}
+
+func combineNickParts(lead, tail string, maxWordLength int) (string, bool) {
+	maxWordLength = normalizedNickLength(maxWordLength)
+
+	if len(lead)+len(tail) > maxWordLength {
+		return "", false
+	}
+
+	nick := lead + tail
+	if !isNickCandidate(nick, maxWordLength) {
+		return "", false
+	}
+	if strings.HasPrefix(tail, lead) || strings.HasSuffix(lead, tail) {
+		return "", false
+	}
+
+	return nick, true
+}
+
+func isNickCandidate(nick string, maxLen int) bool {
+	if len(nick) < 6 || len(nick) > maxLen || !isAlpha(nick) {
+		return false
+	}
+
+	vowels := 0
+	repeat := 1
+	for i, r := range nick {
+		switch r {
+		case 'a', 'e', 'i', 'o', 'u', 'y':
+			vowels++
+		}
+
+		if i > 0 && nick[i] == nick[i-1] {
+			repeat++
+			if repeat >= 3 {
+				return false
+			}
+		} else {
+			repeat = 1
 		}
 	}
 
-	if len(validWords) == 0 {
-		return GenerateFallbackNick(), nil
+	if vowels < 2 {
+		return false
 	}
 
-	return validWords[rand.Intn(len(validWords))], nil
+	for _, ugly := range []string{
+		"qj", "jq", "zx", "xz", "vv", "ww", "jj", "kkk", "qq", "yyy",
+	} {
+		if strings.Contains(nick, ugly) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func wasRecentlyGenerated(nick string) bool {
+	recentNickMu.Lock()
+	defer recentNickMu.Unlock()
+	_, exists := recentNickSet[nick]
+	return exists
+}
+
+func markRecentlyGenerated(nick string) {
+	recentNickMu.Lock()
+	defer recentNickMu.Unlock()
+
+	if _, exists := recentNickSet[nick]; exists {
+		return
+	}
+
+	recentNickSet[nick] = struct{}{}
+	recentNickQueue = append(recentNickQueue, nick)
+
+	if len(recentNickQueue) > recentNickWindow {
+		oldest := recentNickQueue[0]
+		recentNickQueue = recentNickQueue[1:]
+		delete(recentNickSet, oldest)
+	}
 }
 
 func generateFallbackWords(count int) []string {
@@ -179,39 +269,34 @@ func generateFallbackWords(count int) []string {
 }
 
 func GenerateFallbackNick() string {
-	// Próba pobrania słowa z lokalnego źródła
-	sourceMu.RLock()
-	if localSource != nil {
-		words, err := localSource.GetRandomWords(1)
-		sourceMu.RUnlock()
-		if err == nil && len(words) > 0 {
-			return capitalize(words[0])
-		}
-	} else {
-		sourceMu.RUnlock()
+	nick, err := generateComposedNick(defaultNickLength)
+	if err == nil {
+		return nick
 	}
 
-	// Jeśli nie udało się pobrać z lokalnego źródła, generujemy losowy nick
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	nick := make([]byte, 8)
-	for i := range nick {
-		nick[i] = charset[rand.Intn(len(charset))]
+	const charset = "abcdefghijklmnopqrstuvwxyz"
+	value := make([]byte, 8)
+	for i := range value {
+		value[i] = charset[rand.Intn(len(charset))]
 	}
-	return string(nick)
+	return string(value)
+}
+
+func normalizedNickLength(length int) int {
+	if length <= 0 {
+		return defaultNickLength
+	}
+	if length > maxNickLengthCap {
+		return maxNickLengthCap
+	}
+	return length
 }
 
 func isAlpha(s string) bool {
 	for _, r := range s {
-		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')) {
+		if r < 'a' || r > 'z' {
 			return false
 		}
 	}
 	return true
-}
-
-func capitalize(s string) string {
-	if len(s) == 0 {
-		return s
-	}
-	return strings.ToUpper(string(s[0])) + strings.ToLower(s[1:])
 }

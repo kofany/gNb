@@ -785,7 +785,7 @@ func (b *Bot) Reconnect() {
 		time.Sleep(2 * time.Second)
 	}
 
-	newNick, err := util.GenerateRandomNick(b.GlobalConfig.NickAPI.URL, b.GlobalConfig.NickAPI.MaxWordLength, b.GlobalConfig.NickAPI.Timeout)
+	newNick, err := util.GenerateRandomNick(b.GlobalConfig.NickAPI.URL, b.GlobalConfig.MaxNickLength, b.GlobalConfig.NickAPI.Timeout)
 	if err != nil {
 		newNick = util.GenerateFallbackNick()
 	}

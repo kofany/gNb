@@ -68,7 +68,7 @@ func CheckAndCreateConfigFiles() error {
     url: 'https://i.got.al/words.php'
     max_word_length: 12
     timeout: 5  # Timeout for API requests in seconds
-  max_nick_length: 14
+  max_nick_length: 15
   owner_command_prefixes:
     - "!"
     - "."
