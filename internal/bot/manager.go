@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -181,6 +182,12 @@ func (bm *BotManager) startBotWithRetry(bot types.Bot) bool {
 	startTime := time.Now()
 
 	for {
+		select {
+		case <-bm.ctx.Done():
+			return false
+		default:
+		}
+
 		if time.Since(startTime) > maxTime {
 			return false
 		}
@@ -198,7 +205,11 @@ func (bm *BotManager) startBotWithRetry(bot types.Bot) bool {
 		}
 
 		util.Warning("Bot %s connection attempt failed: %v", bot.GetCurrentNick(), err)
-		time.Sleep(retryInterval)
+		select {
+		case <-time.After(retryInterval):
+		case <-bm.ctx.Done():
+			return false
+		}
 	}
 }
 
@@ -468,22 +479,49 @@ func (bm *BotManager) SendSingleMsg(channel, message string) {
 
 	start := bm.commandBotIndex % len(bm.bots)
 	var bot types.Bot
+	channelTarget := isChannelTarget(channel)
 	for i := 0; i < len(bm.bots); i++ {
 		idx := (start + i) % len(bm.bots)
 		candidate := bm.bots[idx]
-		if candidate != nil && candidate.IsConnected() {
-			bot = candidate
-			bm.commandBotIndex = (idx + 1) % len(bm.bots)
-			break
+		if candidate == nil || !candidate.IsConnected() {
+			continue
 		}
+		if channelTarget && !candidate.IsOnChannel(channel) {
+			continue
+		}
+		bot = candidate
+		bm.commandBotIndex = (idx + 1) % len(bm.bots)
+		break
 	}
 	bm.mutex.Unlock()
 
 	if bot == nil {
+		if channelTarget {
+			util.Warning("No connected bot currently joined to %s; skipping reply", channel)
+		}
 		return
 	}
 
 	bot.SendMessage(channel, message)
+}
+
+func isChannelTarget(target string) bool {
+	if target == "" {
+		return false
+	}
+
+	switch {
+	case strings.HasPrefix(target, "#"):
+		return true
+	case strings.HasPrefix(target, "&"):
+		return true
+	case strings.HasPrefix(target, "+"):
+		return true
+	case strings.HasPrefix(target, "!"):
+		return true
+	default:
+		return false
+	}
 }
 
 func (bm *BotManager) GetTotalCreatedBots() int {

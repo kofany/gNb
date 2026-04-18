@@ -11,6 +11,7 @@ type Bot interface {
 	AttemptNickChange(nick string)
 	GetCurrentNick() string
 	IsConnected() bool
+	IsOnChannel(channel string) bool
 	SetOwnerList(owners auth.OwnerList)
 	SetChannels(channels []string)
 	RequestISON(nicks []string) ([]string, error)

@@ -236,6 +236,73 @@ func (b *Bot) Connect() error {
 	return err
 }
 
+func (b *Bot) logJoinFailure(event *irc.Event) {
+	channel := ""
+	if len(event.Arguments) > 1 {
+		channel = event.Arguments[1]
+	} else if len(event.Arguments) > 0 {
+		channel = event.Arguments[0]
+	}
+
+	util.Warning(
+		"Bot %s failed to join %s on %s with %s: %s (args=%v)",
+		b.GetCurrentNick(),
+		channel,
+		b.Config.Server,
+		event.Code,
+		event.Message(),
+		event.Arguments,
+	)
+}
+
+func (b *Bot) scheduleJoinVerification(channel string) {
+	go func(expectedChannel string, nickSnapshot string) {
+		time.Sleep(12 * time.Second)
+
+		if !b.IsConnected() {
+			util.Warning("Bot %s disconnected before join to %s could be confirmed", nickSnapshot, expectedChannel)
+			return
+		}
+
+		if b.IsOnChannel(expectedChannel) {
+			util.Info("Bot %s confirmed in channel %s", b.GetCurrentNick(), expectedChannel)
+			return
+		}
+
+		util.Warning(
+			"Bot %s did not confirm join to %s within 12s on %s; joined=%v configured_channels=%v",
+			b.GetCurrentNick(),
+			expectedChannel,
+			b.Config.Server,
+			b.joinedChannelList(),
+			b.configuredChannels(),
+		)
+	}(channel, b.GetCurrentNick())
+}
+
+func (b *Bot) joinedChannelList() []string {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	joined := make([]string, 0, len(b.joinedChannels))
+	for channel, ok := range b.joinedChannels {
+		if ok {
+			joined = append(joined, channel)
+		}
+	}
+	slices.Sort(joined)
+	return joined
+}
+
+func (b *Bot) configuredChannels() []string {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	channels := make([]string, len(b.channels))
+	copy(channels, b.channels)
+	return channels
+}
+
 func (b *Bot) Quit(message string) {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
@@ -290,6 +357,8 @@ func (b *Bot) addCallbacks() {
 		b.mutex.Lock()
 		b.joinedChannels = make(map[string]bool)
 		b.mutex.Unlock()
+
+		util.Info("Bot %s preparing to join configured channels: %v", b.GetCurrentNick(), b.configuredChannels())
 
 		// Join channels
 		for _, channel := range b.channels {
@@ -395,6 +464,10 @@ func (b *Bot) addCallbacks() {
 		}
 	})
 
+	for _, code := range []string{"403", "404", "405", "471", "473", "474", "475", "476", "477"} {
+		b.Connection.AddCallback(code, b.logJoinFailure)
+	}
+
 	// BNC + DCC
 	b.Connection.AddCallback("CTCP", b.handleCTCP)
 	b.Connection.AddCallback("*", func(e *irc.Event) {
@@ -423,7 +496,7 @@ func (b *Bot) addCallbacks() {
 	b.Connection.AddCallback("JOIN", func(e *irc.Event) {
 		if e.Nick == b.Connection.GetNick() {
 			channel := e.Arguments[0]
-			util.Debug("Bot %s has joined channel %s", b.GetCurrentNick(), channel)
+			util.Info("Bot %s has joined channel %s", b.GetCurrentNick(), channel)
 			b.mutex.Lock()
 			b.joinedChannels[channel] = true
 			b.mutex.Unlock()
@@ -518,7 +591,7 @@ func (b *Bot) addCallbacks() {
 	// Callback for disconnection
 	b.Connection.AddCallback("DISCONNECTED", func(e *irc.Event) {
 		currentNick := b.GetCurrentNick()
-		util.Warning("Bot %s disconnected from server %s", currentNick, b.ServerName)
+		util.Warning("Bot %s disconnected from server %s: %s", currentNick, b.ServerName, e.Message())
 		b.markAsDisconnected()
 		// Library auto-reconnects; we only log here.
 	})
@@ -683,10 +756,11 @@ func (b *Bot) ChangeNick(newNick string) {
 
 func (b *Bot) JoinChannel(channel string) {
 	if b.IsConnected() {
-		util.Debug("Bot %s is joining channel %s", b.GetCurrentNick(), channel)
+		util.Info("Bot %s sending JOIN for %s on %s", b.GetCurrentNick(), channel, b.Config.Server)
 		b.Connection.Join(channel)
+		b.scheduleJoinVerification(channel)
 	} else {
-		util.Debug("Bot %s is not connected; cannot join channel %s", b.GetCurrentNick(), channel)
+		util.Warning("Bot %s is not connected; cannot join channel %s", b.GetCurrentNick(), channel)
 	}
 }
 
@@ -704,8 +778,8 @@ func (b *Bot) PartChannel(channel string) {
 	}
 }
 
-// isChannelJoined checks if a channel is marked as joined
-func (b *Bot) isChannelJoined(channel string) bool {
+// IsOnChannel reports whether the bot has confirmed JOIN for the channel.
+func (b *Bot) IsOnChannel(channel string) bool {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	return b.joinedChannels[channel]
@@ -750,7 +824,7 @@ func (b *Bot) checkAndRejoinChannels() {
 	b.mutex.Unlock()
 
 	for _, channel := range channels {
-		if !b.isChannelJoined(channel) {
+		if !b.IsOnChannel(channel) {
 			util.Info("Bot %s is not in channel %s, rejoining", b.GetCurrentNick(), channel)
 			b.JoinChannel(channel)
 		}

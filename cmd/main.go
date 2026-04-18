@@ -183,6 +183,10 @@ func main() {
 			color.Red("Invalid log level in config: %v", err)
 			os.Exit(1)
 		}
+		if level != util.DEBUG {
+			color.Yellow("Overriding log level to DEBUG in development mode")
+			level = util.DEBUG
+		}
 		color.Green("Log level set to %s", logLevelToString(level))
 
 		logFile := "bot_dev.log"
@@ -220,10 +224,11 @@ func main() {
 
 	// Uruchomienie botów
 	color.Blue("Starting bots")
-	go botManager.StartBots()
-
-	color.Blue("Starting NickManager's monitoring loop")
-	go nm.Start()
+	go func() {
+		botManager.StartBots()
+		color.Blue("Starting NickManager's monitoring loop")
+		nm.Start()
+	}()
 
 	util.Debug("Configuration loaded: %+v", cfg)
 

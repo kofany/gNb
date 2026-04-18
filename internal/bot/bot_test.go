@@ -12,15 +12,17 @@ import (
 )
 
 type stubBot struct {
-	nick      string
-	connected bool
-	sent      []string
-	mu        sync.Mutex
+	nick           string
+	connected      bool
+	joinedChannels map[string]bool
+	sent           []string
+	mu             sync.Mutex
 }
 
 func (b *stubBot) AttemptNickChange(_ string)               {}
 func (b *stubBot) GetCurrentNick() string                   { return b.nick }
 func (b *stubBot) IsConnected() bool                        { return b.connected }
+func (b *stubBot) IsOnChannel(channel string) bool          { return b.joinedChannels[channel] }
 func (b *stubBot) SetOwnerList(_ auth.OwnerList)            {}
 func (b *stubBot) SetChannels(_ []string)                   {}
 func (b *stubBot) RequestISON(_ []string) ([]string, error) { return nil, nil }
@@ -117,9 +119,9 @@ func TestISONMechanism(t *testing.T) {
 }
 
 func TestSendSingleMsgSkipsDisconnectedBotsAndRoundRobins(t *testing.T) {
-	bot1 := &stubBot{nick: "one", connected: true}
-	bot2 := &stubBot{nick: "two", connected: false}
-	bot3 := &stubBot{nick: "three", connected: true}
+	bot1 := &stubBot{nick: "one", connected: true, joinedChannels: map[string]bool{"#chan": true}}
+	bot2 := &stubBot{nick: "two", connected: false, joinedChannels: map[string]bool{"#chan": true}}
+	bot3 := &stubBot{nick: "three", connected: true, joinedChannels: map[string]bool{"#chan": true}}
 
 	manager := &BotManager{
 		bots: []types.Bot{bot1, bot2, bot3},
@@ -141,6 +143,40 @@ func TestSendSingleMsgSkipsDisconnectedBotsAndRoundRobins(t *testing.T) {
 
 	if bot1.sent[0] != "#chan:first" || bot3.sent[0] != "#chan:second" || bot1.sent[1] != "#chan:third" {
 		t.Fatalf("unexpected send order: bot1=%v bot3=%v", bot1.sent, bot3.sent)
+	}
+}
+
+func TestSendSingleMsgUsesOnlyBotsJoinedToChannel(t *testing.T) {
+	bot1 := &stubBot{nick: "one", connected: true, joinedChannels: map[string]bool{}}
+	bot2 := &stubBot{nick: "two", connected: true, joinedChannels: map[string]bool{"#chan": true}}
+	bot3 := &stubBot{nick: "three", connected: true, joinedChannels: map[string]bool{}}
+
+	manager := &BotManager{
+		bots: []types.Bot{bot1, bot2, bot3},
+	}
+
+	manager.SendSingleMsg("#chan", "reply")
+
+	if len(bot1.sent) != 0 || len(bot3.sent) != 0 {
+		t.Fatalf("expected only joined bot to send, got bot1=%v bot3=%v", bot1.sent, bot3.sent)
+	}
+	if len(bot2.sent) != 1 || bot2.sent[0] != "#chan:reply" {
+		t.Fatalf("expected joined bot2 to send reply, got %v", bot2.sent)
+	}
+}
+
+func TestSendSingleMsgSkipsChannelReplyWhenNoBotJoined(t *testing.T) {
+	bot1 := &stubBot{nick: "one", connected: true, joinedChannels: map[string]bool{}}
+	bot2 := &stubBot{nick: "two", connected: true, joinedChannels: map[string]bool{}}
+
+	manager := &BotManager{
+		bots: []types.Bot{bot1, bot2},
+	}
+
+	manager.SendSingleMsg("#chan", "reply")
+
+	if len(bot1.sent) != 0 || len(bot2.sent) != 0 {
+		t.Fatalf("expected no sends when no bot joined channel, got bot1=%v bot2=%v", bot1.sent, bot2.sent)
 	}
 }
 
