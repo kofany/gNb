@@ -855,8 +855,14 @@ func (b *Bot) Reconnect() {
 
 	if conn != nil {
 		conn.QuitMessage = "Reconnecting"
+		// Quit() sends QUIT and sets irc.quit=true (after a 1s internal sleep),
+		// which stops the library's auto-reconnect in Loop(). Disconnect()
+		// closes the socket and end channel so the old Loop exits promptly
+		// instead of lingering on the read. Without Disconnect there is a
+		// 1–several-second window where both the old and new connections
+		// are live against the server simultaneously.
 		conn.Quit()
-		time.Sleep(2 * time.Second)
+		conn.Disconnect()
 	}
 
 	newNick, err := util.GenerateRandomNick(b.GlobalConfig.NickAPI.URL, b.GlobalConfig.MaxNickLength, b.GlobalConfig.NickAPI.Timeout)
