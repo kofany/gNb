@@ -79,6 +79,13 @@ func (s *Server) registerRoutes() {
 	s.router.Register("bot.list", handleBotList)
 	s.router.Register("nicks.list", handleNicksList)
 	s.router.Register("owners.list", handleOwnersList)
+	s.router.Register("bot.say", handleBotSay)
+	s.router.Register("bot.join", handleBotJoin)
+	s.router.Register("bot.part", handleBotPart)
+	s.router.Register("bot.quit", handleBotQuit)
+	s.router.Register("bot.reconnect", handleBotReconnect)
+	s.router.Register("bot.change_nick", handleBotChangeNick)
+	s.router.Register("bot.raw", handleBotRaw)
 }
 
 // Hub returns the EventHub.

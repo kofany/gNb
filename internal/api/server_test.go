@@ -217,6 +217,81 @@ func TestNicksListAfterAuth(t *testing.T) {
 	}
 }
 
+func TestBotRaw(t *testing.T) {
+	_, ts, fbm := testServer(t)
+	defer ts.Close()
+	c := authed(t, ts)
+	defer c.Close(websocket.StatusNormalClosure, "")
+	botID := ComputeBotID("irc.example", 6667, "v", 0)
+	ctx := context.Background()
+	_ = wsjson.Write(ctx, c, map[string]interface{}{
+		"type": "request", "id": "1", "method": "bot.raw",
+		"params": map[string]string{"bot_id": botID, "line": "WHO foo\r\nEXTRA"},
+	})
+	var resp map[string]interface{}
+	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_ = wsjson.Read(rctx, c, &resp)
+	if resp["type"] != "response" {
+		t.Fatalf("bad: %+v", resp)
+	}
+	fb := fbm.bots[0].(*fakeBot)
+	fb.mu.Lock()
+	defer fb.mu.Unlock()
+	if len(fb.raw) != 1 {
+		t.Fatalf("want 1 raw line, got %d", len(fb.raw))
+	}
+	// CR/LF must be stripped.
+	if fb.raw[0] != "WHO fooEXTRA" {
+		t.Fatalf("raw not sanitized: %q", fb.raw[0])
+	}
+}
+
+func TestBotChangeNickPropagates(t *testing.T) {
+	_, ts, fbm := testServer(t)
+	defer ts.Close()
+	c := authed(t, ts)
+	defer c.Close(websocket.StatusNormalClosure, "")
+	botID := ComputeBotID("irc.example", 6667, "v", 0)
+	ctx := context.Background()
+	_ = wsjson.Write(ctx, c, map[string]interface{}{
+		"type": "request", "id": "1", "method": "bot.change_nick",
+		"params": map[string]string{"bot_id": botID, "new_nick": "zz"},
+	})
+	var resp map[string]interface{}
+	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_ = wsjson.Read(rctx, c, &resp)
+	if resp["type"] != "response" {
+		t.Fatalf("bad: %+v", resp)
+	}
+	fb := fbm.bots[0].(*fakeBot)
+	fb.mu.Lock()
+	defer fb.mu.Unlock()
+	if fb.newNick != "zz" {
+		t.Fatalf("want newNick=zz, got %q", fb.newNick)
+	}
+}
+
+func TestBotNotFound(t *testing.T) {
+	_, ts, _ := testServer(t)
+	defer ts.Close()
+	c := authed(t, ts)
+	defer c.Close(websocket.StatusNormalClosure, "")
+	ctx := context.Background()
+	_ = wsjson.Write(ctx, c, map[string]interface{}{
+		"type": "request", "id": "1", "method": "bot.raw",
+		"params": map[string]string{"bot_id": "nonexistent", "line": "WHO"},
+	})
+	var resp map[string]interface{}
+	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_ = wsjson.Read(rctx, c, &resp)
+	if resp["type"] != "error" || resp["code"] != "not_found" {
+		t.Fatalf("want not_found error, got %+v", resp)
+	}
+}
+
 func TestHandshakeTimeout(t *testing.T) {
 	_, ts, _ := testServer(t)
 	defer ts.Close()
