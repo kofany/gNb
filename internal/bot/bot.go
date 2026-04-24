@@ -383,6 +383,10 @@ func (b *Bot) addCallbacks() {
 		util.Info("Bot %s fully connected to %s as %s", currentNick, serverName, currentNick)
 		util.Info("Bot %s preparing to join configured channels: %v", currentNick, channelsCopy)
 
+		if sink := b.currentSink(); sink != nil {
+			sink.BotConnected(b.botID, currentNick, serverName)
+		}
+
 		for _, channel := range channelsCopy {
 			b.JoinChannel(channel)
 		}
@@ -407,6 +411,15 @@ func (b *Bot) addCallbacks() {
 			b.mutex.Lock()
 			b.CurrentNick = newNick
 			b.mutex.Unlock()
+
+			if sink := b.currentSink(); sink != nil {
+				sink.BotNickChanged(b.botID, oldNick, newNick)
+				if len(newNick) == 1 {
+					sink.BotNickCaptured(b.botID, newNick, "letter")
+				} else if b.nickManager != nil && util.IsTargetNick(newNick, b.nickManager.GetNicksToCatch()) {
+					sink.BotNickCaptured(b.botID, newNick, "priority")
+				}
+			}
 
 			// Notify the nick manager about the change
 			if b.nickManager != nil {
@@ -576,6 +589,10 @@ func (b *Bot) addCallbacks() {
 		b.gaveUp = true
 		b.mutex.Unlock()
 
+		if sink := b.currentSink(); sink != nil {
+			sink.BotBanned(b.botID, 465)
+		}
+
 		// Zamykamy połączenie i usuwamy bota z managera. Nie nil-ujemy pól
 		// b.Connection / b.botManager / b.nickManager — po Quit callbacki
 		// biblioteki mogą jeszcze odpalić (DISCONNECTED, "*"), a ich
@@ -588,12 +605,16 @@ func (b *Bot) addCallbacks() {
 	})
 
 	// Callback dla ERR_YOUWILLBEBANNED (466)
-	b.Connection.AddCallback("466", func(e *irc.Event) {
+	b.Connection.AddCallback("466", func(_ *irc.Event) {
 		util.Warning("Bot %s will be banned from server %s", b.GetCurrentNick(), b.ServerName)
 
 		b.mutex.Lock()
 		b.gaveUp = true
 		b.mutex.Unlock()
+
+		if sink := b.currentSink(); sink != nil {
+			sink.BotBanned(b.botID, 466)
+		}
 
 		b.Quit("Pre-emptive disconnect due to incoming ban")
 
@@ -607,6 +628,9 @@ func (b *Bot) addCallbacks() {
 		currentNick := b.GetCurrentNick()
 		util.Warning("Bot %s disconnected from server %s: %s", currentNick, b.ServerName, e.Message())
 		b.markAsDisconnected()
+		if sink := b.currentSink(); sink != nil {
+			sink.BotDisconnected(b.botID, e.Message())
+		}
 		// Library auto-reconnects; we only log here.
 	})
 }
