@@ -8,12 +8,29 @@ func TestMatchUserHostWildcards(t *testing.T) {
 		userHost string
 		want     bool
 	}{
+		// * — zero-or-more of anything
 		{"*!ident@host.example", "nick!ident@host.example", true},
 		{"*!ident@host.example", "nick!other@host.example", false},
 		{"*!*@*.example.com", "nick!user@box.example.com", true},
 		{"*!*@*.example.com", "nick!user@box.other.com", false},
+
+		// ? — single char valid in ident/host (excludes !, @, whitespace)
 		{"*!user?@host", "nick!user1@host", true},
 		{"*!user?@host", "nick!user@host", false},
+		{"*!u?er@host", "nick!u.er@host", true}, // '.' is a valid ident char
+		{"*!u?er@host", "nick!u@er@host", false},
+		{"*!*@a?c.host", "nick!u@abc.host", true},
+		{"*!*@a?c.host", "nick!u@a.c.host", true}, // '.' OK inside host segment
+		{"*!*@??.example", "nick!u@42.example", true},
+
+		// # — exactly one digit
+		{"*!*@1#2.#.host", "nick!u@142.5.host", true},
+		{"*!*@1#2.#.host", "nick!u@1a2.5.host", false}, // 'a' not a digit
+		{"*!*@1#2.#.host", "nick!u@142.a.host", false},
+		{"*!*@##.example", "nick!u@42.example", true},
+		{"*!*@##.example", "nick!u@4a.example", false},
+
+		// Malformed
 		{"malformed", "nick!user@host", false},
 		{"*!ident@host", "malformed", false},
 	}

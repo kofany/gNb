@@ -68,10 +68,21 @@ func (m *Matcher) compile(pattern string) *regexp.Regexp {
 	}
 
 	// Escape regex special characters, then substitute IRC wildcards.
+	//
+	//   *  -> .*              (zero or more of any char)
+	//   ?  -> [^!@\s]         (one char that can legally appear in an
+	//                          ident or host: not a mask separator, not
+	//                          whitespace — matches letters, digits,
+	//                          '.', '-', '_', '[]{}|~^', ':' for IPv6, etc.)
+	//   #  -> [0-9]           (exactly one digit)
+	//
+	// QuoteMeta escapes '*' and '?' to '\*' and '\?' (regex metacharacters)
+	// but leaves '#' untouched because '#' is not a regex metacharacter, so
+	// the digit-wildcard substitution has to target the literal '#'.
 	rePat := regexp.QuoteMeta(pattern)
 	rePat = strings.ReplaceAll(rePat, `\*`, ".*")
-	rePat = strings.ReplaceAll(rePat, `\?`, ".")
-	rePat = strings.ReplaceAll(rePat, `\#`, "[0-9]")
+	rePat = strings.ReplaceAll(rePat, `\?`, `[^!@\s]`)
+	rePat = strings.ReplaceAll(rePat, "#", "[0-9]")
 	rePat = "^" + rePat + "$"
 
 	re, err := regexp.Compile(rePat)
