@@ -80,6 +80,16 @@ func (s *Session) listAttached() []string {
 	return out
 }
 
+// startSubPump drains sub's channel and forwards every event to the session's
+// outbound writer. Runs until the subscriber is unsubscribed (channel close).
+func (s *Session) startSubPump(sub *Subscriber) {
+	go func() {
+		for msg := range sub.Ch() {
+			s.send(msg)
+		}
+	}()
+}
+
 // close handles cleanup: detach from attach manager, unsubscribe from hub.
 func (s *Session) close() {
 	for _, bid := range s.listAttached() {

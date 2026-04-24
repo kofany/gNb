@@ -405,6 +405,63 @@ func TestBNCStart(t *testing.T) {
 	}
 }
 
+func TestEventsSubscribeAndReceive(t *testing.T) {
+	srv, ts, _ := testServer(t)
+	defer ts.Close()
+	c := authed(t, ts)
+	defer c.Close(websocket.StatusNormalClosure, "")
+	ctx := context.Background()
+	_ = wsjson.Write(ctx, c, map[string]interface{}{
+		"type": "request", "id": "1", "method": "events.subscribe",
+		"params": map[string]interface{}{"topics": []string{"bot.connected"}, "replay_last": 0},
+	})
+	var resp map[string]interface{}
+	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_ = wsjson.Read(rctx, c, &resp)
+	if resp["type"] != "response" {
+		t.Fatalf("bad: %+v", resp)
+	}
+
+	srv.hub.Publish("bot.connected", map[string]string{"bot_id": "x"})
+	var ev map[string]interface{}
+	rctx2, cancel2 := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel2()
+	_ = wsjson.Read(rctx2, c, &ev)
+	if ev["type"] != "event" || ev["event"] != "bot.connected" {
+		t.Fatalf("bad event: %+v", ev)
+	}
+}
+
+func TestEventsReplay(t *testing.T) {
+	srv, ts, _ := testServer(t)
+	defer ts.Close()
+	for i := 0; i < 3; i++ {
+		srv.hub.Publish("bot.connected", map[string]int{"i": i})
+	}
+	c := authed(t, ts)
+	defer c.Close(websocket.StatusNormalClosure, "")
+	ctx := context.Background()
+	_ = wsjson.Write(ctx, c, map[string]interface{}{
+		"type": "request", "id": "1", "method": "events.subscribe",
+		"params": map[string]interface{}{"replay_last": 2},
+	})
+	seen := map[string]int{}
+	for i := 0; i < 3; i++ {
+		var m map[string]interface{}
+		rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		if err := wsjson.Read(rctx, c, &m); err != nil {
+			cancel()
+			t.Fatal(err)
+		}
+		cancel()
+		seen[m["type"].(string)]++
+	}
+	if seen["response"] != 1 || seen["event"] != 2 {
+		t.Fatalf("bad breakdown: %+v", seen)
+	}
+}
+
 func TestHandshakeTimeout(t *testing.T) {
 	_, ts, _ := testServer(t)
 	defer ts.Close()
