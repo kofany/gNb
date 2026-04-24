@@ -49,7 +49,8 @@ type Bot struct {
 	bncServer          *bnc.BNCServer
 	mutex              sync.Mutex
 	dccTunnel          *dcc.DCCTunnel
-	channelCheckTicker *time.Ticker // Ticker for periodic channel check
+	channelCheckTicker *time.Ticker  // Ticker for periodic channel check
+	channelCheckerStop chan struct{} // Stop signal for the current checker goroutine
 }
 
 // GetBotManager returns the BotManager for this bot
@@ -311,6 +312,10 @@ func (b *Bot) Quit(message string) {
 	if b.channelCheckTicker != nil {
 		b.channelCheckTicker.Stop()
 		b.channelCheckTicker = nil
+	}
+	if b.channelCheckerStop != nil {
+		close(b.channelCheckerStop)
+		b.channelCheckerStop = nil
 	}
 
 	// Clear joined channels map
@@ -785,27 +790,31 @@ func (b *Bot) IsOnChannel(channel string) bool {
 	return b.joinedChannels[channel]
 }
 
-// startChannelChecker starts a periodic check to ensure the bot is in all required channels
+// startChannelChecker starts a periodic check to ensure the bot is in all
+// required channels. Uses its own stop channel instead of b.connected, which
+// is closed on first Quit and never recreated when the library auto-reconnects.
 func (b *Bot) startChannelChecker() {
+	b.mutex.Lock()
 	if b.channelCheckTicker != nil {
 		b.channelCheckTicker.Stop()
 	}
-
-	// Check channels every 5 minutes
-	b.channelCheckTicker = time.NewTicker(5 * time.Minute)
+	if b.channelCheckerStop != nil {
+		close(b.channelCheckerStop)
+	}
+	ticker := time.NewTicker(5 * time.Minute)
+	stop := make(chan struct{})
+	b.channelCheckTicker = ticker
+	b.channelCheckerStop = stop
+	b.mutex.Unlock()
 
 	go func() {
 		for {
 			select {
-			case <-b.channelCheckTicker.C:
-				if !b.IsConnected() {
-					continue
+			case <-ticker.C:
+				if b.IsConnected() {
+					b.checkAndRejoinChannels()
 				}
-
-				b.checkAndRejoinChannels()
-
-			case <-b.connected:
-				// Channel closed, bot disconnected
+			case <-stop:
 				return
 			}
 		}
