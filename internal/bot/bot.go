@@ -1089,12 +1089,10 @@ func intToIP(intIP uint32) net.IP {
 }
 
 func (b *Bot) handleCTCP(e *irc.Event) {
+	// DCC requests arrive on CTCP_DCC via the dedicated callback; do not
+	// re-dispatch here or the request is handled twice (double net.Dial,
+	// the second call overwrites b.dccTunnel and the first leaks).
 	util.Debug("CTCP Event | Nick: %s | Args: %v | Message: %s", e.Nick, e.Arguments, e.Message())
-
-	ctcpMessage := e.Message()
-	if strings.HasPrefix(ctcpMessage, "DCC ") {
-		b.handleDCCRequest(e)
-	}
 }
 
 // minDuration returns the smaller of two time.Duration values.
