@@ -341,6 +341,70 @@ func TestMassJoinCooldown(t *testing.T) {
 	}
 }
 
+func TestNicksAddAndOwnersAdd(t *testing.T) {
+	_, ts, fbm := testServer(t)
+	defer ts.Close()
+	c := authed(t, ts)
+	defer c.Close(websocket.StatusNormalClosure, "")
+	ctx := context.Background()
+
+	_ = wsjson.Write(ctx, c, map[string]interface{}{
+		"type": "request", "id": "1", "method": "nicks.add",
+		"params": map[string]string{"nick": "newnick"},
+	})
+	var resp map[string]interface{}
+	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	_ = wsjson.Read(rctx, c, &resp)
+	cancel()
+	if resp["type"] != "response" {
+		t.Fatalf("nicks.add: %+v", resp)
+	}
+
+	_ = wsjson.Write(ctx, c, map[string]interface{}{
+		"type": "request", "id": "2", "method": "owners.add",
+		"params": map[string]string{"mask": "*!*foo@bar"},
+	})
+	rctx2, cancel2 := context.WithTimeout(ctx, 2*time.Second)
+	_ = wsjson.Read(rctx2, c, &resp)
+	cancel2()
+	if resp["type"] != "response" {
+		t.Fatalf("owners.add: %+v", resp)
+	}
+	if len(fbm.owners) != 1 || fbm.owners[0] != "*!*foo@bar" {
+		t.Fatalf("owners not tracked: %+v", fbm.owners)
+	}
+}
+
+func TestBNCStart(t *testing.T) {
+	_, ts, fbm := testServer(t)
+	defer ts.Close()
+	fb := fbm.bots[0].(*fakeBot)
+	fb.mu.Lock()
+	fb.bncPort = 4242
+	fb.bncPass = "pass"
+	fb.mu.Unlock()
+
+	c := authed(t, ts)
+	defer c.Close(websocket.StatusNormalClosure, "")
+	botID := ComputeBotID("irc.example", 6667, "v", 0)
+	ctx := context.Background()
+	_ = wsjson.Write(ctx, c, map[string]interface{}{
+		"type": "request", "id": "1", "method": "bnc.start",
+		"params": map[string]string{"bot_id": botID},
+	})
+	var resp map[string]interface{}
+	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_ = wsjson.Read(rctx, c, &resp)
+	if resp["type"] != "response" {
+		t.Fatalf("bad: %+v", resp)
+	}
+	r := resp["result"].(map[string]interface{})
+	if int(r["port"].(float64)) != 4242 || r["password"] != "pass" {
+		t.Fatalf("bad bnc result: %+v", r)
+	}
+}
+
 func TestHandshakeTimeout(t *testing.T) {
 	_, ts, _ := testServer(t)
 	defer ts.Close()
