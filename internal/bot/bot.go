@@ -533,6 +533,9 @@ func (b *Bot) addCallbacks() {
 			b.mutex.Lock()
 			b.joinedChannels[channel] = true
 			b.mutex.Unlock()
+			if sink := b.currentSink(); sink != nil {
+				sink.BotJoinedChannel(b.botID, channel)
+			}
 		}
 	})
 
@@ -544,6 +547,9 @@ func (b *Bot) addCallbacks() {
 			b.mutex.Lock()
 			delete(b.joinedChannels, channel)
 			b.mutex.Unlock()
+			if sink := b.currentSink(); sink != nil {
+				sink.BotPartedChannel(b.botID, channel)
+			}
 		}
 	})
 
@@ -560,6 +566,9 @@ func (b *Bot) addCallbacks() {
 			b.mutex.Lock()
 			delete(b.joinedChannels, channel)
 			b.mutex.Unlock()
+			if sink := b.currentSink(); sink != nil {
+				sink.BotKicked(b.botID, channel, e.Nick, reason)
+			}
 
 			// Try to rejoin after a delay if it's in our channel list
 			b.mutex.Lock()
