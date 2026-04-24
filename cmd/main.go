@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/fatih/color"
+	"github.com/kofany/gNb/internal/api"
 	"github.com/kofany/gNb/internal/auth"
 	"github.com/kofany/gNb/internal/bot"
 	"github.com/kofany/gNb/internal/config"
@@ -226,6 +228,31 @@ func main() {
 		nm.Start()
 	}()
 
+	// Panel API (WebSocket) — opcjonalne, gate'owane przez cfg.API.Enabled.
+	// Token z configu musi być ustawiony, inaczej APIConfig.Validate już wcześniej zwróciłoby błąd.
+	var apiCancel context.CancelFunc
+	if cfg.API.Enabled {
+		nodeID, idErr := api.LoadOrCreateNodeID(api.DefaultNodeIDPath())
+		if idErr != nil {
+			util.Error("API: failed to load/create node_id: %v", idErr)
+		} else {
+			apiSrv := api.New(cfg.API, nodeID, api.Deps{
+				Config:      cfg,
+				BotManager:  botManager,
+				NickManager: nm,
+			})
+			botManager.SetEventSink(apiSrv.Sink())
+			var apiCtx context.Context
+			apiCtx, apiCancel = context.WithCancel(context.Background())
+			go func() {
+				if err := apiSrv.Run(apiCtx); err != nil {
+					util.Error("API: %v", err)
+				}
+			}()
+			util.Info("API: panel WebSocket endpoint enabled at %s", cfg.API.BindAddr)
+		}
+	}
+
 	util.Debug("Configuration loaded: %+v", cfg)
 
 	// Obsługa sygnałów
@@ -245,6 +272,9 @@ func main() {
 
 	// Zamykanie aplikacji
 	color.Yellow("Shutdown signal received")
+	if apiCancel != nil {
+		apiCancel()
+	}
 	botManager.Stop()
 	util.Info("Application has been shut down.")
 	color.Green("Application has been shut down.")
