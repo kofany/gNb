@@ -81,9 +81,6 @@ func logMessage(level LogLevel, format string, args ...interface{}) {
 	}
 	logger.SetPrefix(prefix)
 	logger.Println(msg)
-
-	// Also print to console
-	fmt.Println(prefix + msg)
 }
 
 // Debug logs a message at DEBUG level.
