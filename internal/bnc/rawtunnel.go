@@ -14,33 +14,25 @@ import (
 )
 
 type RawTunnel struct {
-	conn          io.ReadWriteCloser
-	bot           types.Bot
-	active        bool
-	mu            sync.Mutex
-	ignoredEvents map[string]bool
-	formatter     *MessageFormatter
-	helpMessage   string
+	conn        io.ReadWriteCloser
+	bot         types.Bot
+	active      bool
+	mu          sync.Mutex
+	formatter   *MessageFormatter
+	helpMessage string
 }
 
 func NewRawTunnel(bot types.Bot) *RawTunnel {
 	rt := &RawTunnel{
-		bot:           bot,
-		active:        false,
-		ignoredEvents: map[string]bool{"303": true}, // Ignore ISON responses
-		formatter:     &MessageFormatter{nickname: bot.GetCurrentNick()},
+		bot:       bot,
+		active:    false,
+		formatter: &MessageFormatter{nickname: bot.GetCurrentNick()},
 	}
 
 	// Initialize the help message
 	rt.helpMessage = rt.constructHelpMessage()
 
 	return rt
-}
-
-func (rt *RawTunnel) SetIgnoredEvent(event string, ignore bool) {
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-	rt.ignoredEvents[event] = ignore
 }
 
 func (rt *RawTunnel) Start(conn io.ReadWriteCloser) {

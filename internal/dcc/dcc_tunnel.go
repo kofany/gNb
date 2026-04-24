@@ -15,20 +15,19 @@ import (
 
 // DCCTunnel reprezentuje tunel DCC do komunikacji z botem
 type DCCTunnel struct {
-	conn          net.Conn
-	bot           types.Bot
-	active        bool
-	mu            sync.Mutex
-	cmdMu         sync.Mutex // Mutex dla komend
-	ignoredEvents map[string]bool
-	onStop        func()
-	formatter     *MessageFormatter
-	botManager    types.BotManager
-	readDone      chan struct{}
-	writeDone     chan struct{}
-	sessionID     string
-	partyLine     *PartyLine
-	ownerNick     string // Dodane pole
+	conn       net.Conn
+	bot        types.Bot
+	active     bool
+	mu         sync.Mutex
+	cmdMu      sync.Mutex // Mutex dla komend
+	onStop     func()
+	formatter  *MessageFormatter
+	botManager types.BotManager
+	readDone   chan struct{}
+	writeDone  chan struct{}
+	sessionID  string
+	partyLine  *PartyLine
+	ownerNick  string
 }
 
 type PartyLine struct {
@@ -53,15 +52,14 @@ var (
 func NewDCCTunnel(bot types.Bot, ownerNick string, onStop func()) *DCCTunnel {
 	sessionID := fmt.Sprintf("dcc-%s-%d", bot.GetCurrentNick(), time.Now().UnixNano())
 	dt := &DCCTunnel{
-		bot:           bot,
-		active:        false,
-		ignoredEvents: map[string]bool{"303": true},
-		onStop:        onStop,
-		formatter:     NewMessageFormatter(bot.GetCurrentNick()),
-		botManager:    bot.GetBotManager(),
-		sessionID:     sessionID,
-		partyLine:     GetGlobalPartyLine(),
-		ownerNick:     ownerNick,
+		bot:        bot,
+		active:     false,
+		onStop:     onStop,
+		formatter:  NewMessageFormatter(bot.GetCurrentNick()),
+		botManager: bot.GetBotManager(),
+		sessionID:  sessionID,
+		partyLine:  GetGlobalPartyLine(),
+		ownerNick:  ownerNick,
 	}
 	return dt
 }
@@ -250,17 +248,6 @@ func (dt *DCCTunnel) getWelcomeMessage() string {
 			colorText("Type .help to see available commands.\n\n", 12)
 
 	return welcomeMessage
-}
-
-// SetIgnoredEvent dodaje lub usuwa zdarzenie z listy ignorowanych
-func (dt *DCCTunnel) SetIgnoredEvent(event string, ignore bool) {
-	dt.mu.Lock()
-	defer dt.mu.Unlock()
-	if ignore {
-		dt.ignoredEvents[event] = true
-	} else {
-		delete(dt.ignoredEvents, event)
-	}
 }
 
 // IsActive zwraca status aktywności tunelu
