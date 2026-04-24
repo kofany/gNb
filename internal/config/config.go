@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 
 	"github.com/fatih/color"
 
@@ -151,7 +152,19 @@ channels:
 owner_command_prefixes:
   - "!"
   - "."
-  - "@"`,
+  - "@"
+
+# Panel API (WebSocket). Set enabled: true to turn on, then restart.
+# Bind defaults to 127.0.0.1. Expose via cloudflared for wss://.
+# api:
+#   enabled: false
+#   node_name: "my-node"
+#   bind_addr: "127.0.0.1:7766"
+#   auth_token: "REPLACE_WITH_GENERATED_TOKEN"
+#   tls_cert_file: ""
+#   tls_key_file: ""
+#   event_buffer: 1000
+#   max_connections: 4`,
 		"configs/owners.json": `{
   "owners": [
     "*!*ident@hostname"
@@ -195,6 +208,9 @@ owner_command_prefixes:
 	for file, content := range files {
 		fmt.Printf("%-25s", cyan(file))
 		if _, err := os.Stat(file); os.IsNotExist(err) {
+			if file == "configs/config.yaml" {
+				content = strings.Replace(content, "REPLACE_WITH_GENERATED_TOKEN", generateAPIToken(), 1)
+			}
 			if err := os.WriteFile(file, []byte(content), 0644); err != nil {
 				fmt.Println(red("[ ERROR ]"))
 				return fmt.Errorf("failed to create file %s: %v", file, err)
