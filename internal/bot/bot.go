@@ -42,8 +42,8 @@ type Bot struct {
 	botManager      types.BotManager
 	gaveUp          bool
 	// ISON response handling
-	isonRequests      map[string]chan []string // Map of request IDs to response channels
-	isonRequestsMutex sync.Mutex               // Mutex to protect access to the isonRequests map
+	isonRequests       map[string]chan []string // Map of request IDs to response channels
+	isonRequestsMutex  sync.Mutex               // Mutex to protect access to the isonRequests map
 	ServerName         string                   // Nazwa serwera otrzymana po połączeniu
 	bncServer          *bnc.BNCServer
 	mutex              sync.Mutex
