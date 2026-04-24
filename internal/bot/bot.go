@@ -343,40 +343,37 @@ func (b *Bot) addCallbacks() {
 	// Callback for successful connection
 	b.Connection.AddCallback("001", func(e *irc.Event) {
 		if b.IsConnected() {
-			// Bot jest już połączony, nie rób nic
 			return
 		}
 
 		b.markAsConnected()
+
+		// All mutable Bot fields accessed here need the mutex. Previously
+		// ServerName, lastConnectTime and the read of b.channels were
+		// raced against SetChannels/GetServerName.
+		b.mutex.Lock()
 		b.ServerName = e.Source
 		b.lastConnectTime = time.Now()
-		b.mutex.Lock()
 		b.CurrentNick = b.Connection.GetNick()
-		b.mutex.Unlock()
-
-		// No manual sync needed: library tracks current nick internally
-
-		util.Info("Bot %s fully connected to %s as %s", b.GetCurrentNick(), b.ServerName, b.GetCurrentNick())
-
-		// Reset joined channels map
-		b.mutex.Lock()
 		b.joinedChannels = make(map[string]bool)
+		channelsCopy := make([]string, len(b.channels))
+		copy(channelsCopy, b.channels)
+		serverName := b.ServerName
+		currentNick := b.CurrentNick
 		b.mutex.Unlock()
 
-		util.Info("Bot %s preparing to join configured channels: %v", b.GetCurrentNick(), b.configuredChannels())
+		util.Info("Bot %s fully connected to %s as %s", currentNick, serverName, currentNick)
+		util.Info("Bot %s preparing to join configured channels: %v", currentNick, channelsCopy)
 
-		// Join channels
-		for _, channel := range b.channels {
+		for _, channel := range channelsCopy {
 			b.JoinChannel(channel)
 		}
 
-		// Start channel checker
 		b.startChannelChecker()
 
 		// Signal that connection has been established
 		select {
 		case <-b.connected:
-			// Kanał już zamknięty, ignorujemy
 		default:
 			close(b.connected)
 		}
