@@ -94,6 +94,13 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 	return manager
 }
 
+// cleanupDisconnectedBots is a one-shot startup grace period. 240 seconds
+// after NewBotManager, any bot still not connected is removed from the
+// manager and its nick returned to the pool. After the grace window expires
+// the goroutine exits -- bots disconnecting later are removed via the
+// error-driven paths (IRC 465/466, explicit .reconnect, etc.) rather than
+// by a periodic sweeper. This is intentional: the fleet is static after
+// boot, so a recurring sweep would have no work to do.
 func (bm *BotManager) cleanupDisconnectedBots() {
 	select {
 	case <-time.After(240 * time.Second):
