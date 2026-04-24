@@ -246,18 +246,6 @@ func (dt *DCCTunnel) getWelcomeMessage() string {
 	return welcomeMessage
 }
 
-// IsActive zwraca status aktywności tunelu
-func (dt *DCCTunnel) IsActive() bool {
-	dt.mu.Lock()
-	defer dt.mu.Unlock()
-	return dt.active
-}
-
-// GetBot zwraca referencję do bota
-func (dt *DCCTunnel) GetBot() types.Bot {
-	return dt.bot
-}
-
 // PARTYLINE
 
 func GetGlobalPartyLine() *PartyLine {
