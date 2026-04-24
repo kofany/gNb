@@ -47,6 +47,8 @@ func (b *stubBot) SendMessage(target, message string) {
 	defer b.mu.Unlock()
 	b.sent = append(b.sent, target+":"+message)
 }
+func (b *stubBot) SetEventSink(_ types.EventSink) {}
+func (b *stubBot) GetBotID() string               { return "" }
 
 type stubNickManager struct {
 	targets  []string
@@ -70,6 +72,7 @@ func (nm *stubNickManager) ReturnNickToPool(nick string) {
 	defer nm.mu.Unlock()
 	nm.returned = append(nm.returned, nick)
 }
+func (nm *stubNickManager) SetEventSink(_ types.EventSink) {}
 
 func TestISONMechanism(t *testing.T) {
 	requestID := "test-request-123"

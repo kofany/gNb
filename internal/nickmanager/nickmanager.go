@@ -29,6 +29,23 @@ type NickManager struct {
 	stopChan             chan struct{}
 	startOnce            sync.Once
 	stopOnce             sync.Once
+	sink                 types.EventSink
+	sinkMu               sync.RWMutex
+}
+
+// SetEventSink installs the observer used by the Panel API. Safe to call
+// any time; nil disables observation.
+func (nm *NickManager) SetEventSink(sink types.EventSink) {
+	nm.sinkMu.Lock()
+	nm.sink = sink
+	nm.sinkMu.Unlock()
+}
+
+// currentSink returns the active EventSink or nil.
+func (nm *NickManager) currentSink() types.EventSink {
+	nm.sinkMu.RLock()
+	defer nm.sinkMu.RUnlock()
+	return nm.sink
 }
 
 type NicksData struct {

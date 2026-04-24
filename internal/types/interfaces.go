@@ -32,6 +32,8 @@ type Bot interface {
 	StopBNC()
 	SendRaw(message string)
 	RemoveBot()
+	SetEventSink(sink EventSink)
+	GetBotID() string
 }
 
 type NickManager interface {
@@ -47,6 +49,7 @@ type NickManager interface {
 	MarkServerNoLetters(serverName string)
 	Start()
 	Stop()
+	SetEventSink(sink EventSink)
 }
 
 type BotManager interface {
@@ -63,6 +66,7 @@ type BotManager interface {
 	GetMassCommandCooldown() time.Duration
 	CollectReactions(channel, message string, action func() error)
 	SendSingleMsg(channel, message string)
+	SetEventSink(sink EventSink)
 }
 
 type ReactionRequest struct {

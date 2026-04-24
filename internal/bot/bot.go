@@ -50,6 +50,8 @@ type Bot struct {
 	dccTunnel          *dcc.DCCTunnel
 	channelCheckTicker *time.Ticker  // Ticker for periodic channel check
 	channelCheckerStop chan struct{} // Stop signal for the current checker goroutine
+	botID              string
+	sink               types.EventSink
 }
 
 // GetBotManager returns the BotManager for this bot
@@ -74,6 +76,24 @@ func (b *Bot) SetNickManager(manager types.NickManager) {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	b.nickManager = manager
+}
+
+// SetEventSink installs the observer used by the Panel API. Called after bot
+// construction from the main wiring code; nil is a valid "no-op" value.
+func (b *Bot) SetEventSink(sink types.EventSink) {
+	b.mutex.Lock()
+	b.sink = sink
+	b.mutex.Unlock()
+}
+
+// GetBotID returns the stable identifier computed from the bot's config slot.
+func (b *Bot) GetBotID() string { return b.botID }
+
+// currentSink returns the active EventSink, or nil if none. Safe under lock.
+func (b *Bot) currentSink() types.EventSink {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	return b.sink
 }
 
 // NewBot creates a new Bot instance

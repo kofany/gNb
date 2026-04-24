@@ -40,6 +40,8 @@ type BotManager struct {
 	errorMutex          sync.Mutex // Mutex do kontrolowania dostępu do errorHandled
 	totalCreatedBots    int
 	startTime           time.Time
+	sink                types.EventSink
+	sinkMu              sync.RWMutex
 }
 
 // NewBotManager creates a new BotManager instance
@@ -81,6 +83,7 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 	// Creating bots
 	for i, botCfg := range cfg.Bots {
 		bot := NewBot(&botCfg, &cfg.Global, nm, manager)
+		bot.botID = computeBotID(botCfg.Server, botCfg.Port, botCfg.Vhost, i)
 		bot.SetOwnerList(manager.owners)
 		bot.SetChannels(cfg.Channels)
 		bot.SetBotManager(manager)
@@ -92,6 +95,34 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 	nm.SetBots(manager.bots)
 	go manager.cleanupDisconnectedBots()
 	return manager
+}
+
+// SetEventSink installs the observer used by the Panel API and fans it out
+// to every managed bot plus the NickManager. Safe to call at startup or
+// later to swap the sink.
+func (bm *BotManager) SetEventSink(sink types.EventSink) {
+	bm.sinkMu.Lock()
+	bm.sink = sink
+	bm.sinkMu.Unlock()
+
+	bm.mutex.RLock()
+	bots := append([]types.Bot(nil), bm.bots...)
+	nm := bm.nickManager
+	bm.mutex.RUnlock()
+
+	for _, b := range bots {
+		b.SetEventSink(sink)
+	}
+	if nm != nil {
+		nm.SetEventSink(sink)
+	}
+}
+
+// currentSink returns the active EventSink or nil.
+func (bm *BotManager) currentSink() types.EventSink {
+	bm.sinkMu.RLock()
+	defer bm.sinkMu.RUnlock()
+	return bm.sink
 }
 
 // cleanupDisconnectedBots is a one-shot startup grace period. 240 seconds
