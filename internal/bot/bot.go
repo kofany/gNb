@@ -42,9 +42,8 @@ type Bot struct {
 	botManager      types.BotManager
 	gaveUp          bool
 	// ISON response handling
-	isonResponse       chan []string            // Legacy field, kept for compatibility
-	isonRequests       map[string]chan []string // Map of request IDs to response channels
-	isonRequestsMutex  sync.Mutex               // Mutex to protect access to the isonRequests map
+	isonRequests      map[string]chan []string // Map of request IDs to response channels
+	isonRequestsMutex sync.Mutex               // Mutex to protect access to the isonRequests map
 	ServerName         string                   // Nazwa serwera otrzymana po połączeniu
 	bncServer          *bnc.BNCServer
 	mutex              sync.Mutex
@@ -91,7 +90,6 @@ func NewBot(cfg *config.BotConfig, globalConfig *config.GlobalConfig, nm types.N
 		Realname:       realname,
 		nickManager:    nm,
 		botManager:     bm,
-		isonResponse:   make(chan []string, 10), // Legacy field, kept for compatibility
 		isonRequests:   make(map[string]chan []string),
 		joinedChannels: make(map[string]bool),
 	}
