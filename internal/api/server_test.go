@@ -170,6 +170,53 @@ func TestNodeInfoAfterAuth(t *testing.T) {
 	}
 }
 
+func TestBotList(t *testing.T) {
+	_, ts, _ := testServer(t)
+	defer ts.Close()
+	c := authed(t, ts)
+	defer c.Close(websocket.StatusNormalClosure, "")
+	ctx := context.Background()
+	_ = wsjson.Write(ctx, c, map[string]interface{}{"type": "request", "id": "2", "method": "bot.list"})
+	var resp map[string]interface{}
+	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_ = wsjson.Read(rctx, c, &resp)
+	r := resp["result"].(map[string]interface{})
+	bots := r["bots"].([]interface{})
+	if len(bots) != 1 {
+		t.Fatalf("want 1 bot, got %d", len(bots))
+	}
+	b0 := bots[0].(map[string]interface{})
+	if b0["current_nick"] != "a" {
+		t.Fatalf("bad nick: %+v", b0)
+	}
+	if b0["bot_id"] == "" {
+		t.Fatalf("empty bot_id")
+	}
+	chs := b0["joined_channels"].([]interface{})
+	if len(chs) != 1 || chs[0] != "#x" {
+		t.Fatalf("joined_channels: %+v", chs)
+	}
+}
+
+func TestNicksListAfterAuth(t *testing.T) {
+	_, ts, _ := testServer(t)
+	defer ts.Close()
+	c := authed(t, ts)
+	defer c.Close(websocket.StatusNormalClosure, "")
+	ctx := context.Background()
+	_ = wsjson.Write(ctx, c, map[string]interface{}{"type": "request", "id": "2", "method": "nicks.list"})
+	var resp map[string]interface{}
+	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_ = wsjson.Read(rctx, c, &resp)
+	r := resp["result"].(map[string]interface{})
+	nicks := r["nicks"].([]interface{})
+	if len(nicks) != 1 || nicks[0] != "foo" {
+		t.Fatalf("nicks: %+v", nicks)
+	}
+}
+
 func TestHandshakeTimeout(t *testing.T) {
 	_, ts, _ := testServer(t)
 	defer ts.Close()

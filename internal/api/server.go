@@ -76,6 +76,9 @@ func New(cfg config.APIConfig, nodeID string, deps Deps) *Server {
 func (s *Server) registerRoutes() {
 	s.router.Register("auth.login", handleAuthLogin)
 	s.router.Register("node.info", handleNodeInfo)
+	s.router.Register("bot.list", handleBotList)
+	s.router.Register("nicks.list", handleNicksList)
+	s.router.Register("owners.list", handleOwnersList)
 }
 
 // Hub returns the EventHub.
