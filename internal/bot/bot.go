@@ -557,40 +557,34 @@ func (b *Bot) addCallbacks() {
 		reason := e.Message()
 		util.Warning("Bot %s banned from server %s: %s", b.GetCurrentNick(), b.ServerName, reason)
 
-		// Zamykamy połączenie
+		b.mutex.Lock()
+		b.gaveUp = true
+		b.mutex.Unlock()
+
+		// Zamykamy połączenie i usuwamy bota z managera. Nie nil-ujemy pól
+		// b.Connection / b.botManager / b.nickManager — po Quit callbacki
+		// biblioteki mogą jeszcze odpalić (DISCONNECTED, "*"), a ich
+		// dereference na nilu wywalił by goroutine biblioteki.
 		b.Quit("Banned from server")
 
-		// Usuwamy bota z managera
 		if b.botManager != nil {
 			b.botManager.(*BotManager).RemoveBotFromManager(b)
 		}
-
-		// Czyścimy referencje
-		b.mutex.Lock()
-		b.Connection = nil
-		b.botManager = nil
-		b.nickManager = nil
-		b.mutex.Unlock()
 	})
 
 	// Callback dla ERR_YOUWILLBEBANNED (466)
 	b.Connection.AddCallback("466", func(e *irc.Event) {
 		util.Warning("Bot %s will be banned from server %s", b.GetCurrentNick(), b.ServerName)
 
-		// Zamykamy połączenie
+		b.mutex.Lock()
+		b.gaveUp = true
+		b.mutex.Unlock()
+
 		b.Quit("Pre-emptive disconnect due to incoming ban")
 
-		// Usuwamy bota z managera
 		if b.botManager != nil {
 			b.botManager.(*BotManager).RemoveBotFromManager(b)
 		}
-
-		// Czyścimy referencje
-		b.mutex.Lock()
-		b.Connection = nil
-		b.botManager = nil
-		b.nickManager = nil
-		b.mutex.Unlock()
 	})
 
 	// Callback for disconnection
@@ -604,26 +598,23 @@ func (b *Bot) addCallbacks() {
 
 // RemoveBot implementuje interfejs types.Bot
 func (b *Bot) RemoveBot() {
-	// Get the current nick before closing the connection
 	currentNick := b.GetCurrentNick()
 
-	// Zamykamy połączenie
+	b.mutex.Lock()
+	b.gaveUp = true
+	b.mutex.Unlock()
+
+	// Zamykamy połączenie. Nie nil-ujemy pól b.Connection / b.botManager /
+	// b.nickManager — callbacki biblioteki mogą jeszcze w locie odpalić
+	// po Quit (DISCONNECTED, "*"), a dereference nila zabił by goroutine
+	// biblioteki. GC wyczyści jak znikną referencje z managera.
 	b.Quit("Bot removed from system")
 
-	// Usuwamy bota z managera
 	if b.botManager != nil {
-		// Use type assertion outside of the lock to avoid potential deadlocks
 		if bm, ok := b.botManager.(*BotManager); ok {
 			bm.RemoveBotFromManager(b)
 		}
 	}
-
-	// Czyścimy referencje
-	b.mutex.Lock()
-	b.Connection = nil
-	b.botManager = nil
-	b.nickManager = nil
-	b.mutex.Unlock()
 
 	util.Info("Bot %s has been removed from the system", currentNick)
 }
