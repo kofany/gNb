@@ -729,22 +729,16 @@ func (b *Bot) RequestISON(nicks []string) ([]string, error) {
 }
 
 func (b *Bot) ChangeNick(newNick string) {
-	if b.IsConnected() {
-		oldNick := b.GetCurrentNick()
-		util.Info("Bot %s is attempting to change nick to %s", oldNick, newNick)
-		b.Connection.Nick(newNick)
-
-		time.Sleep(1 * time.Second)
-
-		// Check if the nick change was successful by checking the connection's nick
-		if b.Connection.GetNick() == newNick {
-			util.Info("Bot successfully changed nick from %s to %s", oldNick, newNick)
-		} else {
-			util.Warning("Failed to change nick for bot %s from %s to %s", oldNick, oldNick, newNick)
-		}
-	} else {
+	if !b.IsConnected() {
 		util.Debug("Bot %s is not connected; cannot change nick", b.GetCurrentNick())
+		return
 	}
+	// Fire and forget: success/failure is reflected asynchronously through
+	// the NICK / 432 / 437 callbacks. Checking GetNick() after an arbitrary
+	// sleep raced the server response and produced misleading "failed" warnings.
+	oldNick := b.GetCurrentNick()
+	util.Info("Bot %s sending NICK %s", oldNick, newNick)
+	b.Connection.Nick(newNick)
 }
 
 func (b *Bot) JoinChannel(channel string) {
@@ -881,9 +875,9 @@ func (b *Bot) Reconnect() {
 		b.mutex.Unlock()
 		return
 	}
-
-	time.Sleep(5 * time.Second)
-	b.checkAndRejoinChannels()
+	// The 001 callback rejoins the configured channels on a successful
+	// reconnect; the 5-minute channel checker catches any that are missed.
+	// No arbitrary post-connect sleep needed.
 }
 
 func (b *Bot) SendMessage(target, message string) {
