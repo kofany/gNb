@@ -99,6 +99,8 @@ func (s *Server) registerRoutes() {
 	s.router.Register("bnc.stop", handleBNCStop)
 	s.router.Register("events.subscribe", handleEventsSubscribe)
 	s.router.Register("events.unsubscribe", handleEventsUnsubscribe)
+	s.router.Register("bot.attach", handleBotAttach)
+	s.router.Register("bot.detach", handleBotDetach)
 }
 
 // Hub returns the EventHub.

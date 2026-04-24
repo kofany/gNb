@@ -462,6 +462,71 @@ func TestEventsReplay(t *testing.T) {
 	}
 }
 
+func TestBotAttachReceivesEvent(t *testing.T) {
+	srv, ts, _ := testServer(t)
+	defer ts.Close()
+	c := authed(t, ts)
+	defer c.Close(websocket.StatusNormalClosure, "")
+	botID := ComputeBotID("irc.example", 6667, "v", 0)
+	ctx := context.Background()
+	_ = wsjson.Write(ctx, c, map[string]interface{}{
+		"type": "request", "id": "1", "method": "bot.attach",
+		"params": map[string]string{"bot_id": botID},
+	})
+	var resp map[string]interface{}
+	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_ = wsjson.Read(rctx, c, &resp)
+	if resp["type"] != "response" {
+		t.Fatalf("bad: %+v", resp)
+	}
+	srv.attach.Publish(srv, botID, srv.NewAttachEvent("bot.attach.privmsg", map[string]string{"target": "#c", "text": "hi"}))
+	var ev map[string]interface{}
+	rctx2, cancel2 := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel2()
+	_ = wsjson.Read(rctx2, c, &ev)
+	if ev["event"] != "bot.attach.privmsg" {
+		t.Fatalf("bad event: %+v", ev)
+	}
+}
+
+func TestBotDetachStopsDelivery(t *testing.T) {
+	srv, ts, _ := testServer(t)
+	defer ts.Close()
+	c := authed(t, ts)
+	defer c.Close(websocket.StatusNormalClosure, "")
+	botID := ComputeBotID("irc.example", 6667, "v", 0)
+	ctx := context.Background()
+	_ = wsjson.Write(ctx, c, map[string]interface{}{
+		"type": "request", "id": "1", "method": "bot.attach",
+		"params": map[string]string{"bot_id": botID},
+	})
+	var resp map[string]interface{}
+	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	_ = wsjson.Read(rctx, c, &resp)
+	cancel()
+
+	_ = wsjson.Write(ctx, c, map[string]interface{}{
+		"type": "request", "id": "2", "method": "bot.detach",
+		"params": map[string]string{"bot_id": botID},
+	})
+	rctx2, cancel2 := context.WithTimeout(ctx, 2*time.Second)
+	_ = wsjson.Read(rctx2, c, &resp)
+	cancel2()
+	if resp["type"] != "response" {
+		t.Fatalf("detach bad: %+v", resp)
+	}
+
+	// Publish after detach — must not deliver; expect read timeout.
+	srv.attach.Publish(srv, botID, srv.NewAttachEvent("bot.attach.privmsg", nil))
+	var ev map[string]interface{}
+	rctx3, cancel3 := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel3()
+	if err := wsjson.Read(rctx3, c, &ev); err == nil {
+		t.Fatalf("expected timeout, got event: %+v", ev)
+	}
+}
+
 func TestHandshakeTimeout(t *testing.T) {
 	_, ts, _ := testServer(t)
 	defer ts.Close()
