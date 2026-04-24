@@ -240,25 +240,28 @@ func (rt *RawTunnel) sendToClient(message string) {
 
 func (rt *RawTunnel) WriteToConn(data string) {
 	rt.mu.Lock()
-	defer rt.mu.Unlock()
-
 	if !rt.active || rt.conn == nil {
+		rt.mu.Unlock()
 		return
 	}
-
-	// Ignore certain events
 	if strings.Contains(data, " 303 ") {
+		rt.mu.Unlock()
 		return
 	}
-
-	// Parse the IRC message
 	parsedMessage := rt.parseIRCMessage(data)
 	if parsedMessage == "" {
+		rt.mu.Unlock()
 		return
 	}
+	conn := rt.conn
+	rt.mu.Unlock()
 
+	// Write outside the mutex so a blocked SSH write can't stall Stop()
+	// or other tunnel state transitions.
 	util.Debug("RawTunnel: Sending to SSH connection: %s", parsedMessage)
-	rt.conn.Write([]byte(parsedMessage + "\r\n"))
+	if _, err := conn.Write([]byte(parsedMessage + "\r\n")); err != nil {
+		util.Warning("RawTunnel: write failed: %v", err)
+	}
 }
 
 func (rt *RawTunnel) parseIRCMessage(raw string) string {

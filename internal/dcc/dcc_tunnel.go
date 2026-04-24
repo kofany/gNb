@@ -160,49 +160,32 @@ func (dt *DCCTunnel) handleUserInput(input string) {
 }
 
 func (dt *DCCTunnel) WriteToConn(data string) {
-	// Najpierw sprawdzamy stan i przetwarzamy wiadomość pod mutexem
 	dt.mu.Lock()
 	if !dt.active || dt.conn == nil {
 		dt.mu.Unlock()
 		return
 	}
-
-	// Ignorowanie określonych zdarzeń
 	if strings.Contains(data, " 303 ") {
 		dt.mu.Unlock()
 		return
 	}
-
 	parsedMessage := dt.parseIRCMessage(data)
 	if parsedMessage == "" {
 		dt.mu.Unlock()
 		return
 	}
-
-	// Kopiujemy połączenie, aby nie blokować mutexa podczas wysyłania
 	conn := dt.conn
 	dt.mu.Unlock()
 
-	// Wysyłanie w osobnej goroutine bez blokowania mutexa
-	go func() {
-		// Nieblokujące wysyłanie z timeoutem
-		done := make(chan bool, 1)
-		go func() {
-			_, err := conn.Write([]byte(parsedMessage + "\r\n"))
-			if err != nil {
-				util.Warning("DCC: Error writing to connection: %v", err)
-			}
-			done <- true
-		}()
-
-		select {
-		case <-done:
-			util.Debug("DCC: Message sent successfully")
-		case <-time.After(time.Second * 2):
-			util.Warning("DCC: Write timeout, stopping tunnel")
-			dt.Stop()
-		}
-	}()
+	// Synchronous write with a short deadline. An event-forwarding bot can
+	// see tens of IRC events per second on busy channels; spawning two
+	// goroutines per event (previous implementation) wasted memory and
+	// leaked the inner goroutine on backpressure.
+	_ = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+	if _, err := conn.Write([]byte(parsedMessage + "\r\n")); err != nil {
+		util.Warning("DCC: write failed, stopping tunnel: %v", err)
+		dt.Stop()
+	}
 }
 
 func (dt *DCCTunnel) parseIRCMessage(raw string) string {
@@ -235,26 +218,20 @@ func (dt *DCCTunnel) parseIRCMessage(raw string) string {
 	}
 }
 
-// sendToClient wysyła wiadomość do klienta DCC
+// sendToClient wysyła wiadomość do klienta DCC synchronicznie z write-deadlinem.
 func (dt *DCCTunnel) sendToClient(message string) {
-	// Sprawdzamy czy połączenie jest aktywne
 	dt.mu.Lock()
 	if !dt.active || dt.conn == nil {
 		dt.mu.Unlock()
 		return
 	}
-
-	// Kopiujemy połączenie, aby nie blokować mutexa podczas wysyłania
 	conn := dt.conn
 	dt.mu.Unlock()
 
-	// Wysyłanie w osobnej goroutine bez blokowania
-	go func() {
-		_, err := conn.Write([]byte(message + "\r\n"))
-		if err != nil {
-			util.Warning("DCC: Error sending message to client: %v", err)
-		}
-	}()
+	_ = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+	if _, err := conn.Write([]byte(message + "\r\n")); err != nil {
+		util.Warning("DCC: sendToClient write failed: %v", err)
+	}
 }
 
 // getWelcomeMessage zwraca wiadomość powitalną dla połączenia DCC
