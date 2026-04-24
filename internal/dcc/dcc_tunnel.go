@@ -23,8 +23,6 @@ type DCCTunnel struct {
 	onStop     func()
 	formatter  *MessageFormatter
 	botManager types.BotManager
-	readDone   chan struct{}
-	writeDone  chan struct{}
 	sessionID  string
 	partyLine  *PartyLine
 	ownerNick  string
@@ -75,8 +73,6 @@ func (dt *DCCTunnel) Start(conn net.Conn) {
 
 	dt.conn = conn
 	dt.active = true
-	dt.readDone = make(chan struct{})
-	dt.writeDone = make(chan struct{})
 	dt.mu.Unlock()
 
 	util.Debug("DCC: DCC tunnel started for bot %s", dt.bot.GetCurrentNick())
