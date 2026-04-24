@@ -334,8 +334,8 @@ func (nm *NickManager) ReturnNickToPool(nick string) {
 }
 
 func (nm *NickManager) GetNicksToCatch() []string {
-	nm.mutex.Lock()
-	defer nm.mutex.Unlock()
+	nm.mutex.RLock()
+	defer nm.mutex.RUnlock()
 	nicksCopy := make([]string, len(nm.nicksToCatch))
 	copy(nicksCopy, nm.nicksToCatch)
 	return nicksCopy
@@ -397,8 +397,8 @@ func (nm *NickManager) RemoveNick(nick string) error {
 }
 
 func (nm *NickManager) GetNicks() []string {
-	nm.mutex.Lock()
-	defer nm.mutex.Unlock()
+	nm.mutex.RLock()
+	defer nm.mutex.RUnlock()
 
 	nicksCopy := make([]string, len(nm.priorityNicks))
 	copy(nicksCopy, nm.priorityNicks)
