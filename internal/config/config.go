@@ -1,7 +1,10 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"net"
 	"os"
 
 	"github.com/fatih/color"
@@ -13,6 +16,57 @@ type Config struct {
 	Global   GlobalConfig `yaml:"global"`
 	Bots     []BotConfig  `yaml:"bots"`
 	Channels []string     `yaml:"channels"`
+	API      APIConfig    `yaml:"api"`
+}
+
+type APIConfig struct {
+	Enabled        bool   `yaml:"enabled"`
+	NodeName       string `yaml:"node_name"`
+	BindAddr       string `yaml:"bind_addr"`
+	AuthToken      string `yaml:"auth_token"`
+	TLSCertFile    string `yaml:"tls_cert_file"`
+	TLSKeyFile     string `yaml:"tls_key_file"`
+	EventBuffer    int    `yaml:"event_buffer"`
+	MaxConnections int    `yaml:"max_connections"`
+}
+
+func (a *APIConfig) ApplyDefaults() {
+	if a.BindAddr == "" {
+		a.BindAddr = "127.0.0.1:7766"
+	}
+	if a.EventBuffer <= 0 {
+		a.EventBuffer = 1000
+	}
+	if a.MaxConnections <= 0 {
+		a.MaxConnections = 4
+	}
+	if a.NodeName == "" {
+		a.NodeName = "gnb-node"
+	}
+}
+
+func (a *APIConfig) Validate() error {
+	if !a.Enabled {
+		return nil
+	}
+	if len(a.AuthToken) < 32 {
+		return fmt.Errorf("api.auth_token must be at least 32 characters when api.enabled: true")
+	}
+	if (a.TLSCertFile == "") != (a.TLSKeyFile == "") {
+		return fmt.Errorf("api.tls_cert_file and api.tls_key_file must be set together or both empty")
+	}
+	if _, _, err := net.SplitHostPort(a.BindAddr); err != nil {
+		return fmt.Errorf("api.bind_addr invalid: %w", err)
+	}
+	return nil
+}
+
+func generateAPIToken() string {
+	var b [32]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "PLEASE_SET_A_64_CHAR_HEX_TOKEN"
+	}
+	return hex.EncodeToString(b[:])
 }
 
 type GlobalConfig struct {
@@ -48,6 +102,10 @@ func LoadConfig(filename string) (*Config, error) {
 	var config Config
 	err = yaml.Unmarshal(data, &config)
 	if err != nil {
+		return nil, err
+	}
+	config.API.ApplyDefaults()
+	if err := config.API.Validate(); err != nil {
 		return nil, err
 	}
 	return &config, nil
