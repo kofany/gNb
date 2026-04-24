@@ -13,7 +13,7 @@ type ownerParam struct {
 	Mask string `json:"mask"`
 }
 
-func handleNicksAdd(_ context.Context, s *Session, req *RequestMsg) (interface{}, *HandlerError) {
+func handleNicksAdd(_ context.Context, s *Session, req *RequestMsg) (any, *HandlerError) {
 	var p nickParam
 	if e := decodeParams(req, &p); e != nil {
 		return nil, e
@@ -30,7 +30,7 @@ func handleNicksAdd(_ context.Context, s *Session, req *RequestMsg) (interface{}
 	return map[string]bool{"ok": true}, nil
 }
 
-func handleNicksRemove(_ context.Context, s *Session, req *RequestMsg) (interface{}, *HandlerError) {
+func handleNicksRemove(_ context.Context, s *Session, req *RequestMsg) (any, *HandlerError) {
 	var p nickParam
 	if e := decodeParams(req, &p); e != nil {
 		return nil, e
@@ -47,7 +47,7 @@ func handleNicksRemove(_ context.Context, s *Session, req *RequestMsg) (interfac
 	return map[string]bool{"ok": true}, nil
 }
 
-func handleOwnersAdd(_ context.Context, s *Session, req *RequestMsg) (interface{}, *HandlerError) {
+func handleOwnersAdd(_ context.Context, s *Session, req *RequestMsg) (any, *HandlerError) {
 	var p ownerParam
 	if e := decodeParams(req, &p); e != nil {
 		return nil, e
@@ -64,7 +64,7 @@ func handleOwnersAdd(_ context.Context, s *Session, req *RequestMsg) (interface{
 	return map[string]bool{"ok": true}, nil
 }
 
-func handleOwnersRemove(_ context.Context, s *Session, req *RequestMsg) (interface{}, *HandlerError) {
+func handleOwnersRemove(_ context.Context, s *Session, req *RequestMsg) (any, *HandlerError) {
 	var p ownerParam
 	if e := decodeParams(req, &p); e != nil {
 		return nil, e
@@ -81,7 +81,7 @@ func handleOwnersRemove(_ context.Context, s *Session, req *RequestMsg) (interfa
 	return map[string]bool{"ok": true}, nil
 }
 
-func handleBNCStart(_ context.Context, s *Session, req *RequestMsg) (interface{}, *HandlerError) {
+func handleBNCStart(_ context.Context, s *Session, req *RequestMsg) (any, *HandlerError) {
 	var p botIDParam
 	if e := decodeParams(req, &p); e != nil {
 		return nil, e
@@ -101,14 +101,14 @@ func handleBNCStart(_ context.Context, s *Session, req *RequestMsg) (interface{}
 	if host == "" {
 		host = "<your-host>"
 	}
-	return map[string]interface{}{
+	return map[string]any{
 		"port":        port,
 		"password":    password,
 		"ssh_command": fmt.Sprintf("ssh -p %d %s@%s %s", port, b.GetCurrentNick(), host, password),
 	}, nil
 }
 
-func handleBNCStop(_ context.Context, s *Session, req *RequestMsg) (interface{}, *HandlerError) {
+func handleBNCStop(_ context.Context, s *Session, req *RequestMsg) (any, *HandlerError) {
 	var p botIDParam
 	if e := decodeParams(req, &p); e != nil {
 		return nil, e

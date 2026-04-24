@@ -7,7 +7,7 @@ import (
 )
 
 // Handler processes a decoded request and returns a result or error.
-type Handler func(ctx context.Context, s *Session, req *RequestMsg) (result interface{}, err *HandlerError)
+type Handler func(ctx context.Context, s *Session, req *RequestMsg) (result any, err *HandlerError)
 
 type HandlerError struct {
 	Code    ErrorCode
@@ -16,7 +16,7 @@ type HandlerError struct {
 
 func (e *HandlerError) Error() string { return fmt.Sprintf("%s: %s", e.Code, e.Message) }
 
-func paramErr(format string, args ...interface{}) *HandlerError {
+func paramErr(format string, args ...any) *HandlerError {
 	return &HandlerError{Code: ErrInvalidParams, Message: fmt.Sprintf(format, args...)}
 }
 
@@ -35,7 +35,7 @@ func NewRouter() *Router { return &Router{handlers: make(map[string]Handler)} }
 
 func (r *Router) Register(method string, h Handler) { r.handlers[method] = h }
 
-func (r *Router) Dispatch(ctx context.Context, s *Session, req *RequestMsg) (interface{}, *HandlerError) {
+func (r *Router) Dispatch(ctx context.Context, s *Session, req *RequestMsg) (any, *HandlerError) {
 	if !s.isAuthed() && req.Method != "auth.login" {
 		return nil, &HandlerError{Code: ErrForbidden, Message: "not authenticated"}
 	}
@@ -47,7 +47,7 @@ func (r *Router) Dispatch(ctx context.Context, s *Session, req *RequestMsg) (int
 }
 
 // decodeParams unmarshals req.Params into dst. Returns paramErr on failure.
-func decodeParams(req *RequestMsg, dst interface{}) *HandlerError {
+func decodeParams(req *RequestMsg, dst any) *HandlerError {
 	if len(req.Params) == 0 {
 		return nil
 	}

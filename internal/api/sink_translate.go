@@ -17,7 +17,7 @@ func translateIRCEventToHighLevel(srv *Server, botID string, e *irc.Event) *Even
 		if len(e.Arguments) > 0 {
 			target = e.Arguments[0]
 		}
-		ev := srv.NewAttachEvent("bot.attach.privmsg", map[string]interface{}{
+		ev := srv.NewAttachEvent("bot.attach.privmsg", map[string]any{
 			"bot_id": botID, "from": from, "target": target, "text": e.Message(),
 		})
 		return &ev
@@ -26,7 +26,7 @@ func translateIRCEventToHighLevel(srv *Server, botID string, e *irc.Event) *Even
 		if len(e.Arguments) > 0 {
 			target = e.Arguments[0]
 		}
-		ev := srv.NewAttachEvent("bot.attach.notice", map[string]interface{}{
+		ev := srv.NewAttachEvent("bot.attach.notice", map[string]any{
 			"bot_id": botID, "from": from, "target": target, "text": e.Message(),
 		})
 		return &ev
@@ -35,7 +35,7 @@ func translateIRCEventToHighLevel(srv *Server, botID string, e *irc.Event) *Even
 		if len(e.Arguments) > 0 {
 			channel = e.Arguments[0]
 		}
-		ev := srv.NewAttachEvent("bot.attach.join", map[string]interface{}{
+		ev := srv.NewAttachEvent("bot.attach.join", map[string]any{
 			"bot_id": botID, "who": who, "channel": channel,
 		})
 		return &ev
@@ -44,12 +44,12 @@ func translateIRCEventToHighLevel(srv *Server, botID string, e *irc.Event) *Even
 		if len(e.Arguments) > 0 {
 			channel = e.Arguments[0]
 		}
-		ev := srv.NewAttachEvent("bot.attach.part", map[string]interface{}{
+		ev := srv.NewAttachEvent("bot.attach.part", map[string]any{
 			"bot_id": botID, "who": who, "channel": channel, "reason": e.Message(),
 		})
 		return &ev
 	case "QUIT":
-		ev := srv.NewAttachEvent("bot.attach.quit", map[string]interface{}{
+		ev := srv.NewAttachEvent("bot.attach.quit", map[string]any{
 			"bot_id": botID, "who": who, "reason": e.Message(),
 		})
 		return &ev
@@ -59,7 +59,7 @@ func translateIRCEventToHighLevel(srv *Server, botID string, e *irc.Event) *Even
 			channel = e.Arguments[0]
 			target = e.Arguments[1]
 		}
-		ev := srv.NewAttachEvent("bot.attach.kick", map[string]interface{}{
+		ev := srv.NewAttachEvent("bot.attach.kick", map[string]any{
 			"bot_id": botID, "by": who, "channel": channel, "target": target, "reason": e.Message(),
 		})
 		return &ev
@@ -72,7 +72,7 @@ func translateIRCEventToHighLevel(srv *Server, botID string, e *irc.Event) *Even
 		if len(e.Arguments) >= 2 {
 			args = e.Arguments[1:]
 		}
-		ev := srv.NewAttachEvent("bot.attach.mode", map[string]interface{}{
+		ev := srv.NewAttachEvent("bot.attach.mode", map[string]any{
 			"bot_id": botID, "from": from, "target": target, "args": args,
 		})
 		return &ev
@@ -81,12 +81,12 @@ func translateIRCEventToHighLevel(srv *Server, botID string, e *irc.Event) *Even
 		if len(e.Arguments) > 0 {
 			channel = e.Arguments[0]
 		}
-		ev := srv.NewAttachEvent("bot.attach.topic", map[string]interface{}{
+		ev := srv.NewAttachEvent("bot.attach.topic", map[string]any{
 			"bot_id": botID, "from": from, "channel": channel, "topic": e.Message(),
 		})
 		return &ev
 	case "NICK":
-		ev := srv.NewAttachEvent("bot.attach.nick", map[string]interface{}{
+		ev := srv.NewAttachEvent("bot.attach.nick", map[string]any{
 			"bot_id": botID, "from": from, "new_nick": e.Message(),
 		})
 		return &ev
@@ -95,7 +95,7 @@ func translateIRCEventToHighLevel(srv *Server, botID string, e *irc.Event) *Even
 		if len(e.Arguments) > 0 {
 			target = e.Arguments[0]
 		}
-		ev := srv.NewAttachEvent("bot.attach.ctcp", map[string]interface{}{
+		ev := srv.NewAttachEvent("bot.attach.ctcp", map[string]any{
 			"bot_id": botID, "from": from, "target": target, "command": e.Code, "text": e.Message(),
 		})
 		return &ev

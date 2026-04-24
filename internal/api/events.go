@@ -41,7 +41,7 @@ func NewEventHub(nodeID string, bufferSize int) *EventHub {
 }
 
 // Publish appends the event to the ring buffer and fans out to matching subscribers.
-func (h *EventHub) Publish(event string, data interface{}) EventMsg {
+func (h *EventHub) Publish(event string, data any) EventMsg {
 	s := h.seq.Add(1)
 	msg := EventMsg{
 		Type:   "event",

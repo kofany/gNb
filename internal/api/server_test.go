@@ -66,11 +66,11 @@ func authed(t *testing.T, ts *httptest.Server) *websocket.Conn {
 	t.Helper()
 	c := wsDial(t, ts.URL)
 	ctx := context.Background()
-	_ = wsjson.Write(ctx, c, map[string]interface{}{
+	_ = wsjson.Write(ctx, c, map[string]any{
 		"type": "request", "id": "login", "method": "auth.login",
 		"params": map[string]string{"token": strings.Repeat("x", 32)},
 	})
-	var resp map[string]interface{}
+	var resp map[string]any
 	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = wsjson.Read(rctx, c, &resp)
@@ -87,7 +87,7 @@ func TestHandshakeSuccess(t *testing.T) {
 	defer c.Close(websocket.StatusNormalClosure, "")
 
 	ctx := context.Background()
-	req := map[string]interface{}{
+	req := map[string]any{
 		"type":   "request",
 		"id":     "1",
 		"method": "auth.login",
@@ -96,7 +96,7 @@ func TestHandshakeSuccess(t *testing.T) {
 	if err := wsjson.Write(ctx, c, req); err != nil {
 		t.Fatal(err)
 	}
-	var got map[string]interface{}
+	var got map[string]any
 	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	if err := wsjson.Read(rctx, c, &got); err != nil {
@@ -115,14 +115,14 @@ func TestHandshakeBadToken(t *testing.T) {
 	defer c.Close(websocket.StatusNormalClosure, "")
 
 	ctx := context.Background()
-	req := map[string]interface{}{
+	req := map[string]any{
 		"type":   "request",
 		"id":     "1",
 		"method": "auth.login",
 		"params": map[string]string{"token": "wrong"},
 	}
 	_ = wsjson.Write(ctx, c, req)
-	var got map[string]interface{}
+	var got map[string]any
 	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = wsjson.Read(rctx, c, &got)
@@ -141,9 +141,9 @@ func TestNodeInfoRequiresAuth(t *testing.T) {
 	defer c.Close(websocket.StatusNormalClosure, "")
 
 	ctx := context.Background()
-	req := map[string]interface{}{"type": "request", "id": "1", "method": "node.info"}
+	req := map[string]any{"type": "request", "id": "1", "method": "node.info"}
 	_ = wsjson.Write(ctx, c, req)
-	var got map[string]interface{}
+	var got map[string]any
 	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = wsjson.Read(rctx, c, &got)
@@ -159,15 +159,15 @@ func TestNodeInfoAfterAuth(t *testing.T) {
 	defer c.Close(websocket.StatusNormalClosure, "")
 
 	ctx := context.Background()
-	_ = wsjson.Write(ctx, c, map[string]interface{}{"type": "request", "id": "2", "method": "node.info"})
-	var resp map[string]interface{}
+	_ = wsjson.Write(ctx, c, map[string]any{"type": "request", "id": "2", "method": "node.info"})
+	var resp map[string]any
 	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = wsjson.Read(rctx, c, &resp)
 	if resp["type"] != "response" {
 		t.Fatalf("want response, got %+v", resp)
 	}
-	result := resp["result"].(map[string]interface{})
+	result := resp["result"].(map[string]any)
 	if result["node_name"] != "test-node" {
 		t.Fatalf("bad result: %+v", result)
 	}
@@ -182,24 +182,24 @@ func TestBotList(t *testing.T) {
 	c := authed(t, ts)
 	defer c.Close(websocket.StatusNormalClosure, "")
 	ctx := context.Background()
-	_ = wsjson.Write(ctx, c, map[string]interface{}{"type": "request", "id": "2", "method": "bot.list"})
-	var resp map[string]interface{}
+	_ = wsjson.Write(ctx, c, map[string]any{"type": "request", "id": "2", "method": "bot.list"})
+	var resp map[string]any
 	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = wsjson.Read(rctx, c, &resp)
-	r := resp["result"].(map[string]interface{})
-	bots := r["bots"].([]interface{})
+	r := resp["result"].(map[string]any)
+	bots := r["bots"].([]any)
 	if len(bots) != 1 {
 		t.Fatalf("want 1 bot, got %d", len(bots))
 	}
-	b0 := bots[0].(map[string]interface{})
+	b0 := bots[0].(map[string]any)
 	if b0["current_nick"] != "a" {
 		t.Fatalf("bad nick: %+v", b0)
 	}
 	if b0["bot_id"] == "" {
 		t.Fatalf("empty bot_id")
 	}
-	chs := b0["joined_channels"].([]interface{})
+	chs := b0["joined_channels"].([]any)
 	if len(chs) != 1 || chs[0] != "#x" {
 		t.Fatalf("joined_channels: %+v", chs)
 	}
@@ -211,13 +211,13 @@ func TestNicksListAfterAuth(t *testing.T) {
 	c := authed(t, ts)
 	defer c.Close(websocket.StatusNormalClosure, "")
 	ctx := context.Background()
-	_ = wsjson.Write(ctx, c, map[string]interface{}{"type": "request", "id": "2", "method": "nicks.list"})
-	var resp map[string]interface{}
+	_ = wsjson.Write(ctx, c, map[string]any{"type": "request", "id": "2", "method": "nicks.list"})
+	var resp map[string]any
 	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = wsjson.Read(rctx, c, &resp)
-	r := resp["result"].(map[string]interface{})
-	nicks := r["nicks"].([]interface{})
+	r := resp["result"].(map[string]any)
+	nicks := r["nicks"].([]any)
 	if len(nicks) != 1 || nicks[0] != "foo" {
 		t.Fatalf("nicks: %+v", nicks)
 	}
@@ -230,11 +230,11 @@ func TestBotRaw(t *testing.T) {
 	defer c.Close(websocket.StatusNormalClosure, "")
 	botID := ComputeBotID("irc.example", 6667, "v", 0)
 	ctx := context.Background()
-	_ = wsjson.Write(ctx, c, map[string]interface{}{
+	_ = wsjson.Write(ctx, c, map[string]any{
 		"type": "request", "id": "1", "method": "bot.raw",
 		"params": map[string]string{"bot_id": botID, "line": "WHO foo\r\nEXTRA"},
 	})
-	var resp map[string]interface{}
+	var resp map[string]any
 	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = wsjson.Read(rctx, c, &resp)
@@ -260,11 +260,11 @@ func TestBotChangeNickPropagates(t *testing.T) {
 	defer c.Close(websocket.StatusNormalClosure, "")
 	botID := ComputeBotID("irc.example", 6667, "v", 0)
 	ctx := context.Background()
-	_ = wsjson.Write(ctx, c, map[string]interface{}{
+	_ = wsjson.Write(ctx, c, map[string]any{
 		"type": "request", "id": "1", "method": "bot.change_nick",
 		"params": map[string]string{"bot_id": botID, "new_nick": "zz"},
 	})
-	var resp map[string]interface{}
+	var resp map[string]any
 	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = wsjson.Read(rctx, c, &resp)
@@ -285,11 +285,11 @@ func TestBotNotFound(t *testing.T) {
 	c := authed(t, ts)
 	defer c.Close(websocket.StatusNormalClosure, "")
 	ctx := context.Background()
-	_ = wsjson.Write(ctx, c, map[string]interface{}{
+	_ = wsjson.Write(ctx, c, map[string]any{
 		"type": "request", "id": "1", "method": "bot.raw",
 		"params": map[string]string{"bot_id": "nonexistent", "line": "WHO"},
 	})
-	var resp map[string]interface{}
+	var resp map[string]any
 	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = wsjson.Read(rctx, c, &resp)
@@ -305,15 +305,15 @@ func TestMassRawBroadcasts(t *testing.T) {
 	c := authed(t, ts)
 	defer c.Close(websocket.StatusNormalClosure, "")
 	ctx := context.Background()
-	_ = wsjson.Write(ctx, c, map[string]interface{}{
+	_ = wsjson.Write(ctx, c, map[string]any{
 		"type": "request", "id": "1", "method": "node.mass_raw",
 		"params": map[string]string{"line": "PING :x"},
 	})
-	var resp map[string]interface{}
+	var resp map[string]any
 	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = wsjson.Read(rctx, c, &resp)
-	r := resp["result"].(map[string]interface{})
+	r := resp["result"].(map[string]any)
 	if int(r["affected"].(float64)) != 2 {
 		t.Fatalf("want affected=2, got %v", r["affected"])
 	}
@@ -334,11 +334,11 @@ func TestMassJoinCooldown(t *testing.T) {
 	c := authed(t, ts)
 	defer c.Close(websocket.StatusNormalClosure, "")
 	ctx := context.Background()
-	_ = wsjson.Write(ctx, c, map[string]interface{}{
+	_ = wsjson.Write(ctx, c, map[string]any{
 		"type": "request", "id": "1", "method": "node.mass_join",
 		"params": map[string]string{"channel": "#x"},
 	})
-	var resp map[string]interface{}
+	var resp map[string]any
 	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = wsjson.Read(rctx, c, &resp)
@@ -354,11 +354,11 @@ func TestNicksAddAndOwnersAdd(t *testing.T) {
 	defer c.Close(websocket.StatusNormalClosure, "")
 	ctx := context.Background()
 
-	_ = wsjson.Write(ctx, c, map[string]interface{}{
+	_ = wsjson.Write(ctx, c, map[string]any{
 		"type": "request", "id": "1", "method": "nicks.add",
 		"params": map[string]string{"nick": "newnick"},
 	})
-	var resp map[string]interface{}
+	var resp map[string]any
 	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	_ = wsjson.Read(rctx, c, &resp)
 	cancel()
@@ -366,7 +366,7 @@ func TestNicksAddAndOwnersAdd(t *testing.T) {
 		t.Fatalf("nicks.add: %+v", resp)
 	}
 
-	_ = wsjson.Write(ctx, c, map[string]interface{}{
+	_ = wsjson.Write(ctx, c, map[string]any{
 		"type": "request", "id": "2", "method": "owners.add",
 		"params": map[string]string{"mask": "*!*foo@bar"},
 	})
@@ -394,18 +394,18 @@ func TestBNCStart(t *testing.T) {
 	defer c.Close(websocket.StatusNormalClosure, "")
 	botID := ComputeBotID("irc.example", 6667, "v", 0)
 	ctx := context.Background()
-	_ = wsjson.Write(ctx, c, map[string]interface{}{
+	_ = wsjson.Write(ctx, c, map[string]any{
 		"type": "request", "id": "1", "method": "bnc.start",
 		"params": map[string]string{"bot_id": botID},
 	})
-	var resp map[string]interface{}
+	var resp map[string]any
 	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = wsjson.Read(rctx, c, &resp)
 	if resp["type"] != "response" {
 		t.Fatalf("bad: %+v", resp)
 	}
-	r := resp["result"].(map[string]interface{})
+	r := resp["result"].(map[string]any)
 	if int(r["port"].(float64)) != 4242 || r["password"] != "pass" {
 		t.Fatalf("bad bnc result: %+v", r)
 	}
@@ -417,11 +417,11 @@ func TestEventsSubscribeAndReceive(t *testing.T) {
 	c := authed(t, ts)
 	defer c.Close(websocket.StatusNormalClosure, "")
 	ctx := context.Background()
-	_ = wsjson.Write(ctx, c, map[string]interface{}{
+	_ = wsjson.Write(ctx, c, map[string]any{
 		"type": "request", "id": "1", "method": "events.subscribe",
-		"params": map[string]interface{}{"topics": []string{"bot.connected"}, "replay_last": 0},
+		"params": map[string]any{"topics": []string{"bot.connected"}, "replay_last": 0},
 	})
-	var resp map[string]interface{}
+	var resp map[string]any
 	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = wsjson.Read(rctx, c, &resp)
@@ -430,7 +430,7 @@ func TestEventsSubscribeAndReceive(t *testing.T) {
 	}
 
 	srv.hub.Publish("bot.connected", map[string]string{"bot_id": "x"})
-	var ev map[string]interface{}
+	var ev map[string]any
 	rctx2, cancel2 := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel2()
 	_ = wsjson.Read(rctx2, c, &ev)
@@ -448,13 +448,13 @@ func TestEventsReplay(t *testing.T) {
 	c := authed(t, ts)
 	defer c.Close(websocket.StatusNormalClosure, "")
 	ctx := context.Background()
-	_ = wsjson.Write(ctx, c, map[string]interface{}{
+	_ = wsjson.Write(ctx, c, map[string]any{
 		"type": "request", "id": "1", "method": "events.subscribe",
-		"params": map[string]interface{}{"replay_last": 2},
+		"params": map[string]any{"replay_last": 2},
 	})
 	seen := map[string]int{}
 	for i := 0; i < 3; i++ {
-		var m map[string]interface{}
+		var m map[string]any
 		rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		if err := wsjson.Read(rctx, c, &m); err != nil {
 			cancel()
@@ -475,11 +475,11 @@ func TestBotAttachReceivesEvent(t *testing.T) {
 	defer c.Close(websocket.StatusNormalClosure, "")
 	botID := ComputeBotID("irc.example", 6667, "v", 0)
 	ctx := context.Background()
-	_ = wsjson.Write(ctx, c, map[string]interface{}{
+	_ = wsjson.Write(ctx, c, map[string]any{
 		"type": "request", "id": "1", "method": "bot.attach",
 		"params": map[string]string{"bot_id": botID},
 	})
-	var resp map[string]interface{}
+	var resp map[string]any
 	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = wsjson.Read(rctx, c, &resp)
@@ -487,7 +487,7 @@ func TestBotAttachReceivesEvent(t *testing.T) {
 		t.Fatalf("bad: %+v", resp)
 	}
 	srv.attach.Publish(srv, botID, srv.NewAttachEvent("bot.attach.privmsg", map[string]string{"target": "#c", "text": "hi"}))
-	var ev map[string]interface{}
+	var ev map[string]any
 	rctx2, cancel2 := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel2()
 	_ = wsjson.Read(rctx2, c, &ev)
@@ -503,16 +503,16 @@ func TestBotDetachStopsDelivery(t *testing.T) {
 	defer c.Close(websocket.StatusNormalClosure, "")
 	botID := ComputeBotID("irc.example", 6667, "v", 0)
 	ctx := context.Background()
-	_ = wsjson.Write(ctx, c, map[string]interface{}{
+	_ = wsjson.Write(ctx, c, map[string]any{
 		"type": "request", "id": "1", "method": "bot.attach",
 		"params": map[string]string{"bot_id": botID},
 	})
-	var resp map[string]interface{}
+	var resp map[string]any
 	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	_ = wsjson.Read(rctx, c, &resp)
 	cancel()
 
-	_ = wsjson.Write(ctx, c, map[string]interface{}{
+	_ = wsjson.Write(ctx, c, map[string]any{
 		"type": "request", "id": "2", "method": "bot.detach",
 		"params": map[string]string{"bot_id": botID},
 	})
@@ -525,7 +525,7 @@ func TestBotDetachStopsDelivery(t *testing.T) {
 
 	// Publish after detach — must not deliver; expect read timeout.
 	srv.attach.Publish(srv, botID, srv.NewAttachEvent("bot.attach.privmsg", nil))
-	var ev map[string]interface{}
+	var ev map[string]any
 	rctx3, cancel3 := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel3()
 	if err := wsjson.Read(rctx3, c, &ev); err == nil {
@@ -572,12 +572,12 @@ func TestNodeInfoIncludesVersionAndPID(t *testing.T) {
 	c := authed(t, ts)
 	defer c.Close(websocket.StatusNormalClosure, "")
 	ctx := context.Background()
-	_ = wsjson.Write(ctx, c, map[string]interface{}{"type": "request", "id": "2", "method": "node.info"})
-	var resp map[string]interface{}
+	_ = wsjson.Write(ctx, c, map[string]any{"type": "request", "id": "2", "method": "node.info"})
+	var resp map[string]any
 	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = wsjson.Read(rctx, c, &resp)
-	r := resp["result"].(map[string]interface{})
+	r := resp["result"].(map[string]any)
 	if r["version"] != "v9.9.9" {
 		t.Fatalf("version missing: %+v", r)
 	}
@@ -599,15 +599,15 @@ func TestBNCStartIncludesSSHCommand(t *testing.T) {
 	defer c.Close(websocket.StatusNormalClosure, "")
 	botID := ComputeBotID("irc.example", 6667, "v", 0)
 	ctx := context.Background()
-	_ = wsjson.Write(ctx, c, map[string]interface{}{
+	_ = wsjson.Write(ctx, c, map[string]any{
 		"type": "request", "id": "1", "method": "bnc.start",
 		"params": map[string]string{"bot_id": botID},
 	})
-	var resp map[string]interface{}
+	var resp map[string]any
 	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = wsjson.Read(rctx, c, &resp)
-	r := resp["result"].(map[string]interface{})
+	r := resp["result"].(map[string]any)
 	sshCmd, ok := r["ssh_command"].(string)
 	if !ok || sshCmd == "" {
 		t.Fatalf("ssh_command missing: %+v", r)
@@ -625,7 +625,7 @@ func TestHandshakeTimeout(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 7*time.Second)
 	defer cancel()
-	var got map[string]interface{}
+	var got map[string]any
 	err := wsjson.Read(ctx, c, &got)
 	if err == nil {
 		t.Fatalf("want close, got message: %+v", got)

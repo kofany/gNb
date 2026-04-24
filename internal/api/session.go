@@ -30,7 +30,7 @@ type Session struct {
 
 	authed atomic.Bool
 
-	out chan interface{}
+	out chan any
 	sub *Subscriber
 
 	attachedMu sync.Mutex
@@ -43,7 +43,7 @@ func newSession(id uint64, remote string, c *websocket.Conn, s *Server) *Session
 		remote:   remote,
 		conn:     c,
 		server:   s,
-		out:      make(chan interface{}, outboundBuffer),
+		out:      make(chan any, outboundBuffer),
 		attached: make(map[string]struct{}),
 	}
 }
@@ -104,7 +104,7 @@ func (s *Session) close() {
 
 // send enqueues a message to the outbound writer. Non-blocking: on overflow
 // the session is closed with a PolicyViolation code.
-func (s *Session) send(msg interface{}) {
+func (s *Session) send(msg any) {
 	select {
 	case s.out <- msg:
 	default:
@@ -132,7 +132,7 @@ func (s *Session) run(ctx context.Context) {
 
 // writeSync writes a message to the WebSocket directly, bypassing the
 // outbound channel. Used during handshake where we must flush before close.
-func (s *Session) writeSync(ctx context.Context, msg interface{}) {
+func (s *Session) writeSync(ctx context.Context, msg any) {
 	wctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = wsjson.Write(wctx, s.conn, msg)
@@ -180,7 +180,7 @@ func (s *Session) handshake(ctx context.Context) bool {
 		return false
 	}
 	s.markAuthed()
-	s.writeSync(ctx, NewResponse(req.ID, map[string]interface{}{
+	s.writeSync(ctx, NewResponse(req.ID, map[string]any{
 		"node_id":     s.server.nodeID,
 		"node_name":   s.server.cfg.NodeName,
 		"api_version": "1.0",

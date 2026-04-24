@@ -19,7 +19,7 @@ func TestSinkPublishesLifecycleEvents(t *testing.T) {
 	if msg.Event != "bot.nick_changed" {
 		t.Fatalf("bad: %s", msg.Event)
 	}
-	d := msg.Data.(map[string]interface{})
+	d := msg.Data.(map[string]any)
 	if d["old"] != "old" || d["new"] != "new" {
 		t.Fatalf("bad payload: %+v", d)
 	}

@@ -21,7 +21,7 @@ func cooldownErr(name string) *HandlerError {
 	return &HandlerError{Code: ErrCooldown, Message: "mass-" + name + " cooldown active"}
 }
 
-func handleMassJoin(_ context.Context, s *Session, req *RequestMsg) (interface{}, *HandlerError) {
+func handleMassJoin(_ context.Context, s *Session, req *RequestMsg) (any, *HandlerError) {
 	var p massChanParam
 	if e := decodeParams(req, &p); e != nil {
 		return nil, e
@@ -40,10 +40,10 @@ func handleMassJoin(_ context.Context, s *Session, req *RequestMsg) (interface{}
 	for _, b := range bots {
 		b.JoinChannel(p.Channel)
 	}
-	return map[string]interface{}{"ok": true, "affected": len(bots)}, nil
+	return map[string]any{"ok": true, "affected": len(bots)}, nil
 }
 
-func handleMassPart(_ context.Context, s *Session, req *RequestMsg) (interface{}, *HandlerError) {
+func handleMassPart(_ context.Context, s *Session, req *RequestMsg) (any, *HandlerError) {
 	var p massChanParam
 	if e := decodeParams(req, &p); e != nil {
 		return nil, e
@@ -62,10 +62,10 @@ func handleMassPart(_ context.Context, s *Session, req *RequestMsg) (interface{}
 	for _, b := range bots {
 		b.PartChannel(p.Channel)
 	}
-	return map[string]interface{}{"ok": true, "affected": len(bots)}, nil
+	return map[string]any{"ok": true, "affected": len(bots)}, nil
 }
 
-func handleMassReconnect(_ context.Context, s *Session, _ *RequestMsg) (interface{}, *HandlerError) {
+func handleMassReconnect(_ context.Context, s *Session, _ *RequestMsg) (any, *HandlerError) {
 	bm := s.server.deps.BotManager
 	if bm == nil {
 		return nil, notFound("bot manager unavailable")
@@ -77,10 +77,10 @@ func handleMassReconnect(_ context.Context, s *Session, _ *RequestMsg) (interfac
 	for _, b := range bots {
 		go b.Reconnect()
 	}
-	return map[string]interface{}{"ok": true, "affected": len(bots)}, nil
+	return map[string]any{"ok": true, "affected": len(bots)}, nil
 }
 
-func handleMassRaw(_ context.Context, s *Session, req *RequestMsg) (interface{}, *HandlerError) {
+func handleMassRaw(_ context.Context, s *Session, req *RequestMsg) (any, *HandlerError) {
 	var p massRawParam
 	if e := decodeParams(req, &p); e != nil {
 		return nil, e
@@ -97,10 +97,10 @@ func handleMassRaw(_ context.Context, s *Session, req *RequestMsg) (interface{},
 	for _, b := range bots {
 		b.SendRaw(line)
 	}
-	return map[string]interface{}{"ok": true, "affected": len(bots)}, nil
+	return map[string]any{"ok": true, "affected": len(bots)}, nil
 }
 
-func handleMassSay(_ context.Context, s *Session, req *RequestMsg) (interface{}, *HandlerError) {
+func handleMassSay(_ context.Context, s *Session, req *RequestMsg) (any, *HandlerError) {
 	var p massSayParam
 	if e := decodeParams(req, &p); e != nil {
 		return nil, e
@@ -116,5 +116,5 @@ func handleMassSay(_ context.Context, s *Session, req *RequestMsg) (interface{},
 	for _, b := range bots {
 		b.SendMessage(p.Target, p.Message)
 	}
-	return map[string]interface{}{"ok": true, "affected": len(bots)}, nil
+	return map[string]any{"ok": true, "affected": len(bots)}, nil
 }

@@ -10,11 +10,11 @@ import (
 // complete. The real token check happens in Session.handshake before
 // dispatch; registering this method means duplicate logins are refused
 // cleanly rather than falling through as unknown_method.
-func handleAuthLogin(_ context.Context, _ *Session, _ *RequestMsg) (interface{}, *HandlerError) {
+func handleAuthLogin(_ context.Context, _ *Session, _ *RequestMsg) (any, *HandlerError) {
 	return nil, &HandlerError{Code: ErrForbidden, Message: "already authenticated"}
 }
 
-func handleNodeInfo(_ context.Context, s *Session, _ *RequestMsg) (interface{}, *HandlerError) {
+func handleNodeInfo(_ context.Context, s *Session, _ *RequestMsg) (any, *HandlerError) {
 	srv := s.server
 	var (
 		numBots   int
@@ -29,7 +29,7 @@ func handleNodeInfo(_ context.Context, s *Session, _ *RequestMsg) (interface{}, 
 			}
 		}
 	}
-	return map[string]interface{}{
+	return map[string]any{
 		"node_id":            srv.nodeID,
 		"node_name":          srv.cfg.NodeName,
 		"api_version":        "1.0",

@@ -12,7 +12,7 @@ func newAttachID() string {
 	return hex.EncodeToString(b[:])
 }
 
-func handleBotAttach(_ context.Context, s *Session, req *RequestMsg) (interface{}, *HandlerError) {
+func handleBotAttach(_ context.Context, s *Session, req *RequestMsg) (any, *HandlerError) {
 	var p botIDParam
 	if e := decodeParams(req, &p); e != nil {
 		return nil, e
@@ -25,7 +25,7 @@ func handleBotAttach(_ context.Context, s *Session, req *RequestMsg) (interface{
 	return map[string]string{"attach_id": newAttachID()}, nil
 }
 
-func handleBotDetach(_ context.Context, s *Session, req *RequestMsg) (interface{}, *HandlerError) {
+func handleBotDetach(_ context.Context, s *Session, req *RequestMsg) (any, *HandlerError) {
 	var p botIDParam
 	if e := decodeParams(req, &p); e != nil {
 		return nil, e

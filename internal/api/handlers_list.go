@@ -16,10 +16,10 @@ type BotSummary struct {
 	JoinedChannels     []string `json:"joined_channels"`
 }
 
-func handleBotList(_ context.Context, s *Session, _ *RequestMsg) (interface{}, *HandlerError) {
+func handleBotList(_ context.Context, s *Session, _ *RequestMsg) (any, *HandlerError) {
 	srv := s.server
 	if srv.deps.BotManager == nil || srv.deps.Config == nil {
-		return map[string]interface{}{"bots": []BotSummary{}}, nil
+		return map[string]any{"bots": []BotSummary{}}, nil
 	}
 	bots := srv.deps.BotManager.GetBots()
 	out := make([]BotSummary, 0, len(bots))
@@ -41,19 +41,19 @@ func handleBotList(_ context.Context, s *Session, _ *RequestMsg) (interface{}, *
 			JoinedChannels:     b.GetJoinedChannels(),
 		})
 	}
-	return map[string]interface{}{"bots": out}, nil
+	return map[string]any{"bots": out}, nil
 }
 
-func handleNicksList(_ context.Context, s *Session, _ *RequestMsg) (interface{}, *HandlerError) {
+func handleNicksList(_ context.Context, s *Session, _ *RequestMsg) (any, *HandlerError) {
 	if s.server.deps.NickManager == nil {
-		return map[string]interface{}{"nicks": []string{}}, nil
+		return map[string]any{"nicks": []string{}}, nil
 	}
-	return map[string]interface{}{"nicks": s.server.deps.NickManager.GetNicks()}, nil
+	return map[string]any{"nicks": s.server.deps.NickManager.GetNicks()}, nil
 }
 
-func handleOwnersList(_ context.Context, s *Session, _ *RequestMsg) (interface{}, *HandlerError) {
+func handleOwnersList(_ context.Context, s *Session, _ *RequestMsg) (any, *HandlerError) {
 	if s.server.deps.BotManager == nil {
-		return map[string]interface{}{"owners": []string{}}, nil
+		return map[string]any{"owners": []string{}}, nil
 	}
-	return map[string]interface{}{"owners": s.server.deps.BotManager.GetOwners()}, nil
+	return map[string]any{"owners": s.server.deps.BotManager.GetOwners()}, nil
 }

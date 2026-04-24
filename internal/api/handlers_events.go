@@ -7,7 +7,7 @@ type subscribeParam struct {
 	ReplayLast int      `json:"replay_last"`
 }
 
-func handleEventsSubscribe(_ context.Context, s *Session, req *RequestMsg) (interface{}, *HandlerError) {
+func handleEventsSubscribe(_ context.Context, s *Session, req *RequestMsg) (any, *HandlerError) {
 	var p subscribeParam
 	if e := decodeParams(req, &p); e != nil {
 		return nil, e
@@ -25,13 +25,13 @@ func handleEventsSubscribe(_ context.Context, s *Session, req *RequestMsg) (inte
 		s.send(m)
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"cursor":   s.server.hub.Seq(),
 		"replayed": len(replayed),
 	}, nil
 }
 
-func handleEventsUnsubscribe(_ context.Context, s *Session, _ *RequestMsg) (interface{}, *HandlerError) {
+func handleEventsUnsubscribe(_ context.Context, s *Session, _ *RequestMsg) (any, *HandlerError) {
 	if s.sub != nil {
 		s.server.hub.Unsubscribe(s.sub)
 		s.sub = nil

@@ -16,13 +16,13 @@ func TestEndToEndLifecycleFlow(t *testing.T) {
 	defer c.Close(websocket.StatusNormalClosure, "")
 	ctx := context.Background()
 
-	if err := wsjson.Write(ctx, c, map[string]interface{}{
+	if err := wsjson.Write(ctx, c, map[string]any{
 		"type": "request", "id": "sub", "method": "events.subscribe",
-		"params": map[string]interface{}{"replay_last": 0},
+		"params": map[string]any{"replay_last": 0},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	var resp map[string]interface{}
+	var resp map[string]any
 	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = wsjson.Read(rctx, c, &resp)
@@ -37,7 +37,7 @@ func TestEndToEndLifecycleFlow(t *testing.T) {
 
 	want := []string{"bot.connected", "bot.nick_changed", "bot.nick_captured"}
 	for _, ev := range want {
-		var m map[string]interface{}
+		var m map[string]any
 		rctx2, cancel2 := context.WithTimeout(ctx, 2*time.Second)
 		err := wsjson.Read(rctx2, c, &m)
 		cancel2()

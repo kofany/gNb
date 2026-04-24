@@ -41,7 +41,7 @@ func sanitizeIRCLine(line string) string {
 	return r.Replace(line)
 }
 
-func handleBotSay(_ context.Context, s *Session, req *RequestMsg) (interface{}, *HandlerError) {
+func handleBotSay(_ context.Context, s *Session, req *RequestMsg) (any, *HandlerError) {
 	var p botSayParam
 	if e := decodeParams(req, &p); e != nil {
 		return nil, e
@@ -57,7 +57,7 @@ func handleBotSay(_ context.Context, s *Session, req *RequestMsg) (interface{}, 
 	return map[string]bool{"ok": true}, nil
 }
 
-func handleBotJoin(_ context.Context, s *Session, req *RequestMsg) (interface{}, *HandlerError) {
+func handleBotJoin(_ context.Context, s *Session, req *RequestMsg) (any, *HandlerError) {
 	var p botChanParam
 	if e := decodeParams(req, &p); e != nil {
 		return nil, e
@@ -73,7 +73,7 @@ func handleBotJoin(_ context.Context, s *Session, req *RequestMsg) (interface{},
 	return map[string]bool{"ok": true}, nil
 }
 
-func handleBotPart(_ context.Context, s *Session, req *RequestMsg) (interface{}, *HandlerError) {
+func handleBotPart(_ context.Context, s *Session, req *RequestMsg) (any, *HandlerError) {
 	var p botChanParam
 	if e := decodeParams(req, &p); e != nil {
 		return nil, e
@@ -89,7 +89,7 @@ func handleBotPart(_ context.Context, s *Session, req *RequestMsg) (interface{},
 	return map[string]bool{"ok": true}, nil
 }
 
-func handleBotQuit(_ context.Context, s *Session, req *RequestMsg) (interface{}, *HandlerError) {
+func handleBotQuit(_ context.Context, s *Session, req *RequestMsg) (any, *HandlerError) {
 	var p botQuitParam
 	if e := decodeParams(req, &p); e != nil {
 		return nil, e
@@ -106,7 +106,7 @@ func handleBotQuit(_ context.Context, s *Session, req *RequestMsg) (interface{},
 	return map[string]bool{"ok": true}, nil
 }
 
-func handleBotReconnect(_ context.Context, s *Session, req *RequestMsg) (interface{}, *HandlerError) {
+func handleBotReconnect(_ context.Context, s *Session, req *RequestMsg) (any, *HandlerError) {
 	var p botIDParam
 	if e := decodeParams(req, &p); e != nil {
 		return nil, e
@@ -119,7 +119,7 @@ func handleBotReconnect(_ context.Context, s *Session, req *RequestMsg) (interfa
 	return map[string]bool{"ok": true}, nil
 }
 
-func handleBotChangeNick(_ context.Context, s *Session, req *RequestMsg) (interface{}, *HandlerError) {
+func handleBotChangeNick(_ context.Context, s *Session, req *RequestMsg) (any, *HandlerError) {
 	var p botNickParam
 	if e := decodeParams(req, &p); e != nil {
 		return nil, e
@@ -135,7 +135,7 @@ func handleBotChangeNick(_ context.Context, s *Session, req *RequestMsg) (interf
 	return map[string]bool{"ok": true}, nil
 }
 
-func handleBotRaw(_ context.Context, s *Session, req *RequestMsg) (interface{}, *HandlerError) {
+func handleBotRaw(_ context.Context, s *Session, req *RequestMsg) (any, *HandlerError) {
 	var p botRawParam
 	if e := decodeParams(req, &p); e != nil {
 		return nil, e

@@ -149,7 +149,7 @@ func (s *Server) configForBot(id string) (config.BotConfig, bool) {
 }
 
 // NewAttachEvent constructs an EventMsg with monotonic seq, reusing the hub's counter.
-func (s *Server) NewAttachEvent(event string, data interface{}) EventMsg {
+func (s *Server) NewAttachEvent(event string, data any) EventMsg {
 	return EventMsg{
 		Type:   "event",
 		Event:  event,

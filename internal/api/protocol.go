@@ -26,10 +26,10 @@ type RequestMsg struct {
 }
 
 type ResponseMsg struct {
-	Type   string      `json:"type"`
-	ID     string      `json:"id"`
-	OK     bool        `json:"ok"`
-	Result interface{} `json:"result"`
+	Type   string `json:"type"`
+	ID     string `json:"id"`
+	OK     bool   `json:"ok"`
+	Result any    `json:"result"`
 }
 
 type ErrorMsg struct {
@@ -40,15 +40,15 @@ type ErrorMsg struct {
 }
 
 type EventMsg struct {
-	Type   string      `json:"type"`
-	Event  string      `json:"event"`
-	NodeID string      `json:"node_id"`
-	TS     string      `json:"ts"`
-	Seq    uint64      `json:"seq"`
-	Data   interface{} `json:"data"`
+	Type   string `json:"type"`
+	Event  string `json:"event"`
+	NodeID string `json:"node_id"`
+	TS     string `json:"ts"`
+	Seq    uint64 `json:"seq"`
+	Data   any    `json:"data"`
 }
 
-func NewResponse(id string, result interface{}) ResponseMsg {
+func NewResponse(id string, result any) ResponseMsg {
 	return ResponseMsg{Type: "response", ID: id, OK: true, Result: result}
 }
 
@@ -56,7 +56,7 @@ func NewError(id string, code ErrorCode, msg string) ErrorMsg {
 	return ErrorMsg{Type: "error", ID: id, Code: code, Message: msg}
 }
 
-func NewEvent(nodeID, event string, seq uint64, ts string, data interface{}) EventMsg {
+func NewEvent(nodeID, event string, seq uint64, ts string, data any) EventMsg {
 	return EventMsg{Type: "event", Event: event, NodeID: nodeID, Seq: seq, TS: ts, Data: data}
 }
 
