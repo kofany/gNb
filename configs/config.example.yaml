@@ -23,3 +23,16 @@ bots:
 
 channels:
   - "#tahion" #example channel
+
+# Panel API (WebSocket). Plain HTTP by default — expose via cloudflared for wss://.
+# Set api.enabled: true to turn on. Generate a fresh 64-char hex token with:
+#   python -c 'import secrets; print(secrets.token_hex(32))'
+api:
+  enabled: false
+  node_name: "my-node"
+  bind_addr: "127.0.0.1:7766"
+  auth_token: ""
+  tls_cert_file: ""
+  tls_key_file: ""
+  event_buffer: 1000
+  max_connections: 4
