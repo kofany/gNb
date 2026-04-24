@@ -49,6 +49,13 @@ func (b *stubBot) SendMessage(target, message string) {
 }
 func (b *stubBot) SetEventSink(_ types.EventSink) {}
 func (b *stubBot) GetBotID() string               { return "" }
+func (b *stubBot) GetJoinedChannels() []string {
+	out := make([]string, 0, len(b.joinedChannels))
+	for ch := range b.joinedChannels {
+		out = append(out, ch)
+	}
+	return out
+}
 
 type stubNickManager struct {
 	targets  []string

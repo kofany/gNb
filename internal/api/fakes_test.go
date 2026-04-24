@@ -115,6 +115,11 @@ func (f *fakeBot) GetBotID() string {
 	defer f.mu.Unlock()
 	return f.botID
 }
+func (f *fakeBot) GetJoinedChannels() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.channels...)
+}
 
 // fakeBotManager is a captured-call BotManager.
 type fakeBotManager struct {

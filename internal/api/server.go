@@ -109,20 +109,20 @@ func (s *Server) Hub() *EventHub { return s.hub }
 // AttachMgr returns the AttachManager.
 func (s *Server) AttachMgr() *AttachManager { return s.attach }
 
-// BotByID returns the Bot at the config-derived position for the given bot_id, or nil.
+// BotByID returns the live Bot matching the given bot_id, or nil.
+// We iterate GetBots() and compare by Bot.GetBotID() — BotManager reorders
+// (and occasionally shrinks) its bots slice at runtime, so a config-index
+// lookup is unsafe after startup.
 func (s *Server) BotByID(id string) types.Bot {
-	i, ok := s.indexByID[id]
-	if !ok {
+	if id == "" || s.deps.BotManager == nil {
 		return nil
 	}
-	if s.deps.BotManager == nil {
-		return nil
+	for _, b := range s.deps.BotManager.GetBots() {
+		if b.GetBotID() == id {
+			return b
+		}
 	}
-	bots := s.deps.BotManager.GetBots()
-	if i >= len(bots) {
-		return nil
-	}
-	return bots[i]
+	return nil
 }
 
 // BotIDByIndex returns the bot_id for position i (or "" if out of range).
@@ -131,6 +131,20 @@ func (s *Server) BotIDByIndex(i int) string {
 		return ""
 	}
 	return s.botIDByIndex[i]
+}
+
+// configForBot returns the config slot that produced the given bot_id.
+// Config ordering is stable, so this lookup is correct even after
+// BotManager reorders its live bots slice.
+func (s *Server) configForBot(id string) (config.BotConfig, bool) {
+	if s.deps.Config == nil {
+		return config.BotConfig{}, false
+	}
+	i, ok := s.indexByID[id]
+	if !ok || i >= len(s.deps.Config.Bots) {
+		return config.BotConfig{}, false
+	}
+	return s.deps.Config.Bots[i], true
 }
 
 // NewAttachEvent constructs an EventMsg with monotonic seq, reusing the hub's counter.

@@ -34,6 +34,7 @@ type Bot interface {
 	RemoveBot()
 	SetEventSink(sink EventSink)
 	GetBotID() string
+	GetJoinedChannels() []string
 }
 
 type NickManager interface {

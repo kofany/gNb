@@ -28,7 +28,13 @@ func testServer(t *testing.T) (*Server, *httptest.Server, *fakeBotManager) {
 	}
 	apiCfg.ApplyDefaults()
 
-	fb := &fakeBot{nick: "a", connected: true, server: "irc.example", channels: []string{"#x"}}
+	fb := &fakeBot{
+		botID:     ComputeBotID("irc.example", 6667, "v", 0),
+		nick:      "a",
+		connected: true,
+		server:    "irc.example",
+		channels:  []string{"#x"},
+	}
 	fbm := &fakeBotManager{bots: []types.Bot{fb}}
 
 	cfgFull := &config.Config{

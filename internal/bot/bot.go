@@ -89,6 +89,18 @@ func (b *Bot) SetEventSink(sink types.EventSink) {
 // GetBotID returns the stable identifier computed from the bot's config slot.
 func (b *Bot) GetBotID() string { return b.botID }
 
+// GetJoinedChannels returns a snapshot of channels the bot has joined,
+// including auto-joined ones (e.g. #literki on single-letter nicks).
+func (b *Bot) GetJoinedChannels() []string {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	out := make([]string, 0, len(b.joinedChannels))
+	for ch := range b.joinedChannels {
+		out = append(out, ch)
+	}
+	return out
+}
+
 // currentSink returns the active EventSink, or nil if none. Safe under lock.
 func (b *Bot) currentSink() types.EventSink {
 	b.mutex.Lock()

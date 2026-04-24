@@ -22,16 +22,15 @@ func handleBotList(_ context.Context, s *Session, _ *RequestMsg) (interface{}, *
 		return map[string]interface{}{"bots": []BotSummary{}}, nil
 	}
 	bots := srv.deps.BotManager.GetBots()
-	cfgBots := srv.deps.Config.Bots
 	out := make([]BotSummary, 0, len(bots))
-	for i, b := range bots {
-		if i >= len(cfgBots) {
-			break
+	for _, b := range bots {
+		bc, ok := srv.configForBot(b.GetBotID())
+		if !ok {
+			continue
 		}
-		bc := cfgBots[i]
 		nick := b.GetCurrentNick()
 		out = append(out, BotSummary{
-			BotID:              srv.BotIDByIndex(i),
+			BotID:              b.GetBotID(),
 			Server:             bc.Server,
 			Port:               bc.Port,
 			SSL:                bc.SSL,
@@ -39,25 +38,10 @@ func handleBotList(_ context.Context, s *Session, _ *RequestMsg) (interface{}, *
 			CurrentNick:        nick,
 			Connected:          b.IsConnected(),
 			IsSingleLetterNick: len(nick) == 1,
-			JoinedChannels:     channelsBotIsOn(srv.deps.Config.Channels, b),
+			JoinedChannels:     b.GetJoinedChannels(),
 		})
 	}
 	return map[string]interface{}{"bots": out}, nil
-}
-
-// channelsBotIsOn filters the configured channel list by whether the bot
-// reports IsOnChannel. It is the best snapshot we can produce without
-// storing per-bot joined state directly on the public Bot interface.
-func channelsBotIsOn(all []string, b interface {
-	IsOnChannel(string) bool
-}) []string {
-	out := []string{}
-	for _, ch := range all {
-		if b.IsOnChannel(ch) {
-			out = append(out, ch)
-		}
-	}
-	return out
 }
 
 func handleNicksList(_ context.Context, s *Session, _ *RequestMsg) (interface{}, *HandlerError) {
