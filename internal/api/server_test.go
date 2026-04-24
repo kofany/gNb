@@ -128,6 +128,48 @@ func TestHandshakeBadToken(t *testing.T) {
 	}
 }
 
+func TestNodeInfoRequiresAuth(t *testing.T) {
+	_, ts, _ := testServer(t)
+	defer ts.Close()
+	c := wsDial(t, ts.URL)
+	defer c.Close(websocket.StatusNormalClosure, "")
+
+	ctx := context.Background()
+	req := map[string]interface{}{"type": "request", "id": "1", "method": "node.info"}
+	_ = wsjson.Write(ctx, c, req)
+	var got map[string]interface{}
+	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_ = wsjson.Read(rctx, c, &got)
+	if got["type"] != "error" || got["code"] != "forbidden" {
+		t.Fatalf("want forbidden, got %+v", got)
+	}
+}
+
+func TestNodeInfoAfterAuth(t *testing.T) {
+	_, ts, _ := testServer(t)
+	defer ts.Close()
+	c := authed(t, ts)
+	defer c.Close(websocket.StatusNormalClosure, "")
+
+	ctx := context.Background()
+	_ = wsjson.Write(ctx, c, map[string]interface{}{"type": "request", "id": "2", "method": "node.info"})
+	var resp map[string]interface{}
+	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_ = wsjson.Read(rctx, c, &resp)
+	if resp["type"] != "response" {
+		t.Fatalf("want response, got %+v", resp)
+	}
+	result := resp["result"].(map[string]interface{})
+	if result["node_name"] != "test-node" {
+		t.Fatalf("bad result: %+v", result)
+	}
+	if int(result["num_bots"].(float64)) != 1 {
+		t.Fatalf("num_bots: %+v", result)
+	}
+}
+
 func TestHandshakeTimeout(t *testing.T) {
 	_, ts, _ := testServer(t)
 	defer ts.Close()

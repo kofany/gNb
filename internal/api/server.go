@@ -72,9 +72,10 @@ func New(cfg config.APIConfig, nodeID string, deps Deps) *Server {
 	return s
 }
 
-// registerRoutes wires all method handlers. Populated as handlers are added.
+// registerRoutes wires all method handlers.
 func (s *Server) registerRoutes() {
-	// populated by subsequent tasks
+	s.router.Register("auth.login", handleAuthLogin)
+	s.router.Register("node.info", handleNodeInfo)
 }
 
 // Hub returns the EventHub.
