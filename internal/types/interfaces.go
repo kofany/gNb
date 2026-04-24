@@ -99,4 +99,8 @@ type EventSink interface {
 	// sessions attached to this bot_id. The event pointer must not be
 	// retained past the call.
 	BotIRCEvent(botID string, e *irc.Event)
+
+	// BotRawOut delivers a line the bot has just sent to IRC, for panel
+	// sessions attached to this bot_id.
+	BotRawOut(botID, line string)
 }

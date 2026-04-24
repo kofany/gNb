@@ -67,6 +67,13 @@ func (s *serverSink) OwnersChanged(owners []string) {
 	s.srv.hub.Publish("owners.changed", map[string]interface{}{"owners": owners})
 }
 
+func (s *serverSink) BotRawOut(botID, line string) {
+	s.srv.attach.Publish(s.srv, botID, s.srv.NewAttachEvent("bot.attach.raw_out", map[string]interface{}{
+		"bot_id": botID,
+		"line":   line,
+	}))
+}
+
 func (s *serverSink) BotIRCEvent(botID string, e *irc.Event) {
 	srv := s.srv
 	// Always emit the raw_in for attached sessions.

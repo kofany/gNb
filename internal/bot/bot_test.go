@@ -81,6 +81,26 @@ func (nm *stubNickManager) ReturnNickToPool(nick string) {
 }
 func (nm *stubNickManager) SetEventSink(_ types.EventSink) {}
 
+// stubSink is a no-op EventSink satisfying types.EventSink in manager tests.
+type stubSink struct{}
+
+func (stubSink) BotConnected(string, string, string)        {}
+func (stubSink) BotDisconnected(string, string)             {}
+func (stubSink) BotNickChanged(string, string, string)      {}
+func (stubSink) BotNickCaptured(string, string, string)     {}
+func (stubSink) BotJoinedChannel(string, string)            {}
+func (stubSink) BotPartedChannel(string, string)            {}
+func (stubSink) BotKicked(string, string, string, string)   {}
+func (stubSink) BotBanned(string, int)                      {}
+func (stubSink) BotAdded(string, string, int, bool, string) {}
+func (stubSink) BotRemoved(string)                          {}
+func (stubSink) NicksChanged([]string)                      {}
+func (stubSink) OwnersChanged([]string)                     {}
+func (stubSink) BotIRCEvent(string, *irc.Event)             {}
+func (stubSink) BotRawOut(string, string)                   {}
+
+var _ types.EventSink = stubSink{}
+
 func TestISONMechanism(t *testing.T) {
 	requestID := "test-request-123"
 	responseChan := make(chan []string, 1)

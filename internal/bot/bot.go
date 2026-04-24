@@ -950,6 +950,9 @@ func (b *Bot) SendMessage(target, message string) {
 	if b.IsConnected() {
 		util.Debug("Bot %s is sending message to %s: %s", b.GetCurrentNick(), target, message)
 		b.Connection.Privmsg(target, message)
+		if sink := b.currentSink(); sink != nil {
+			sink.BotRawOut(b.botID, "PRIVMSG "+target+" :"+message)
+		}
 	} else {
 		util.Debug("Bot %s is not connected; cannot send message to %s", b.GetCurrentNick(), target)
 	}
@@ -1055,6 +1058,9 @@ func (b *Bot) SendRaw(message string) {
 		b.Connection.SendRaw(message)
 		if b.bncServer != nil && b.bncServer.Tunnel != nil {
 			b.bncServer.Tunnel.WriteToConn(message)
+		}
+		if sink := b.currentSink(); sink != nil {
+			sink.BotRawOut(b.botID, message)
 		}
 	}
 }
