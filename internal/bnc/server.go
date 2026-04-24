@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/gliderlabs/ssh"
-	sshcrypto "golang.org/x/crypto/ssh"
 	"github.com/kofany/gNb/internal/types"
 	"github.com/kofany/gNb/internal/util"
+	sshcrypto "golang.org/x/crypto/ssh"
 )
 
 type BNCServer struct {
