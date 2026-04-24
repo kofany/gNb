@@ -510,6 +510,9 @@ func (b *Bot) addCallbacks() {
 		}
 		rawMessage := e.Raw
 		b.ForwardToTunnel(rawMessage)
+		if sink := b.currentSink(); sink != nil {
+			sink.BotIRCEvent(b.botID, e)
+		}
 	})
 
 	// DCC support
