@@ -99,13 +99,13 @@ func (rt *RawTunnel) readFromConn() {
 
 func (rt *RawTunnel) handleUserInput(input string) {
 	if strings.HasPrefix(input, ".") {
-		// User entered a command
 		rt.processCommand(input)
-	} else {
-		// Regular message, send as PRIVMSG to a default target
-		defaultTarget := rt.bot.GetCurrentNick() // Change this to a default channel or user if desired
-		rt.bot.SendMessage(defaultTarget, input)
+		return
 	}
+	// Unprefixed text used to be PRIVMSG'd to the bot's own nick, which
+	// was surprising (it looked like the bot was talking to itself and
+	// confused logs). Prompt instead.
+	rt.sendToClient("Prefix commands with '.'. Type .help for a list, or use .msg/.raw to send IRC.")
 }
 
 func (rt *RawTunnel) processCommand(command string) {
