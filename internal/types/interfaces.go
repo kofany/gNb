@@ -71,3 +71,27 @@ type ReactionRequest struct {
 	Timestamp time.Time
 	Action    func() error
 }
+
+// EventSink is the outbound channel through which Bot / BotManager /
+// NickManager notify external observers (currently the Panel API) about
+// lifecycle changes. Methods must not block the caller. A nil sink means
+// observation is disabled; callers check for nil before invoking.
+type EventSink interface {
+	BotConnected(botID, nick, server string)
+	BotDisconnected(botID, reason string)
+	BotNickChanged(botID, oldNick, newNick string)
+	BotNickCaptured(botID, nick, kind string)
+	BotJoinedChannel(botID, channel string)
+	BotPartedChannel(botID, channel string)
+	BotKicked(botID, channel, by, reason string)
+	BotBanned(botID string, code int)
+	BotAdded(botID, server string, port int, ssl bool, vhost string)
+	BotRemoved(botID string)
+	NicksChanged(nicks []string)
+	OwnersChanged(owners []string)
+
+	// BotIRCEvent delivers every IRC event a bot sees; the API routes it to
+	// sessions attached to this bot_id. The event pointer must not be
+	// retained past the call.
+	BotIRCEvent(botID string, e *irc.Event)
+}
