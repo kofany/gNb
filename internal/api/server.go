@@ -86,6 +86,11 @@ func (s *Server) registerRoutes() {
 	s.router.Register("bot.reconnect", handleBotReconnect)
 	s.router.Register("bot.change_nick", handleBotChangeNick)
 	s.router.Register("bot.raw", handleBotRaw)
+	s.router.Register("node.mass_join", handleMassJoin)
+	s.router.Register("node.mass_part", handleMassPart)
+	s.router.Register("node.mass_reconnect", handleMassReconnect)
+	s.router.Register("node.mass_raw", handleMassRaw)
+	s.router.Register("node.mass_say", handleMassSay)
 }
 
 // Hub returns the EventHub.

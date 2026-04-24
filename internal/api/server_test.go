@@ -292,6 +292,55 @@ func TestBotNotFound(t *testing.T) {
 	}
 }
 
+func TestMassRawBroadcasts(t *testing.T) {
+	_, ts, fbm := testServer(t)
+	defer ts.Close()
+	fbm.bots = append(fbm.bots, &fakeBot{nick: "b", connected: true, server: "irc.example"})
+	c := authed(t, ts)
+	defer c.Close(websocket.StatusNormalClosure, "")
+	ctx := context.Background()
+	_ = wsjson.Write(ctx, c, map[string]interface{}{
+		"type": "request", "id": "1", "method": "node.mass_raw",
+		"params": map[string]string{"line": "PING :x"},
+	})
+	var resp map[string]interface{}
+	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_ = wsjson.Read(rctx, c, &resp)
+	r := resp["result"].(map[string]interface{})
+	if int(r["affected"].(float64)) != 2 {
+		t.Fatalf("want affected=2, got %v", r["affected"])
+	}
+	for _, b := range fbm.bots {
+		fb := b.(*fakeBot)
+		fb.mu.Lock()
+		if len(fb.raw) != 1 || fb.raw[0] != "PING :x" {
+			t.Errorf("bot raw not delivered: %+v", fb.raw)
+		}
+		fb.mu.Unlock()
+	}
+}
+
+func TestMassJoinCooldown(t *testing.T) {
+	_, ts, fbm := testServer(t)
+	defer ts.Close()
+	fbm.massBlocked = map[string]bool{"join": true}
+	c := authed(t, ts)
+	defer c.Close(websocket.StatusNormalClosure, "")
+	ctx := context.Background()
+	_ = wsjson.Write(ctx, c, map[string]interface{}{
+		"type": "request", "id": "1", "method": "node.mass_join",
+		"params": map[string]string{"channel": "#x"},
+	})
+	var resp map[string]interface{}
+	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_ = wsjson.Read(rctx, c, &resp)
+	if resp["type"] != "error" || resp["code"] != "cooldown" {
+		t.Fatalf("want cooldown error, got %+v", resp)
+	}
+}
+
 func TestHandshakeTimeout(t *testing.T) {
 	_, ts, _ := testServer(t)
 	defer ts.Close()
