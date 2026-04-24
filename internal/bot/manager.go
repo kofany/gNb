@@ -316,6 +316,10 @@ func (bm *BotManager) RemoveBotFromManager(botToRemove types.Bot) {
 	}
 	bm.mutex.Unlock()
 
+	if sink := bm.currentSink(); sink != nil {
+		sink.BotRemoved(botToRemove.GetBotID())
+	}
+
 	// Aktualizujemy NickManager w osobnej goroutine, aby nie blokować
 	if bm.nickManager != nil {
 		go func() {
@@ -349,25 +353,23 @@ func (bm *BotManager) CanExecuteMassCommand(cmdName string) bool {
 
 func (bm *BotManager) AddOwner(ownerMask string) error {
 	bm.mutex.Lock()
-	defer bm.mutex.Unlock()
-
-	// Check if owner already exists
 	for _, owner := range bm.owners.Owners {
 		if owner == ownerMask {
+			bm.mutex.Unlock()
 			return fmt.Errorf("owner '%s' already exists", ownerMask)
 		}
 	}
-
 	bm.owners.Owners = append(bm.owners.Owners, ownerMask)
-
-	// Save to file
-	return bm.saveOwnersToFile()
+	snapshot, bots, list, err := bm.prepareOwnersSnapshotLocked()
+	bm.mutex.Unlock()
+	if err != nil {
+		return err
+	}
+	return bm.persistOwners(snapshot, bots, list)
 }
 
 func (bm *BotManager) RemoveOwner(ownerMask string) error {
 	bm.mutex.Lock()
-	defer bm.mutex.Unlock()
-
 	index := -1
 	for i, owner := range bm.owners.Owners {
 		if owner == ownerMask {
@@ -375,15 +377,49 @@ func (bm *BotManager) RemoveOwner(ownerMask string) error {
 			break
 		}
 	}
-
 	if index == -1 {
+		bm.mutex.Unlock()
 		return fmt.Errorf("owner '%s' not found", ownerMask)
 	}
-
 	bm.owners.Owners = append(bm.owners.Owners[:index], bm.owners.Owners[index+1:]...)
+	snapshot, bots, list, err := bm.prepareOwnersSnapshotLocked()
+	bm.mutex.Unlock()
+	if err != nil {
+		return err
+	}
+	return bm.persistOwners(snapshot, bots, list)
+}
 
-	// Save to file
-	return bm.saveOwnersToFile()
+// prepareOwnersSnapshotLocked serializes the current owner list and snapshots
+// the bot slice. Called with bm.mutex held (read or write); returns values
+// the caller can safely use after releasing the lock.
+func (bm *BotManager) prepareOwnersSnapshotLocked() ([]byte, []types.Bot, []string, error) {
+	data, err := json.MarshalIndent(bm.owners, "", "  ")
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	bots := make([]types.Bot, len(bm.bots))
+	copy(bots, bm.bots)
+	list := make([]string, len(bm.owners.Owners))
+	copy(list, bm.owners.Owners)
+	return data, bots, list, nil
+}
+
+// persistOwners writes the serialized owner list to disk, fans the updated
+// OwnerList out to bots, and emits OwnersChanged on the sink. Caller must
+// not hold bm.mutex.
+func (bm *BotManager) persistOwners(data []byte, bots []types.Bot, list []string) error {
+	if err := os.WriteFile("configs/owners.json", data, 0644); err != nil {
+		return err
+	}
+	snapshot := auth.OwnerList{Owners: list}
+	for _, b := range bots {
+		b.SetOwnerList(snapshot)
+	}
+	if sink := bm.currentSink(); sink != nil {
+		sink.OwnersChanged(list)
+	}
+	return nil
 }
 
 func (bm *BotManager) GetOwners() []string {
@@ -393,34 +429,6 @@ func (bm *BotManager) GetOwners() []string {
 	copy(ownersCopy, bm.owners.Owners)
 	bm.mutex.RUnlock()
 	return ownersCopy
-}
-
-func (bm *BotManager) saveOwnersToFile() error {
-	// Najpierw przygotujmy dane do zapisu
-	jsonData, err := json.MarshalIndent(bm.owners, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	// Zapisujemy do pliku bez blokowania mutexa
-	err = os.WriteFile("configs/owners.json", jsonData, 0644)
-	if err != nil {
-		return err
-	}
-
-	// Kopiujemy listę botów i listę właścicieli pod mutexem
-	bm.mutex.RLock()
-	botsCopy := make([]types.Bot, len(bm.bots))
-	copy(botsCopy, bm.bots)
-	ownersCopy := bm.owners
-	bm.mutex.RUnlock()
-
-	// Aktualizujemy listę właścicieli w botach bez blokowania mutexa
-	for _, bot := range botsCopy {
-		bot.SetOwnerList(ownersCopy)
-	}
-
-	return nil
 }
 
 // GetBots returns a copy of the bot slice

@@ -360,28 +360,29 @@ func (nm *NickManager) GetNicksToCatch() []string {
 
 func (nm *NickManager) AddNick(nick string) error {
 	nm.mutex.Lock()
-	defer nm.mutex.Unlock()
-
-	// Sprawdź, czy nick już istnieje
 	for _, n := range nm.priorityNicks {
 		if n == nick {
+			nm.mutex.Unlock()
 			return fmt.Errorf("nick '%s' already exists", nick)
 		}
 	}
-
-	// Dodaj nick do listy priorytetowej
 	nm.priorityNicks = append(nm.priorityNicks, nick)
 	nm.nicksToCatch = append(nm.nicksToCatch, nick)
-
-	// Zapisz do pliku
-	return nm.saveNicksToFile()
+	err := nm.saveNicksToFile()
+	snapshot := make([]string, len(nm.priorityNicks))
+	copy(snapshot, nm.priorityNicks)
+	nm.mutex.Unlock()
+	if err != nil {
+		return err
+	}
+	if sink := nm.currentSink(); sink != nil {
+		sink.NicksChanged(snapshot)
+	}
+	return nil
 }
 
 func (nm *NickManager) RemoveNick(nick string) error {
 	nm.mutex.Lock()
-	defer nm.mutex.Unlock()
-
-	// Usuń nick z listy priorytetowej
 	index := -1
 	for i, n := range nm.priorityNicks {
 		if n == nick {
@@ -389,14 +390,11 @@ func (nm *NickManager) RemoveNick(nick string) error {
 			break
 		}
 	}
-
 	if index == -1 {
+		nm.mutex.Unlock()
 		return fmt.Errorf("nick '%s' not found", nick)
 	}
-
 	nm.priorityNicks = append(nm.priorityNicks[:index], nm.priorityNicks[index+1:]...)
-
-	// Usuń nick z listy nicksToCatch
 	index = -1
 	for i, n := range nm.nicksToCatch {
 		if n == nick {
@@ -404,13 +402,20 @@ func (nm *NickManager) RemoveNick(nick string) error {
 			break
 		}
 	}
-
 	if index != -1 {
 		nm.nicksToCatch = append(nm.nicksToCatch[:index], nm.nicksToCatch[index+1:]...)
 	}
-
-	// Zapisz do pliku
-	return nm.saveNicksToFile()
+	err := nm.saveNicksToFile()
+	snapshot := make([]string, len(nm.priorityNicks))
+	copy(snapshot, nm.priorityNicks)
+	nm.mutex.Unlock()
+	if err != nil {
+		return err
+	}
+	if sink := nm.currentSink(); sink != nil {
+		sink.NicksChanged(snapshot)
+	}
+	return nil
 }
 
 func (nm *NickManager) GetNicks() []string {
