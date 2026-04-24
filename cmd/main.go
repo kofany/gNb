@@ -158,10 +158,9 @@ func main() {
 			return
 		}
 		defer cntxt.Release()
-		log.Print("Daemon started")
-
-		// Po daemonizacji, inicjalizujemy logger raz
-		// Ustawiamy poziom logowania na WARNING w trybie demona
+		// Daemon mode: util.InitLogger has not run yet, so the one
+		// log.Printf below (on init failure) intentionally uses the
+		// stdlib logger to ensure the failure is visible in bot.log.
 		level := util.WARNING
 		logFile := "bot.log"
 		err = util.InitLogger(level, logFile)
@@ -169,7 +168,7 @@ func main() {
 			log.Printf("Failed to initialize logger after daemonization: %v", err)
 			os.Exit(1)
 		}
-		util.Info("Logger initialized with level: %s", logLevelToString(level))
+		util.Info("Daemon started; logger initialized at level %s", logLevelToString(level))
 	} else {
 		color.Yellow("Running in development mode (foreground)")
 
