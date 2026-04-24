@@ -93,15 +93,11 @@ func (dt *DCCTunnel) Start(conn net.Conn) {
 }
 
 func (dt *DCCTunnel) readLoop() {
-	defer func() {
-		dt.mu.Lock()
-		dt.active = false
-		if dt.readDone != nil {
-			close(dt.readDone)
-		}
-		dt.mu.Unlock()
-		dt.Stop()
-	}()
+	// Stop() owns the teardown: flips active, closes conn, removes partyline
+	// session, and fires onStop. Setting active=false here first would cause
+	// Stop() to early-return and leak both the partyline entry and the
+	// bot.dccTunnel reference.
+	defer dt.Stop()
 
 	scanner := bufio.NewScanner(dt.conn)
 	for scanner.Scan() {
