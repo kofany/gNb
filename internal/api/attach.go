@@ -63,5 +63,24 @@ func (am *AttachManager) Sessions(botID string) []uint64 {
 	return out
 }
 
+// Publish delivers msg to every session attached to bot_id.
+func (am *AttachManager) Publish(srv *Server, botID string, msg EventMsg) {
+	ids := am.Sessions(botID)
+	if len(ids) == 0 {
+		return
+	}
+	srv.sessMu.Lock()
+	sessions := make([]*Session, 0, len(ids))
+	for _, sid := range ids {
+		if sess, ok := srv.sessions[sid]; ok {
+			sessions = append(sessions, sess)
+		}
+	}
+	srv.sessMu.Unlock()
+	for _, sess := range sessions {
+		sess.send(msg)
+	}
+}
+
 // nowUTC returns an RFC3339Nano UTC timestamp.
 func nowUTC() string { return time.Now().UTC().Format(time.RFC3339Nano) }
