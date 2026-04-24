@@ -260,18 +260,10 @@ All events carry `{bot_id, ...}`. Delivered only when the session is attached to
 | `bot.attach.raw_in` | `{line}` |
 | `bot.attach.raw_out` | `{line}` |
 
-### 8.3 Session-local events
-
-Not broadcast — emitted only to the single session they concern.
-
-| event | data |
-|-------|------|
-| `api.backpressure` | `{dropped_count}` — emitted after a session's outbound queue recovers from overflow, reporting how many events were dropped. |
-
 ## 9. Threading / backpressure / shutdown
 
 - **Per session:** one read goroutine, one write goroutine, one outbound channel `chan EventMsg` buffered 256.
-- **Outbound overflow policy:** if buffer full, drop the event, bump session-local counter. When backpressure clears (channel drained below half), emit one informational event to that session (`api.backpressure` — see §8.3). Never block the EventHub on a slow panel.
+- **Outbound overflow policy:** if the session's outbound channel is full (256 slots), the WebSocket is closed with `StatusPolicyViolation`. A consumer that cannot keep up is treated as broken; the panel is expected to reconnect and, if it wants history, replay via `events.subscribe({replay_last: N})`. This is simpler than a drop-and-recover loop and is panel-visible (reconnect handler runs). Never block the EventHub on a slow panel.
 - **EventHub:**
   - Single source publishing to ring buffer + all subscriber channels.
   - Subscriber list protected by `sync.RWMutex`; read-locked during fan-out, write-locked on subscribe/unsubscribe.

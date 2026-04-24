@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"os"
 	"time"
 )
 
@@ -32,6 +33,8 @@ func handleNodeInfo(_ context.Context, s *Session, _ *RequestMsg) (interface{}, 
 		"node_id":            srv.nodeID,
 		"node_name":          srv.cfg.NodeName,
 		"api_version":        "1.0",
+		"version":            srv.deps.Version,
+		"pid":                os.Getpid(),
 		"uptime_seconds":     int64(time.Since(srv.startTime).Seconds()),
 		"num_bots":           numBots,
 		"num_connected_bots": connected,

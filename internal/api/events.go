@@ -108,7 +108,8 @@ func (h *EventHub) Unsubscribe(sub *Subscriber) {
 	h.subMu.Unlock()
 }
 
-// Replay returns up to n most recent matching events from the ring buffer.
+// Replay returns up to n most recent matching events from the ring buffer,
+// in order of increasing seq.
 func (h *EventHub) Replay(sub *Subscriber, n int) []EventMsg {
 	if n <= 0 {
 		return nil
@@ -116,13 +117,18 @@ func (h *EventHub) Replay(sub *Subscriber, n int) []EventMsg {
 	h.bufMu.Lock()
 	defer h.bufMu.Unlock()
 
-	out := make([]EventMsg, 0, n)
-	for i := len(h.buf) - 1; i >= 0 && len(out) < n; i-- {
+	// Walk newest-to-oldest collecting at most n matches, then reverse to
+	// restore chronological order. Avoids the O(n^2) prepend pattern.
+	collected := make([]EventMsg, 0, n)
+	for i := len(h.buf) - 1; i >= 0 && len(collected) < n; i-- {
 		if sub.topicMatch(h.buf[i].Event) {
-			out = append([]EventMsg{h.buf[i]}, out...)
+			collected = append(collected, h.buf[i])
 		}
 	}
-	return out
+	for i, j := 0, len(collected)-1; i < j; i, j = i+1, j-1 {
+		collected[i], collected[j] = collected[j], collected[i]
+	}
+	return collected
 }
 
 // Seq returns the current highest seq number.

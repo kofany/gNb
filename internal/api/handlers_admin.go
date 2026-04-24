@@ -1,6 +1,9 @@
 package api
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 type nickParam struct {
 	Nick string `json:"nick"`
@@ -91,9 +94,17 @@ func handleBNCStart(_ context.Context, s *Session, req *RequestMsg) (interface{}
 	if err != nil {
 		return nil, internalErr(err)
 	}
+	host := ""
+	if cfg, ok := s.server.configForBot(p.BotID); ok {
+		host = cfg.Vhost
+	}
+	if host == "" {
+		host = "<your-host>"
+	}
 	return map[string]interface{}{
-		"port":     port,
-		"password": password,
+		"port":        port,
+		"password":    password,
+		"ssh_command": fmt.Sprintf("ssh -p %d %s@%s %s", port, b.GetCurrentNick(), host, password),
 	}, nil
 }
 

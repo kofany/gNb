@@ -22,6 +22,7 @@ type Deps struct {
 	Config      *config.Config
 	BotManager  types.BotManager
 	NickManager types.NickManager
+	Version     string
 }
 
 // Server is the panel WebSocket API server.
@@ -201,10 +202,19 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
-	if s.activeN.Load() >= int32(s.cfg.MaxConnections) {
-		http.Error(w, "too many connections", http.StatusServiceUnavailable)
-		return
+	// Atomically reserve a connection slot (CAS loop). If the limit is
+	// already reached, reject without upgrading.
+	for {
+		n := s.activeN.Load()
+		if n >= int32(s.cfg.MaxConnections) {
+			http.Error(w, "too many connections", http.StatusServiceUnavailable)
+			return
+		}
+		if s.activeN.CompareAndSwap(n, n+1) {
+			break
+		}
 	}
+	defer s.activeN.Add(-1)
 
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		InsecureSkipVerify: true,
@@ -219,9 +229,6 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	if remote == "" {
 		remote = r.RemoteAddr
 	}
-
-	s.activeN.Add(1)
-	defer s.activeN.Add(-1)
 
 	s.sessMu.Lock()
 	s.nextSessID++

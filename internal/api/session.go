@@ -92,9 +92,10 @@ func (s *Session) startSubPump(sub *Subscriber) {
 
 // close handles cleanup: detach from attach manager, unsubscribe from hub.
 func (s *Session) close() {
-	for _, bid := range s.listAttached() {
-		s.server.attach.Detach(bid, s.id)
-	}
+	s.server.attach.DetachAll(s.id)
+	s.attachedMu.Lock()
+	s.attached = make(map[string]struct{})
+	s.attachedMu.Unlock()
 	if s.sub != nil {
 		s.server.hub.Unsubscribe(s.sub)
 		s.sub = nil

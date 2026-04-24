@@ -533,6 +533,90 @@ func TestBotDetachStopsDelivery(t *testing.T) {
 	}
 }
 
+func TestBotByIDSurvivesManagerReorder(t *testing.T) {
+	// Simulate BotManager.StartBots reordering bm.bots into connection-arrival
+	// order. BotByID must still locate each bot by its stable bot_id.
+	s, _, fbm := testServer(t)
+	fbm.bots = append(fbm.bots,
+		&fakeBot{botID: "bbbbbbbbbbbb", nick: "b", connected: true, server: "irc.example"},
+		&fakeBot{botID: "cccccccccccc", nick: "c", connected: true, server: "irc.example"},
+	)
+	// Swap order.
+	fbm.bots[0], fbm.bots[2] = fbm.bots[2], fbm.bots[0]
+	expected := ComputeBotID("irc.example", 6667, "v", 0)
+	got := s.BotByID(expected)
+	if got == nil {
+		t.Fatalf("BotByID returned nil for %q after reorder", expected)
+	}
+	if got.GetBotID() != expected {
+		t.Fatalf("BotByID returned wrong bot: want %q got %q", expected, got.GetBotID())
+	}
+}
+
+func TestNodeInfoIncludesVersionAndPID(t *testing.T) {
+	cfgFull := &config.Config{
+		Bots:     []config.BotConfig{{Server: "irc.example", Port: 6667, SSL: false, Vhost: "v"}},
+		Channels: []string{"#x"},
+		API: config.APIConfig{
+			Enabled: true, AuthToken: strings.Repeat("x", 32), BindAddr: "127.0.0.1:0",
+			EventBuffer: 100, MaxConnections: 4, NodeName: "test-node",
+		},
+	}
+	cfgFull.API.ApplyDefaults()
+	fb := &fakeBot{botID: ComputeBotID("irc.example", 6667, "v", 0), nick: "a", connected: true, server: "irc.example"}
+	fbm := &fakeBotManager{bots: []types.Bot{fb}}
+	srv := New(cfgFull.API, "testnode", Deps{Config: cfgFull, BotManager: fbm, NickManager: &fakeNickManager{}, Version: "v9.9.9"})
+	ts := httptest.NewServer(http.HandlerFunc(srv.handleWS))
+	defer ts.Close()
+
+	c := authed(t, ts)
+	defer c.Close(websocket.StatusNormalClosure, "")
+	ctx := context.Background()
+	_ = wsjson.Write(ctx, c, map[string]interface{}{"type": "request", "id": "2", "method": "node.info"})
+	var resp map[string]interface{}
+	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_ = wsjson.Read(rctx, c, &resp)
+	r := resp["result"].(map[string]interface{})
+	if r["version"] != "v9.9.9" {
+		t.Fatalf("version missing: %+v", r)
+	}
+	if _, ok := r["pid"]; !ok {
+		t.Fatalf("pid missing: %+v", r)
+	}
+}
+
+func TestBNCStartIncludesSSHCommand(t *testing.T) {
+	_, ts, fbm := testServer(t)
+	defer ts.Close()
+	fb := fbm.bots[0].(*fakeBot)
+	fb.mu.Lock()
+	fb.bncPort = 4242
+	fb.bncPass = "pw"
+	fb.mu.Unlock()
+
+	c := authed(t, ts)
+	defer c.Close(websocket.StatusNormalClosure, "")
+	botID := ComputeBotID("irc.example", 6667, "v", 0)
+	ctx := context.Background()
+	_ = wsjson.Write(ctx, c, map[string]interface{}{
+		"type": "request", "id": "1", "method": "bnc.start",
+		"params": map[string]string{"bot_id": botID},
+	})
+	var resp map[string]interface{}
+	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_ = wsjson.Read(rctx, c, &resp)
+	r := resp["result"].(map[string]interface{})
+	sshCmd, ok := r["ssh_command"].(string)
+	if !ok || sshCmd == "" {
+		t.Fatalf("ssh_command missing: %+v", r)
+	}
+	if !strings.Contains(sshCmd, "4242") || !strings.Contains(sshCmd, "pw") {
+		t.Fatalf("ssh_command missing port/password: %q", sshCmd)
+	}
+}
+
 func TestHandshakeTimeout(t *testing.T) {
 	_, ts, _ := testServer(t)
 	defer ts.Close()

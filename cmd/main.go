@@ -240,6 +240,7 @@ func main() {
 				Config:      cfg,
 				BotManager:  botManager,
 				NickManager: nm,
+				Version:     version,
 			})
 			botManager.SetEventSink(apiSrv.Sink())
 			var apiCtx context.Context
