@@ -4,12 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"math/rand"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/fatih/color"
 	"github.com/kofany/gNb/internal/auth"
@@ -135,8 +133,7 @@ func main() {
 		color.Yellow("Not running as root (UID: %d), oidentd configuration not available", uid)
 	}
 
-	color.Blue("Initializing random number generator")
-	rand.Seed(time.Now().UnixNano())
+	// Go 1.20+ seeds math/rand automatically on first use; no manual Seed() required.
 
 	// Daemonizacja
 	if !*devMode {
