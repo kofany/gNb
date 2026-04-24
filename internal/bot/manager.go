@@ -98,10 +98,12 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 }
 
 // SetEventSink installs the observer used by the Panel API and fans it out
-// to every managed bot plus the NickManager. Safe to call at startup or
-// later to swap the sink.
+// to every managed bot plus the NickManager. On the first (non-nil) install
+// it also emits a BotAdded event per known bot so a panel subscribing
+// before StartBots sees the full roster. Safe to call multiple times.
 func (bm *BotManager) SetEventSink(sink types.EventSink) {
 	bm.sinkMu.Lock()
+	prev := bm.sink
 	bm.sink = sink
 	bm.sinkMu.Unlock()
 
@@ -115,6 +117,13 @@ func (bm *BotManager) SetEventSink(sink types.EventSink) {
 	}
 	if nm != nil {
 		nm.SetEventSink(sink)
+	}
+
+	if sink != nil && prev == nil {
+		for _, b := range bots {
+			cfg := b.(*Bot).Config
+			sink.BotAdded(b.GetBotID(), cfg.Server, cfg.Port, cfg.SSL, cfg.Vhost)
+		}
 	}
 }
 

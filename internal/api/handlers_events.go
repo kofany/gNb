@@ -2,6 +2,12 @@ package api
 
 import "context"
 
+// replayCap is an upper bound on replay_last. Larger requests are silently
+// clamped: the session outbound buffer is 256 slots, so feeding more than
+// that synchronously would trigger the backpressure-close path before
+// the panel even starts consuming.
+const replayCap = 128
+
 type subscribeParam struct {
 	Topics     []string `json:"topics"`
 	ReplayLast int      `json:"replay_last"`
@@ -20,7 +26,11 @@ func handleEventsSubscribe(_ context.Context, s *Session, req *RequestMsg) (any,
 	s.sub = sub
 	s.startSubPump(sub)
 
-	replayed := s.server.hub.Replay(sub, p.ReplayLast)
+	n := p.ReplayLast
+	if n > replayCap {
+		n = replayCap
+	}
+	replayed := s.server.hub.Replay(sub, n)
 	for _, m := range replayed {
 		s.send(m)
 	}

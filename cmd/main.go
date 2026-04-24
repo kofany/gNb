@@ -220,16 +220,10 @@ func main() {
 	color.Blue("Creating BotManager")
 	botManager := bot.NewBotManager(cfg, owners, nm)
 
-	// Uruchomienie botów
-	color.Blue("Starting bots")
-	go func() {
-		botManager.StartBots()
-		color.Blue("Starting NickManager's monitoring loop")
-		nm.Start()
-	}()
-
 	// Panel API (WebSocket) — opcjonalne, gate'owane przez cfg.API.Enabled.
-	// Token z configu musi być ustawiony, inaczej APIConfig.Validate już wcześniej zwróciłoby błąd.
+	// Konfigurujemy i instalujemy EventSink PRZED uruchomieniem botów, żeby
+	// pierwsze zdarzenia BotConnected nie zaginęły w wyścigu między
+	// StartBots a SetEventSink.
 	var apiCancel context.CancelFunc
 	if cfg.API.Enabled {
 		nodeID, idErr := api.LoadOrCreateNodeID(api.DefaultNodeIDPath())
@@ -253,6 +247,14 @@ func main() {
 			util.Info("API: panel WebSocket endpoint enabled at %s", cfg.API.BindAddr)
 		}
 	}
+
+	// Uruchomienie botów dopiero po podłączeniu sinka.
+	color.Blue("Starting bots")
+	go func() {
+		botManager.StartBots()
+		color.Blue("Starting NickManager's monitoring loop")
+		nm.Start()
+	}()
 
 	util.Debug("Configuration loaded: %+v", cfg)
 

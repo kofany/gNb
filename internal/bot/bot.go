@@ -805,12 +805,18 @@ func (b *Bot) ChangeNick(newNick string) {
 	oldNick := b.GetCurrentNick()
 	util.Info("Bot %s sending NICK %s", oldNick, newNick)
 	b.Connection.Nick(newNick)
+	if sink := b.currentSink(); sink != nil {
+		sink.BotRawOut(b.botID, "NICK "+newNick)
+	}
 }
 
 func (b *Bot) JoinChannel(channel string) {
 	if b.IsConnected() {
 		util.Info("Bot %s sending JOIN for %s on %s", b.GetCurrentNick(), channel, b.Config.Server)
 		b.Connection.Join(channel)
+		if sink := b.currentSink(); sink != nil {
+			sink.BotRawOut(b.botID, "JOIN "+channel)
+		}
 		b.scheduleJoinVerification(channel)
 	} else {
 		util.Warning("Bot %s is not connected; cannot join channel %s", b.GetCurrentNick(), channel)
@@ -821,6 +827,9 @@ func (b *Bot) PartChannel(channel string) {
 	if b.IsConnected() {
 		util.Debug("Bot %s is leaving channel %s", b.GetCurrentNick(), channel)
 		b.Connection.Part(channel)
+		if sink := b.currentSink(); sink != nil {
+			sink.BotRawOut(b.botID, "PART "+channel)
+		}
 
 		// Update joined channels map
 		b.mutex.Lock()

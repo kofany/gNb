@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 type nickParam struct {
@@ -100,6 +101,10 @@ func handleBNCStart(_ context.Context, s *Session, req *RequestMsg) (any, *Handl
 	}
 	if host == "" {
 		host = "<your-host>"
+	}
+	// IPv6 literals must be bracketed in ssh URIs.
+	if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+		host = "[" + host + "]"
 	}
 	return map[string]any{
 		"port":        port,

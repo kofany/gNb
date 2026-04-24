@@ -38,8 +38,7 @@ type Server struct {
 
 	httpSrv *http.Server
 
-	botIDByIndex []string
-	indexByID    map[string]int
+	indexByID map[string]int
 
 	sessMu     sync.Mutex
 	sessions   map[uint64]*Session
@@ -62,11 +61,8 @@ func New(cfg config.APIConfig, nodeID string, deps Deps) *Server {
 	}
 	s.attach = NewAttachManager()
 	if deps.Config != nil {
-		s.botIDByIndex = make([]string, len(deps.Config.Bots))
 		for i, bc := range deps.Config.Bots {
-			id := ComputeBotID(bc.Server, bc.Port, bc.Vhost, i)
-			s.botIDByIndex[i] = id
-			s.indexByID[id] = i
+			s.indexByID[ComputeBotID(bc.Server, bc.Port, bc.Vhost, i)] = i
 		}
 	}
 	s.registerRoutes()
@@ -124,14 +120,6 @@ func (s *Server) BotByID(id string) types.Bot {
 		}
 	}
 	return nil
-}
-
-// BotIDByIndex returns the bot_id for position i (or "" if out of range).
-func (s *Server) BotIDByIndex(i int) string {
-	if i < 0 || i >= len(s.botIDByIndex) {
-		return ""
-	}
-	return s.botIDByIndex[i]
 }
 
 // configForBot returns the config slot that produced the given bot_id.
