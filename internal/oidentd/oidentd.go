@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"strings"
 	"text/template"
 	"time"
@@ -31,7 +32,7 @@ default {
         deny forward
     }
 }
-user root {
+user {{ .Username }} {
     default {
         force reply {{ .Idents }}
     }
@@ -40,42 +41,80 @@ user root {
 
 type ConfigData struct {
 	Timestamp string
+	Username  string
 	Idents    string
 }
 
-// SetupOidentd konfiguruje oidentd jeśli program jest uruchomiony jako root
+// currentUsername returns the username under which the bot will run.
+// In sudo mode the binary itself still runs as the invoking user, and
+// oidentd matches connection ownership by UID — so we always want the
+// real (effective) user, not "root" just because we're using sudo.
+func currentUsername() (string, error) {
+	u, err := user.Current()
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve current user: %v", err)
+	}
+	if u.Username == "" {
+		return "", fmt.Errorf("current user has empty username")
+	}
+	return u.Username, nil
+}
+
+type runMode int
+
+const (
+	modeDirect runMode = iota // running as root, write/restart directly
+	modeSudo                  // non-root with passwordless sudo
+)
+
+// HasPasswordlessSudo reports whether the current user can invoke sudo
+// without being prompted for a password. Probed via `sudo -n true`.
+func HasPasswordlessSudo() bool {
+	return exec.Command("sudo", "-n", "true").Run() == nil
+}
+
+// SetupOidentd konfiguruje oidentd. Działa gdy program jest root,
+// albo gdy bieżący użytkownik ma passwordless sudo — wtedy zapisy do
+// /etc/oidentd.conf i restart usługi idą przez `sudo -n`.
 func SetupOidentd(cfg *config.Config) error {
-	// Sprawdź czy program jest uruchomiony jako root
-	if os.Geteuid() != 0 {
-		return fmt.Errorf("oidentd setup requires root privileges")
+	var mode runMode
+	switch {
+	case os.Geteuid() == 0:
+		mode = modeDirect
+	case HasPasswordlessSudo():
+		mode = modeSudo
+	default:
+		return fmt.Errorf("oidentd setup requires root or passwordless sudo")
 	}
 
-	// Sprawdź czy to system Debian
 	if !isDebianSystem() {
 		return fmt.Errorf("oidentd setup requires Debian-based system")
 	}
 
-	// Oblicz wymaganą liczbę identów
 	requiredIdents := len(cfg.Bots) + 10
 
-	// Wygeneruj identy
 	idents, err := generateIdents(requiredIdents)
 	if err != nil {
 		return fmt.Errorf("failed to generate idents: %v", err)
 	}
 
-	// Zaktualizuj konfigurację
-	if err := updateOidentdConfig(idents); err != nil {
+	if err := updateOidentdConfig(idents, mode); err != nil {
 		return fmt.Errorf("failed to update oidentd config: %v", err)
 	}
 
-	// Zrestartuj usługę
-	if err := restartOidentd(); err != nil {
+	if err := restartOidentd(mode); err != nil {
 		return fmt.Errorf("failed to restart oidentd: %v", err)
 	}
 
-	util.Info("Oidentd configured successfully with %d idents", len(idents))
+	util.Info("Oidentd configured successfully with %d idents (mode=%s)", len(idents), modeName(mode))
 	return nil
+}
+
+func modeName(m runMode) string {
+	if m == modeSudo {
+		return "sudo"
+	}
+	return "direct"
 }
 
 func isDebianSystem() bool {
@@ -146,14 +185,20 @@ func isNumber(r rune) bool {
 	return r >= '0' && r <= '9'
 }
 
-func updateOidentdConfig(idents []string) error {
+func updateOidentdConfig(idents []string, mode runMode) error {
 	tmpl, err := template.New("oidentd").Parse(configTemplate)
 	if err != nil {
 		return fmt.Errorf("failed to parse template: %v", err)
 	}
 
+	username, err := currentUsername()
+	if err != nil {
+		return err
+	}
+
 	data := ConfigData{
 		Timestamp: time.Now().Format("2006-01-02 15:04:05"),
+		Username:  username,
 		Idents:    strings.Join(idents, " "),
 	}
 
@@ -162,17 +207,43 @@ func updateOidentdConfig(idents []string) error {
 		return fmt.Errorf("failed to execute template: %v", err)
 	}
 
-	if err := os.WriteFile(oidentdConfigPath, buf.Bytes(), 0644); err != nil {
-		return fmt.Errorf("failed to write config file: %v", err)
+	if mode == modeDirect {
+		if err := os.WriteFile(oidentdConfigPath, buf.Bytes(), 0644); err != nil {
+			return fmt.Errorf("failed to write config file: %v", err)
+		}
+		return nil
 	}
 
+	tmp, err := os.CreateTemp("", "gnb-oidentd-*.conf")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %v", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if _, err := tmp.Write(buf.Bytes()); err != nil {
+		tmp.Close()
+		return fmt.Errorf("failed to write temp file: %v", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %v", err)
+	}
+
+	cmd := exec.Command("sudo", "-n", "install", "-m", "0644", "-o", "root", "-g", "root", tmpPath, oidentdConfigPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("sudo install failed: %v: %s", err, strings.TrimSpace(string(out)))
+	}
 	return nil
 }
 
-func restartOidentd() error {
-	cmd := exec.Command("systemctl", "restart", "oidentd.service")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to restart oidentd service: %v", err)
+func restartOidentd(mode runMode) error {
+	var cmd *exec.Cmd
+	if mode == modeDirect {
+		cmd = exec.Command("systemctl", "restart", "oidentd.service")
+	} else {
+		cmd = exec.Command("sudo", "-n", "systemctl", "restart", "oidentd.service")
+	}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to restart oidentd service: %v: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }

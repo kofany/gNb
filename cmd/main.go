@@ -107,17 +107,25 @@ func main() {
 	}
 	color.Green("Configuration loaded successfully")
 
-	// Wykonujemy logikę oidentd na samym początku
+	// Wykonujemy logikę oidentd na samym początku.
+	// Tryb pracy: root → bezpośrednio; non-root → przez passwordless sudo (`sudo -n`).
 	uid := os.Geteuid()
-	if uid == 0 {
+	canConfigure := uid == 0
+	switch {
+	case uid == 0:
 		color.Blue("Running as root")
-		// Sprawdzamy, czy plik /etc/oidentd.conf istnieje
+	case oidentd.HasPasswordlessSudo():
+		canConfigure = true
+		color.Blue("Running as UID %d with passwordless sudo — will use sudo for oidentd", uid)
+	default:
+		color.Yellow("Not running as root (UID: %d) and no passwordless sudo, oidentd configuration not available", uid)
+	}
+
+	if canConfigure {
 		if _, err := os.Stat("/etc/oidentd.conf"); err == nil {
 			color.Blue("/etc/oidentd.conf exists")
-			// Sprawdzamy, czy system to Debian
 			if isDebian() {
 				color.Blue("System is Debian")
-				// Uruchamiamy logikę oidentd bez pytania użytkownika
 				color.Blue("Configuring oidentd without user interaction...")
 				if err := oidentd.SetupOidentd(cfg); err != nil {
 					color.Red("Failed to setup oidentd: %v", err)
@@ -131,8 +139,6 @@ func main() {
 		} else {
 			color.Yellow("/etc/oidentd.conf does not exist, skipping oidentd configuration")
 		}
-	} else {
-		color.Yellow("Not running as root (UID: %d), oidentd configuration not available", uid)
 	}
 
 	// Go 1.20+ seeds math/rand automatically on first use; no manual Seed() required.
