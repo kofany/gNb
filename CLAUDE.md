@@ -2,6 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project-wide rules
+
+- **Always use the latest stable versions** of every package, library, framework, and runtime. Before proposing or upgrading any dep, verify the current latest release live (npmjs / pkg.go.dev / jsr / GitHub releases) — do not rely on assistant memory for version numbers, it may be stale.
+- **Passwordless sudo is available** in this environment — invoke `sudo` directly for any system-level installs/services without prompting the user for a password.
+
 ## Build, run, test
 
 - `make` — runs `go mod tidy` then builds a CGO-free static binary named `gNb` (capital N) via `cmd/main.go`. If invoked as root, additionally copies it to `/bin/gNb`. There is no separate `lint` or `build` target — `make tidy` runs `go mod tidy` in isolation.
