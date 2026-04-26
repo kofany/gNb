@@ -235,3 +235,27 @@ func TestNickManagerStartStopIdempotent(t *testing.T) {
 	nm.Stop()
 	nm.Stop()
 }
+
+func TestIsTooManyHostConnectionsError(t *testing.T) {
+	cases := []struct {
+		name string
+		msg  string
+		want bool
+	}{
+		{"local variant", "Closing Link: nick[user@host] (Too many host connections (local))", true},
+		{"global variant", "Closing Link: nick[user@host] (Too many host connections (global))", true},
+		{"bare phrase", "too many host connections", true},
+		{"upper case", "TOO MANY HOST CONNECTIONS", true},
+		{"k-line is not TMHC", "K-Lined for excessive flooding", false},
+		{"ping timeout is not TMHC", "Ping timeout: 240 seconds", false},
+		{"empty", "", false},
+		{"unrelated 'too many'", "Too many channels", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isTooManyHostConnectionsError(tc.msg); got != tc.want {
+				t.Errorf("isTooManyHostConnectionsError(%q) = %v, want %v", tc.msg, got, tc.want)
+			}
+		})
+	}
+}

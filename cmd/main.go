@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/kofany/gNb/internal/api"
@@ -263,11 +264,24 @@ func main() {
 		}
 	}
 
-	// Uruchomienie botów dopiero po podłączeniu sinka.
+	// Uruchomienie botów dopiero po podłączeniu sinka. NickManager startuje
+	// gdy wszystkie boty wyklarują stan połączenia ALBO po 180 s — co nastąpi
+	// pierwsze. Bez deadline'a zawieszony bot (np. wpadający w pętlę
+	// "Too many host connections") blokował ISON dla całej reszty floty.
 	color.Blue("Starting bots")
 	go func() {
-		botManager.StartBots()
-		color.Blue("Starting NickManager's monitoring loop")
+		startBotsDone := make(chan struct{})
+		go func() {
+			botManager.StartBots()
+			close(startBotsDone)
+		}()
+		const nickManagerStartDeadline = 180 * time.Second
+		select {
+		case <-startBotsDone:
+			color.Blue("Starting NickManager's monitoring loop (all bots resolved)")
+		case <-time.After(nickManagerStartDeadline):
+			color.Blue("Starting NickManager's monitoring loop (180s deadline; pending bots will join when they connect)")
+		}
 		nm.Start()
 	}()
 

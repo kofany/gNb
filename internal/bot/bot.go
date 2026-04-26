@@ -22,6 +22,29 @@ import (
 	irc "github.com/kofany/go-ircevo"
 )
 
+// tmhcMaxAttempts is how many times we let a bot react to a server-side
+// "Too many host connections" rejection before we drop it from the manager.
+// tmhcRetryDelay is the cooldown between attempts. The library's auto-reconnect
+// retries within ~1 s, which would hammer the server while the host limit is
+// active; we suppress that by quitting the connection on each detection and
+// only re-attempting after the cooldown.
+const (
+	tmhcMaxAttempts = 3
+	tmhcRetryDelay  = 20 * time.Second
+)
+
+// isTooManyHostConnectionsError matches the IRC ERROR message both ircd
+// variants emit when the per-host connection limit is hit, e.g.
+//
+//	Closing Link: nick[user@host] (Too many host connections (local))
+//	Closing Link: nick[user@host] (Too many host connections (global))
+//
+// Match is case-insensitive and substring-based so server message phrasing
+// variations still trigger the same handling.
+func isTooManyHostConnectionsError(msg string) bool {
+	return strings.Contains(strings.ToLower(msg), "too many host connections")
+}
+
 // Bot represents a single IRC bot
 type Bot struct {
 	Config          *config.BotConfig
@@ -55,6 +78,12 @@ type Bot struct {
 	sink               types.EventSink
 	runtimeState       *runtime.RuntimeState
 	humanlike          *humanlikeRunner
+	// Too many host connections handling — see tmhcMaxAttempts/tmhcRetryDelay.
+	// tmhcAttempts is guarded by b.mutex; tmhcInProgress is a CAS gate that
+	// prevents the library's tight reconnect spin from inflating the counter
+	// while a backoff goroutine is in flight.
+	tmhcAttempts   int
+	tmhcInProgress atomic.Bool
 }
 
 // GetBotManager returns the BotManager for this bot
@@ -404,6 +433,9 @@ func (b *Bot) addCallbacks() {
 		copy(channelsCopy, b.channels)
 		serverName := b.ServerName
 		currentNick := b.CurrentNick
+		// A successful registration clears any prior host-connection-limit
+		// strikes — the bot is healthy on this host now.
+		b.tmhcAttempts = 0
 		b.mutex.Unlock()
 
 		util.Info("Bot %s fully connected to %s as %s", currentNick, serverName, currentNick)
@@ -671,6 +703,32 @@ func (b *Bot) addCallbacks() {
 		if b.botManager != nil {
 			b.botManager.(*BotManager).RemoveBotFromManager(b)
 		}
+	})
+
+	// Callback for ERROR — specifically the per-host connection limit. The
+	// library's auto-reconnect loop spins ~1 Hz against this rejection, which
+	// both spams the server and uses up its connection budget. We claim the
+	// in-flight slot via CAS, count the attempt, and let handleTMHCBackoff
+	// stop the library's spin and either retry once after the cooldown or
+	// drop the bot from the manager once we've exhausted the budget.
+	b.Connection.AddCallback("ERROR", func(e *irc.Event) {
+		if !isTooManyHostConnectionsError(e.Message()) {
+			return
+		}
+		if !b.tmhcInProgress.CompareAndSwap(false, true) {
+			return
+		}
+
+		b.mutex.Lock()
+		b.tmhcAttempts++
+		attempt := b.tmhcAttempts
+		b.mutex.Unlock()
+
+		nick := b.GetCurrentNick()
+		util.Warning("Bot %s: server reported too many host connections (attempt %d/%d): %s",
+			nick, attempt, tmhcMaxAttempts, e.Message())
+
+		go b.handleTMHCBackoff(attempt, nick)
 	})
 
 	// Callback for disconnection
@@ -980,6 +1038,58 @@ func (b *Bot) Reconnect() {
 	// The 001 callback rejoins the configured channels on a successful
 	// reconnect; the 5-minute channel checker catches any that are missed.
 	// No arbitrary post-connect sleep needed.
+}
+
+// handleTMHCBackoff cools off after a "Too many host connections" rejection
+// and either reattempts a fresh registration or removes the bot once the
+// per-bot budget (tmhcMaxAttempts) is exhausted. Always called as a
+// goroutine from the ERROR callback so the library's read loop is not
+// blocked by Quit's internal 1 s pause.
+func (b *Bot) handleTMHCBackoff(attempt int, nick string) {
+	defer b.tmhcInProgress.Store(false)
+
+	// Stop the library's tight reconnect spin on the current connection.
+	// Quit() flips irc.quit=true (after a 1 s internal sleep) so the
+	// library's Loop exits; Disconnect() closes the socket so the loop
+	// doesn't linger on the read.
+	b.mutex.Lock()
+	conn := b.Connection
+	b.mutex.Unlock()
+	if conn != nil {
+		conn.QuitMessage = "throttled (host connection limit)"
+		conn.Quit()
+		conn.Disconnect()
+	}
+
+	if attempt >= tmhcMaxAttempts {
+		util.Warning("Bot %s: removing from manager after %d host-connection-limit hits", nick, tmhcMaxAttempts)
+		if sink := b.currentSink(); sink != nil {
+			sink.BotDisconnected(b.botID, fmt.Sprintf("removed: too many host connections (after %d attempts)", attempt))
+		}
+		b.RemoveBot()
+		return
+	}
+
+	util.Info("Bot %s: cooling off %s before retry %d/%d", nick, tmhcRetryDelay, attempt+1, tmhcMaxAttempts)
+	time.Sleep(tmhcRetryDelay)
+
+	// Bail out if the bot was removed (e.g. via .reconnect, ban, manager Stop)
+	// while we were sleeping.
+	b.mutex.Lock()
+	if b.gaveUp {
+		b.mutex.Unlock()
+		return
+	}
+	b.Connection = nil
+	b.connected = make(chan struct{})
+	b.mutex.Unlock()
+
+	if err := b.connectWithRetry(); err != nil {
+		util.Warning("Bot %s: TMHC retry connect failed: %v", nick, err)
+		b.mutex.Lock()
+		b.gaveUp = true
+		b.mutex.Unlock()
+	}
 }
 
 func (b *Bot) SendMessage(target, message string) {
