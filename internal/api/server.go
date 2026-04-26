@@ -13,6 +13,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/kofany/gNb/internal/config"
+	"github.com/kofany/gNb/internal/runtime"
 	"github.com/kofany/gNb/internal/types"
 	"github.com/kofany/gNb/internal/util"
 )
@@ -22,6 +23,7 @@ type Deps struct {
 	Config      *config.Config
 	BotManager  types.BotManager
 	NickManager types.NickManager
+	Runtime     *runtime.RuntimeState
 	Version     string
 }
 
@@ -98,6 +100,10 @@ func (s *Server) registerRoutes() {
 	s.router.Register("events.unsubscribe", handleEventsUnsubscribe)
 	s.router.Register("bot.attach", handleBotAttach)
 	s.router.Register("bot.detach", handleBotDetach)
+	s.router.Register("watchdog.get", handleWatchdogGet)
+	s.router.Register("watchdog.set", handleWatchdogSet)
+	s.router.Register("humanlike.get", handleHumanlikeGet)
+	s.router.Register("humanlike.set", handleHumanlikeSet)
 }
 
 // Hub returns the EventHub.

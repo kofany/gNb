@@ -17,6 +17,7 @@ import (
 	"github.com/kofany/gNb/internal/config"
 	"github.com/kofany/gNb/internal/nickmanager"
 	"github.com/kofany/gNb/internal/oidentd"
+	"github.com/kofany/gNb/internal/runtime"
 	"github.com/kofany/gNb/internal/util"
 	"github.com/sevlyar/go-daemon"
 )
@@ -223,8 +224,15 @@ func main() {
 	}
 	util.Debug("NickManager initialized with nicks: %+v", nm.GetNicksToCatch())
 
+	color.Blue("Loading runtime state")
+	runtimeState, err := runtime.LoadOrCreate("data/runtime.json")
+	if err != nil {
+		color.Red("Failed to load runtime state: %v", err)
+		return
+	}
+
 	color.Blue("Creating BotManager")
-	botManager := bot.NewBotManager(cfg, owners, nm)
+	botManager := bot.NewBotManager(cfg, owners, nm, runtimeState)
 
 	// Panel API (WebSocket) — opcjonalne, gate'owane przez cfg.API.Enabled.
 	// Konfigurujemy i instalujemy EventSink PRZED uruchomieniem botów, żeby
@@ -240,6 +248,7 @@ func main() {
 				Config:      cfg,
 				BotManager:  botManager,
 				NickManager: nm,
+				Runtime:     runtimeState,
 				Version:     version,
 			})
 			botManager.SetEventSink(apiSrv.Sink())

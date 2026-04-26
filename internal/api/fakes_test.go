@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/kofany/gNb/internal/auth"
+	"github.com/kofany/gNb/internal/runtime"
 	"github.com/kofany/gNb/internal/types"
 	irc "github.com/kofany/go-ircevo"
 )
@@ -151,6 +152,7 @@ func (f *fakeBotManager) GetMassCommandCooldown() time.Duration         { return
 func (f *fakeBotManager) CollectReactions(string, string, func() error) {}
 func (f *fakeBotManager) SendSingleMsg(string, string)                  {}
 func (f *fakeBotManager) SetEventSink(types.EventSink)                  {}
+func (f *fakeBotManager) RuntimeState() *runtime.RuntimeState           { return nil }
 
 type fakeNickManager struct {
 	mu    sync.Mutex

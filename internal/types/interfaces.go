@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/kofany/gNb/internal/auth"
+	"github.com/kofany/gNb/internal/runtime"
 	irc "github.com/kofany/go-ircevo"
 )
 
@@ -68,6 +69,7 @@ type BotManager interface {
 	CollectReactions(channel, message string, action func() error)
 	SendSingleMsg(channel, message string)
 	SetEventSink(sink EventSink)
+	RuntimeState() *runtime.RuntimeState
 }
 
 type ReactionRequest struct {

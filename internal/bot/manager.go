@@ -12,6 +12,7 @@ import (
 	"github.com/kofany/gNb/internal/auth"
 	"github.com/kofany/gNb/internal/config"
 	"github.com/kofany/gNb/internal/nickmanager"
+	"github.com/kofany/gNb/internal/runtime"
 	"github.com/kofany/gNb/internal/types"
 	"github.com/kofany/gNb/internal/util"
 )
@@ -42,10 +43,15 @@ type BotManager struct {
 	startTime           time.Time
 	sink                types.EventSink
 	sinkMu              sync.RWMutex
+	runtimeState        *runtime.RuntimeState
 }
 
-// NewBotManager creates a new BotManager instance
-func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManager) *BotManager {
+// NewBotManager creates a new BotManager instance.
+//
+// runtimeState carries the operator-mutable runtime configuration (watchdog
+// + human-like activity). It must be non-nil; callers create it via
+// runtime.LoadOrCreate before constructing the manager.
+func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManager, runtimeState *runtime.RuntimeState) *BotManager {
 	ctx, cancel := context.WithCancel(context.Background())
 	requiredWords := len(cfg.Bots)*3 + 10 // 3 words per bot (nick, ident, realname) + 10 spare
 
@@ -78,12 +84,14 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 		ctx:                 ctx,
 		cancel:              cancel,
 		startTime:           time.Now(),
+		runtimeState:        runtimeState,
 	}
 
 	// Creating bots
 	for i, botCfg := range cfg.Bots {
 		bot := NewBot(&botCfg, &cfg.Global, nm, manager)
 		bot.botID = computeBotID(botCfg.Server, botCfg.Port, botCfg.Vhost, i)
+		bot.runtimeState = runtimeState
 		bot.SetOwnerList(manager.owners)
 		bot.SetChannels(cfg.Channels)
 		bot.SetBotManager(manager)
@@ -93,8 +101,36 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 	}
 
 	nm.SetBots(manager.bots)
+
+	// Fan runtime-state changes to every bot. Runs after the in-memory
+	// state mutation has been persisted, so observers see the canonical
+	// post-write snapshot.
+	if runtimeState != nil {
+		runtimeState.OnChange(func(snap runtime.Snapshot) {
+			manager.dispatchRuntimeChange(snap)
+		})
+	}
+
 	go manager.cleanupDisconnectedBots()
 	return manager
+}
+
+// RuntimeState returns the runtime-state pointer this manager was built with.
+// It is exposed for the API layer to read or mutate the live configuration.
+func (bm *BotManager) RuntimeState() *runtime.RuntimeState { return bm.runtimeState }
+
+// dispatchRuntimeChange fans a new runtime snapshot out to every bot. Called
+// from the RuntimeState observer registered in NewBotManager.
+func (bm *BotManager) dispatchRuntimeChange(snap runtime.Snapshot) {
+	bm.mutex.RLock()
+	bots := make([]types.Bot, len(bm.bots))
+	copy(bots, bm.bots)
+	bm.mutex.RUnlock()
+	for _, b := range bots {
+		if rb, ok := b.(*Bot); ok {
+			rb.applyRuntimeChange(snap)
+		}
+	}
 }
 
 // SetEventSink installs the observer used by the Panel API and fans it out

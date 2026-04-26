@@ -16,6 +16,7 @@ import (
 	"github.com/kofany/gNb/internal/config"
 	"github.com/kofany/gNb/internal/dcc"
 	"github.com/kofany/gNb/internal/nickmanager"
+	"github.com/kofany/gNb/internal/runtime"
 	"github.com/kofany/gNb/internal/types"
 	"github.com/kofany/gNb/internal/util"
 	irc "github.com/kofany/go-ircevo"
@@ -52,6 +53,8 @@ type Bot struct {
 	channelCheckerStop chan struct{} // Stop signal for the current checker goroutine
 	botID              string
 	sink               types.EventSink
+	runtimeState       *runtime.RuntimeState
+	humanlike          *humanlikeRunner
 }
 
 // GetBotManager returns the BotManager for this bot
@@ -335,6 +338,17 @@ func (b *Bot) configuredChannels() []string {
 }
 
 func (b *Bot) Quit(message string) {
+	// Pull the human-like runner out under the lock, then stop it after
+	// release — the runner's part path takes b.mutex, which would
+	// deadlock if we held it here.
+	b.mutex.Lock()
+	runner := b.humanlike
+	b.humanlike = nil
+	b.mutex.Unlock()
+	if runner != nil {
+		runner.stopAndPart()
+	}
+
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 
@@ -393,17 +407,32 @@ func (b *Bot) addCallbacks() {
 		b.mutex.Unlock()
 
 		util.Info("Bot %s fully connected to %s as %s", currentNick, serverName, currentNick)
-		util.Info("Bot %s preparing to join configured channels: %v", currentNick, channelsCopy)
 
 		if sink := b.currentSink(); sink != nil {
 			sink.BotConnected(b.botID, currentNick, serverName)
 		}
 
-		for _, channel := range channelsCopy {
-			b.JoinChannel(channel)
+		// The channel watchdog gates auto-join entirely. With the watchdog
+		// off, the bot lands on the server but does not enter any channel
+		// — the operator can still drive joins manually via the panel.
+		wd := b.runtimeWatchdog()
+		if wd.Enabled {
+			targets := channelsCopy
+			if wd.Channel != "" {
+				targets = []string{wd.Channel}
+			}
+			util.Info("Bot %s preparing to join watchdog targets: %v", currentNick, targets)
+			for _, channel := range targets {
+				b.JoinChannel(channel)
+			}
+			b.startChannelChecker()
+		} else {
+			util.Info("Bot %s connected; watchdog disabled — staying out of channels", currentNick)
 		}
 
-		b.startChannelChecker()
+		// Bring up the human-like runner if the operator already toggled it
+		// on while this bot was disconnected.
+		b.applyHumanlikeChange(b.runtimeHumanlike())
 
 		// Signal that connection has been established
 		select {
@@ -585,16 +614,13 @@ func (b *Bot) addCallbacks() {
 				sink.BotKicked(b.botID, channel, e.Nick, reason)
 			}
 
-			// Try to rejoin after a delay if it's in our channel list
-			b.mutex.Lock()
-			channelsList := make([]string, len(b.channels))
-			copy(channelsList, b.channels)
-			b.mutex.Unlock()
-
-			if slices.Contains(channelsList, channel) {
+			// Try to rejoin after a delay if the watchdog is on and the
+			// channel is one of its targets.
+			wd := b.runtimeWatchdog()
+			if wd.Enabled && slices.Contains(b.watchdogTargets(), channel) {
 				go func(channel string) {
 					time.Sleep(30 * time.Second)
-					if b.IsConnected() {
+					if b.IsConnected() && b.runtimeWatchdog().Enabled {
 						util.Info("Bot %s attempting to rejoin channel %s after kick",
 							b.GetCurrentNick(), channel)
 						b.JoinChannel(channel)
@@ -878,20 +904,21 @@ func (b *Bot) startChannelChecker() {
 	}()
 }
 
-// checkAndRejoinChannels checks if the bot is in all required channels and rejoins if necessary
+// checkAndRejoinChannels checks if the bot is in all required channels and
+// rejoins if necessary. Honors the runtime watchdog: a no-op when the
+// feature is off, and uses the override channel (if set) instead of the
+// bot's full configured list.
 func (b *Bot) checkAndRejoinChannels() {
 	if !b.IsConnected() {
 		return
 	}
-
-	b.mutex.Lock()
-	channels := make([]string, len(b.channels))
-	copy(channels, b.channels)
-	b.mutex.Unlock()
-
-	for _, channel := range channels {
+	wd := b.runtimeWatchdog()
+	if !wd.Enabled {
+		return
+	}
+	for _, channel := range b.watchdogTargets() {
 		if !b.IsOnChannel(channel) {
-			util.Info("Bot %s is not in channel %s, rejoining", b.GetCurrentNick(), channel)
+			util.Info("Bot %s is not in channel %s, rejoining (watchdog)", b.GetCurrentNick(), channel)
 			b.JoinChannel(channel)
 		}
 	}
