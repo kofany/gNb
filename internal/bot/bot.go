@@ -248,14 +248,11 @@ func (b *Bot) connectWithRetry() error {
 		b.Connection.RealName = b.Realname
 		// Increase timeout for better stability
 		b.Connection.Timeout = 2 * time.Minute
-		// Bound the per-event callback dispatch. With the default (0) the
-		// library waits forever on every callback; one slow callback (e.g.
-		// the API attach path stalling on a backpressure-close handshake)
-		// would park readLoop, which would then never observe irc.end being
-		// closed by Disconnect, which holds irc.Lock, which would freeze
-		// every API caller of this bot's GetCurrentNick / IsConnected.
-		b.Connection.CallbackTimeout = 30 * time.Second
-		// Library 1.2.0 manages keepalive and reconnect internally; avoid overriding here
+		// Library 1.2.0+ manages keepalive and reconnect internally; v1.2.6
+		// ships a 30 s default CallbackTimeout so we don't need to set it
+		// here. Loop() now also caps "Too many host connections" reconnects
+		// at MaxRecoverableReconnects (default 3), so the previous 1 Hz
+		// tight-spin against a rejecting server is gone.
 
 		b.addCallbacks()
 
@@ -445,42 +442,21 @@ func (b *Bot) Quit(message string) {
 	}
 }
 
-// disconnectWithDeadline calls conn.Disconnect() but returns within d
-// regardless of whether it actually completed. The library's Disconnect()
-// holds irc.Lock for the duration of irc.Wait(); when readLoop is parked
-// in br.ReadString on a silent socket, Wait() can stall up to the read
-// deadline (irc.Timeout + irc.PingFreq, ~17 min). Returning early bounds
-// the lock-hold visible to other code paths (notably API GetCurrentNick).
-// The leaked goroutine finishes on its own when readLoop's read deadline
-// fires; in the meantime we move on.
-func disconnectWithDeadline(conn *irc.Connection, d time.Duration) {
-	if conn == nil {
-		return
-	}
-	done := make(chan struct{})
-	go func() {
-		conn.Disconnect()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(d):
-		util.Warning("Connection.Disconnect() exceeded %s; leaving cleanup to GC", d)
-	}
-}
-
-// handleBanCleanup runs after a 465/466 strike. Must NOT be called from a
-// library callback goroutine — Disconnect() does irc.Wait() which blocks on
-// readLoop exit, and readLoop is the goroutine running the callback. Pattern
-// mirrors handleTMHCBackoff: drain Quit (1 s sleep, sets quit=true), then
-// Disconnect to close the socket so Loop's outer for-loop sees isQuitting()
-// and stops auto-reconnect, then drop from the manager.
-func (b *Bot) handleBanCleanup(message string) {
-	b.Quit(message)
+// handleBanCleanup runs after a 465/466 strike. Must run off the library's
+// readLoop goroutine because Connection.Disconnect blocks on the readLoop
+// exiting (irc.Wait). The 465/466 callbacks call StopReconnect synchronously
+// before spawning this — Loop()'s next isQuitting() check returns true so
+// the library will not auto-reconnect, even if our cleanup is slow to run.
+//
+// Skip Connection.Quit() here: the server already kicked us, sending QUIT
+// is pointless and would cost a needless 1 s of pacing.
+func (b *Bot) handleBanCleanup(_ string) {
 	b.mutex.Lock()
 	conn := b.Connection
 	b.mutex.Unlock()
-	disconnectWithDeadline(conn, 5*time.Second)
+	if conn != nil {
+		conn.Disconnect()
+	}
 	if b.botManager != nil {
 		b.botManager.(*BotManager).RemoveBotFromManager(b)
 	}
@@ -502,16 +478,17 @@ func (b *Bot) addCallbacks() {
 		b.mutex.Unlock()
 		if giveUp {
 			util.Warning("Bot %s: ignoring 001 after gaveUp=true (library auto-reconnected); force-stopping", b.GetCurrentNick())
-			go func() {
-				b.mutex.Lock()
-				conn := b.Connection
-				b.mutex.Unlock()
-				if conn != nil {
-					conn.QuitMessage = "removed"
-					conn.Quit()
-					disconnectWithDeadline(conn, 5*time.Second)
-				}
-			}()
+			// StopReconnect synchronously latches Loop()'s quit flag so it
+			// won't reconnect again. The actual socket teardown runs off
+			// the readLoop goroutine because Disconnect blocks on Wait()
+			// until the loops exit.
+			b.mutex.Lock()
+			conn := b.Connection
+			b.mutex.Unlock()
+			if conn != nil {
+				conn.StopReconnect()
+				go conn.Disconnect()
+			}
 			return
 		}
 
@@ -766,15 +743,16 @@ func (b *Bot) addCallbacks() {
 	})
 
 	// Callback dla ERR_YOUREBANNEDCREEP (465) i ERR_YOUWILLBEBANNED (466).
-	// Cleanup MUST run off the read-loop goroutine: Connection.Disconnect()
-	// internally calls irc.Wait() which blocks until readLoop exits; doing
-	// that synchronously from a callback would deadlock readLoop. Quit()'s
-	// 1 s sleep would also stall the read-loop for that whole second,
-	// blocking every other event the library has in flight. The atomic
-	// banHandled flag latches the first hit so library-driven reconnects
-	// (which can happen during the race window between our cleanup goroutine
-	// starting and the quit flag actually being set) don't re-emit BotBanned
-	// or pile up duplicate cleanup goroutines.
+	// Synchronously latch the library's quit flag via StopReconnect so
+	// Loop()'s next isQuitting() check stops auto-reconnect — no race
+	// against goroutine scheduling, no 1 s pacing window. Then run the
+	// socket teardown off the read-loop goroutine because Disconnect()
+	// blocks on irc.Wait() until readLoop exits, and readLoop is the
+	// one running this callback. The atomic banHandled flag latches the
+	// first hit so subsequent 465/466 events on the same Connection
+	// (rare now that StopReconnect halts the library, but possible
+	// during a tiny race window) don't re-emit BotBanned or pile up
+	// cleanup goroutines.
 	b.Connection.AddCallback("465", func(e *irc.Event) {
 		reason := e.Message()
 		util.Warning("Bot %s banned from server %s: %s", b.GetCurrentNick(), b.ServerName, reason)
@@ -783,7 +761,11 @@ func (b *Bot) addCallbacks() {
 		}
 		b.mutex.Lock()
 		b.gaveUp = true
+		conn := b.Connection
 		b.mutex.Unlock()
+		if conn != nil {
+			conn.StopReconnect()
+		}
 		if sink := b.currentSink(); sink != nil {
 			sink.BotBanned(b.botID, 465)
 		}
@@ -797,7 +779,11 @@ func (b *Bot) addCallbacks() {
 		}
 		b.mutex.Lock()
 		b.gaveUp = true
+		conn := b.Connection
 		b.mutex.Unlock()
+		if conn != nil {
+			conn.StopReconnect()
+		}
 		if sink := b.currentSink(); sink != nil {
 			sink.BotBanned(b.botID, 466)
 		}
@@ -1105,14 +1091,12 @@ func (b *Bot) Reconnect() {
 
 	if conn != nil {
 		conn.QuitMessage = "Reconnecting"
-		// Quit() sends QUIT and sets irc.quit=true (after a 1s internal sleep),
-		// which stops the library's auto-reconnect in Loop(). Disconnect()
-		// closes the socket and end channel so the old Loop exits promptly
-		// instead of lingering on the read. Without Disconnect there is a
-		// 1–several-second window where both the old and new connections
-		// are live against the server simultaneously.
+		// Quit() in v1.2.6+ latches the quit flag synchronously via
+		// StopReconnect *before* the 1 s pacing sleep, so Loop() will not
+		// reconnect on the old Connection. Disconnect() closes the socket
+		// before irc.Wait so readLoop wakes from ReadString immediately.
 		conn.Quit()
-		disconnectWithDeadline(conn, 5*time.Second)
+		conn.Disconnect()
 	}
 
 	newNick, err := util.GenerateRandomNick(b.GlobalConfig.NickAPI.URL, b.GlobalConfig.MaxNickLength, b.GlobalConfig.NickAPI.Timeout)
@@ -1148,16 +1132,16 @@ func (b *Bot) handleTMHCBackoff(attempt int, nick string) {
 	defer b.tmhcInProgress.Store(false)
 
 	// Stop the library's tight reconnect spin on the current connection.
-	// Quit() flips irc.quit=true (after a 1 s internal sleep) so the
-	// library's Loop exits; Disconnect() closes the socket so the loop
-	// doesn't linger on the read.
+	// StopReconnect() synchronously latches the quit flag (no 1 s pacing
+	// window during which Loop could still reconnect once). The server
+	// already rejected us with TMHC, so sending QUIT is pointless —
+	// Disconnect closes the socket and ends the goroutines.
 	b.mutex.Lock()
 	conn := b.Connection
 	b.mutex.Unlock()
 	if conn != nil {
-		conn.QuitMessage = "throttled (host connection limit)"
-		conn.Quit()
-		disconnectWithDeadline(conn, 5*time.Second)
+		conn.StopReconnect()
+		conn.Disconnect()
 	}
 
 	if attempt >= tmhcMaxAttempts {

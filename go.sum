@@ -12,6 +12,8 @@ github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 h1:iQTw/8FWTuc7uia
 github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0/go.mod h1:1NbS8ALrpOvjt0rHPNLyCIeMtbizbir8U//inJ+zuB8=
 github.com/kofany/go-ircevo v1.2.5 h1:CN8sxaMCDXLtWT+b9wXJNKjalNlfij6qUVbMJc73utE=
 github.com/kofany/go-ircevo v1.2.5/go.mod h1:cHYwmtY1kQT/ha+t1P3qvu1oDrhxqUfkM0dlktsD51w=
+github.com/kofany/go-ircevo v1.2.6 h1:qBdhWmSvpHQqQNOT/7OpCaQgpcpCphAHTVaFMKfo+HQ=
+github.com/kofany/go-ircevo v1.2.6/go.mod h1:cHYwmtY1kQT/ha+t1P3qvu1oDrhxqUfkM0dlktsD51w=
 github.com/mattn/go-colorable v0.1.13 h1:fFA4WZxdEF4tXPZVKMLwD8oUnCTTo08duU7wxecdEvA=
 github.com/mattn/go-colorable v0.1.13/go.mod h1:7S9/ev0klgBDR4GtXTXX8a3vIGJpMovkB8vQcUbaXHg=
 github.com/mattn/go-isatty v0.0.16/go.mod h1:kYGgaQfpe5nmfYZH+SKPsOc2e4SrIfOl2e/yFXSvRLM=
