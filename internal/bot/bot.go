@@ -199,11 +199,19 @@ func (b *Bot) IsConnected() bool {
 }
 
 func (b *Bot) markAsDisconnected() {
+	// Snapshot the lib's nick OUTSIDE b.mutex — Connection.GetNick takes
+	// irc.Lock, which Connection.Disconnect holds across irc.Wait() (can
+	// park up to ~17 min on a silent socket). Holding b.mutex while waiting
+	// for irc.Lock would pin the bot's mutex for the same duration.
+	var nick string
+	if b.Connection != nil {
+		nick = b.Connection.GetNick()
+	}
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	b.setConnected(false)
-	if b.Connection != nil {
-		b.CurrentNick = b.Connection.GetNick()
+	if nick != "" {
+		b.CurrentNick = nick
 	}
 }
 
@@ -240,6 +248,13 @@ func (b *Bot) connectWithRetry() error {
 		b.Connection.RealName = b.Realname
 		// Increase timeout for better stability
 		b.Connection.Timeout = 2 * time.Minute
+		// Bound the per-event callback dispatch. With the default (0) the
+		// library waits forever on every callback; one slow callback (e.g.
+		// the API attach path stalling on a backpressure-close handshake)
+		// would park readLoop, which would then never observe irc.end being
+		// closed by Disconnect, which holds irc.Lock, which would freeze
+		// every API caller of this bot's GetCurrentNick / IsConnected.
+		b.Connection.CallbackTimeout = 30 * time.Second
 		// Library 1.2.0 manages keepalive and reconnect internally; avoid overriding here
 
 		b.addCallbacks()
@@ -430,6 +445,30 @@ func (b *Bot) Quit(message string) {
 	}
 }
 
+// disconnectWithDeadline calls conn.Disconnect() but returns within d
+// regardless of whether it actually completed. The library's Disconnect()
+// holds irc.Lock for the duration of irc.Wait(); when readLoop is parked
+// in br.ReadString on a silent socket, Wait() can stall up to the read
+// deadline (irc.Timeout + irc.PingFreq, ~17 min). Returning early bounds
+// the lock-hold visible to other code paths (notably API GetCurrentNick).
+// The leaked goroutine finishes on its own when readLoop's read deadline
+// fires; in the meantime we move on.
+func disconnectWithDeadline(conn *irc.Connection, d time.Duration) {
+	if conn == nil {
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		conn.Disconnect()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(d):
+		util.Warning("Connection.Disconnect() exceeded %s; leaving cleanup to GC", d)
+	}
+}
+
 // handleBanCleanup runs after a 465/466 strike. Must NOT be called from a
 // library callback goroutine — Disconnect() does irc.Wait() which blocks on
 // readLoop exit, and readLoop is the goroutine running the callback. Pattern
@@ -441,9 +480,7 @@ func (b *Bot) handleBanCleanup(message string) {
 	b.mutex.Lock()
 	conn := b.Connection
 	b.mutex.Unlock()
-	if conn != nil {
-		conn.Disconnect()
-	}
+	disconnectWithDeadline(conn, 5*time.Second)
 	if b.botManager != nil {
 		b.botManager.(*BotManager).RemoveBotFromManager(b)
 	}
@@ -472,7 +509,7 @@ func (b *Bot) addCallbacks() {
 				if conn != nil {
 					conn.QuitMessage = "removed"
 					conn.Quit()
-					conn.Disconnect()
+					disconnectWithDeadline(conn, 5*time.Second)
 				}
 			}()
 			return
@@ -480,13 +517,20 @@ func (b *Bot) addCallbacks() {
 
 		b.markAsConnected()
 
+		// Read from the library OUTSIDE b.mutex — Connection.GetNick takes
+		// irc.Lock, which can be held for up to ~17 min by a parallel
+		// Connection.Disconnect on another bot's goroutine waiting for that
+		// bot's readLoop to exit. Holding b.mutex while waiting for irc.Lock
+		// would propagate the stall to every API caller of this bot.
+		nick := b.Connection.GetNick()
+
 		// All mutable Bot fields accessed here need the mutex. Previously
 		// ServerName, lastConnectTime and the read of b.channels were
 		// raced against SetChannels/GetServerName.
 		b.mutex.Lock()
 		b.ServerName = e.Source
 		b.lastConnectTime = time.Now()
-		b.CurrentNick = b.Connection.GetNick()
+		b.CurrentNick = nick
 		b.joinedChannels = make(map[string]bool)
 		channelsCopy := make([]string, len(b.channels))
 		copy(channelsCopy, b.channels)
@@ -1068,7 +1112,7 @@ func (b *Bot) Reconnect() {
 		// 1–several-second window where both the old and new connections
 		// are live against the server simultaneously.
 		conn.Quit()
-		conn.Disconnect()
+		disconnectWithDeadline(conn, 5*time.Second)
 	}
 
 	newNick, err := util.GenerateRandomNick(b.GlobalConfig.NickAPI.URL, b.GlobalConfig.MaxNickLength, b.GlobalConfig.NickAPI.Timeout)
@@ -1113,7 +1157,7 @@ func (b *Bot) handleTMHCBackoff(attempt int, nick string) {
 	if conn != nil {
 		conn.QuitMessage = "throttled (host connection limit)"
 		conn.Quit()
-		conn.Disconnect()
+		disconnectWithDeadline(conn, 5*time.Second)
 	}
 
 	if attempt >= tmhcMaxAttempts {
@@ -1206,11 +1250,21 @@ func (b *Bot) SetChannels(channels []string) {
 	util.Debug("Bot %s set channels: %v", b.CurrentNick, channels)
 }
 
+// GetCurrentNick returns the bot's confirmed nick from local state ONLY.
+// Crucially this does NOT call into b.Connection.GetNick() — that would take
+// the library's irc.Lock(), which Connection.Disconnect() holds while running
+// irc.Wait(). When readLoop is parked in br.ReadString on a silent socket
+// (no server close, no QUIT echo), Disconnect's Wait blocks until the read
+// deadline fires (irc.Timeout + irc.PingFreq, up to ~17 minutes). During
+// that whole window any caller of GetCurrentNick would hang too. bot.list
+// iterates every bot and calls this method, so a single stuck bot would
+// time out the whole API request — exactly the panel symptom we saw.
+//
+// b.CurrentNick is maintained under b.mutex by the 001 callback (post-
+// registration confirmation) and the NICK callback (post-rename
+// confirmation) so it is the same value Connection.GetNick() would return,
+// just held in a mutex we control.
 func (b *Bot) GetCurrentNick() string {
-	if b.Connection != nil {
-		return b.Connection.GetNick()
-	}
-	// Fallback do lokalnego stanu tylko jeśli nie ma połączenia
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	return b.CurrentNick
