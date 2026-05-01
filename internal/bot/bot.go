@@ -84,6 +84,11 @@ type Bot struct {
 	// while a backoff goroutine is in flight.
 	tmhcAttempts   int
 	tmhcInProgress atomic.Bool
+	// banHandled latches on the first 465/466 — subsequent fires (e.g. when
+	// the library auto-reconnects between our Quit and quit-flag actually
+	// taking effect) are short-circuited so we don't re-emit BotBanned and
+	// don't pile up cleanup goroutines.
+	banHandled atomic.Bool
 }
 
 // GetBotManager returns the BotManager for this bot
@@ -378,10 +383,8 @@ func (b *Bot) Quit(message string) {
 		runner.stopAndPart()
 	}
 
+	// Tear down in-process state under the lock — fast, never blocks on I/O.
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
-
-	// Stop channel checker if running
 	if b.channelCheckTicker != nil {
 		b.channelCheckTicker.Stop()
 		b.channelCheckTicker = nil
@@ -390,40 +393,79 @@ func (b *Bot) Quit(message string) {
 		close(b.channelCheckerStop)
 		b.channelCheckerStop = nil
 	}
-
-	// Clear joined channels map
 	b.joinedChannels = make(map[string]bool)
-
-	if b.Connection != nil {
-		// Quit() flips irc.quit=true after a 1 s internal sleep so the
-		// library's Loop won't re-enter reconnect; Disconnect() closes
-		// the socket so the read loop exits *now*. Without the explicit
-		// Disconnect, banned bots (465/466) keep getting auto-reconnected
-		// by the library, refire the ban callback, and flood the panel
-		// with bot.banned_from_server events long after node.bot_removed.
-		// Same pattern handleTMHCBackoff already relies on.
-		b.Connection.QuitMessage = message
-		b.Connection.Quit()
-		b.Connection.Disconnect()
+	conn := b.Connection
+	if conn != nil {
+		conn.QuitMessage = message
 	}
-
 	b.setConnected(false)
-
 	if b.dccTunnel != nil {
 		b.dccTunnel.Stop()
 		b.dccTunnel = nil
 	}
-
 	select {
 	case <-b.connected:
 	default:
 		close(b.connected)
 	}
+	b.mutex.Unlock()
+
+	// Network teardown happens OUTSIDE the lock. Connection.Quit() sleeps
+	// 1 s internally before sending QUIT and setting irc.quit=true; if we
+	// held b.mutex through that, every API path that touches this bot
+	// (bot.list -> GetJoinedChannels, currentSink, markAsDisconnected,
+	// etc.) would block for that 1 s. Multiplied by N banned bots during
+	// a K-line storm, the API would freeze for many seconds.
+	if conn != nil {
+		conn.Quit()
+	}
 }
+
+// handleBanCleanup runs after a 465/466 strike. Must NOT be called from a
+// library callback goroutine — Disconnect() does irc.Wait() which blocks on
+// readLoop exit, and readLoop is the goroutine running the callback. Pattern
+// mirrors handleTMHCBackoff: drain Quit (1 s sleep, sets quit=true), then
+// Disconnect to close the socket so Loop's outer for-loop sees isQuitting()
+// and stops auto-reconnect, then drop from the manager.
+func (b *Bot) handleBanCleanup(message string) {
+	b.Quit(message)
+	b.mutex.Lock()
+	conn := b.Connection
+	b.mutex.Unlock()
+	if conn != nil {
+		conn.Disconnect()
+	}
+	if b.botManager != nil {
+		b.botManager.(*BotManager).RemoveBotFromManager(b)
+	}
+}
+
 func (b *Bot) addCallbacks() {
 	// Callback for successful connection
 	b.Connection.AddCallback("001", func(e *irc.Event) {
 		if b.IsConnected() {
+			return
+		}
+
+		// If the bot has been marked terminal (banned, removed, TMHC-exhausted)
+		// and the library still reconnected before our quit flag took hold,
+		// force-stop the connection here instead of running the normal connected
+		// path. Otherwise we'd emit BotConnected for a corpse.
+		b.mutex.Lock()
+		giveUp := b.gaveUp
+		b.mutex.Unlock()
+		if giveUp {
+			util.Warning("Bot %s: ignoring 001 after gaveUp=true (library auto-reconnected); force-stopping", b.GetCurrentNick())
+			go func() {
+				b.mutex.Lock()
+				conn := b.Connection
+				b.mutex.Unlock()
+				if conn != nil {
+					conn.QuitMessage = "removed"
+					conn.Quit()
+					conn.Disconnect()
+				}
+			}()
 			return
 		}
 
@@ -670,47 +712,43 @@ func (b *Bot) addCallbacks() {
 		}
 	})
 
-	// Callback dla ERR_YOUREBANNEDCREEP (465)
+	// Callback dla ERR_YOUREBANNEDCREEP (465) i ERR_YOUWILLBEBANNED (466).
+	// Cleanup MUST run off the read-loop goroutine: Connection.Disconnect()
+	// internally calls irc.Wait() which blocks until readLoop exits; doing
+	// that synchronously from a callback would deadlock readLoop. Quit()'s
+	// 1 s sleep would also stall the read-loop for that whole second,
+	// blocking every other event the library has in flight. The atomic
+	// banHandled flag latches the first hit so library-driven reconnects
+	// (which can happen during the race window between our cleanup goroutine
+	// starting and the quit flag actually being set) don't re-emit BotBanned
+	// or pile up duplicate cleanup goroutines.
 	b.Connection.AddCallback("465", func(e *irc.Event) {
 		reason := e.Message()
 		util.Warning("Bot %s banned from server %s: %s", b.GetCurrentNick(), b.ServerName, reason)
-
+		if !b.banHandled.CompareAndSwap(false, true) {
+			return
+		}
 		b.mutex.Lock()
 		b.gaveUp = true
 		b.mutex.Unlock()
-
 		if sink := b.currentSink(); sink != nil {
 			sink.BotBanned(b.botID, 465)
 		}
-
-		// Zamykamy połączenie i usuwamy bota z managera. Nie nil-ujemy pól
-		// b.Connection / b.botManager / b.nickManager — po Quit callbacki
-		// biblioteki mogą jeszcze odpalić (DISCONNECTED, "*"), a ich
-		// dereference na nilu wywalił by goroutine biblioteki.
-		b.Quit("Banned from server")
-
-		if b.botManager != nil {
-			b.botManager.(*BotManager).RemoveBotFromManager(b)
-		}
+		go b.handleBanCleanup("Banned from server")
 	})
 
-	// Callback dla ERR_YOUWILLBEBANNED (466)
 	b.Connection.AddCallback("466", func(_ *irc.Event) {
 		util.Warning("Bot %s will be banned from server %s", b.GetCurrentNick(), b.ServerName)
-
+		if !b.banHandled.CompareAndSwap(false, true) {
+			return
+		}
 		b.mutex.Lock()
 		b.gaveUp = true
 		b.mutex.Unlock()
-
 		if sink := b.currentSink(); sink != nil {
 			sink.BotBanned(b.botID, 466)
 		}
-
-		b.Quit("Pre-emptive disconnect due to incoming ban")
-
-		if b.botManager != nil {
-			b.botManager.(*BotManager).RemoveBotFromManager(b)
-		}
+		go b.handleBanCleanup("Pre-emptive disconnect due to incoming ban")
 	})
 
 	// Callback for ERROR — specifically the per-host connection limit. The
