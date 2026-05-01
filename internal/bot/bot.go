@@ -395,8 +395,16 @@ func (b *Bot) Quit(message string) {
 	b.joinedChannels = make(map[string]bool)
 
 	if b.Connection != nil {
+		// Quit() flips irc.quit=true after a 1 s internal sleep so the
+		// library's Loop won't re-enter reconnect; Disconnect() closes
+		// the socket so the read loop exits *now*. Without the explicit
+		// Disconnect, banned bots (465/466) keep getting auto-reconnected
+		// by the library, refire the ban callback, and flood the panel
+		// with bot.banned_from_server events long after node.bot_removed.
+		// Same pattern handleTMHCBackoff already relies on.
 		b.Connection.QuitMessage = message
 		b.Connection.Quit()
+		b.Connection.Disconnect()
 	}
 
 	b.setConnected(false)
