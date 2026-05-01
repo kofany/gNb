@@ -293,12 +293,21 @@ func (b *Bot) Connect() error {
 
 	err := b.connectWithRetry()
 	if err != nil {
+		// Capture conn under the lock, then run Connection.Quit() OUTSIDE
+		// the lock — Quit sleeps 1 s internally, and Connect is called in a
+		// loop by bm.startBotWithRetry for any bot that fails to come up.
+		// Holding b.mutex through that 1 s would freeze every API path
+		// touching this bot (bot.list -> GetJoinedChannels takes b.mutex);
+		// with N unconnected bots and the API iterating them sequentially
+		// that compounds into multi-second bot.list timeouts until the
+		// 240 s cleanup pulls the unconnected bots out of bm.bots.
 		b.mutex.Lock()
 		b.setConnected(false)
-		if b.Connection != nil {
-			b.Connection.Quit()
-		}
+		conn := b.Connection
 		b.mutex.Unlock()
+		if conn != nil {
+			conn.Quit()
+		}
 	}
 
 	return err
