@@ -254,6 +254,13 @@ func (b *Bot) connectWithRetry() error {
 		// at MaxRecoverableReconnects (default 3), so the previous 1 Hz
 		// tight-spin against a rejecting server is gone.
 
+		// NickManager owns nick changes post-001; suppress library's
+		// auto-mangle of failed NICK attempts (NICK u → 432/433/436/437
+		// → NICK u_ → NICK u__ → ...). Pre-001 recovery is unaffected,
+		// so registration still completes if the startup random nick
+		// collides. (go-ircevo ≥ v1.3.0)
+		b.Connection.AutoNickRecoveryPostRegistration = false
+
 		b.addCallbacks()
 
 		util.Info("Bot %s is attempting to connect to %s (attempt %d/%d, retry interval: %v)",
@@ -649,6 +656,35 @@ func (b *Bot) addCallbacks() {
 			}
 		}
 	})
+
+	// Callbacks for nick already in use (433) and nick collision (436).
+	// Pre-001: library handles auto-mangle so registration completes.
+	// Post-001: library returns early (we set AutoNickRecoveryPostRegistration=false),
+	// so the bot stays on its current nick. We only do bookkeeping in NickManager
+	// to back the failed target off for tempUnavailableTimeout (60 s).
+	handleNickCollision := func(code string) func(e *irc.Event) {
+		return func(e *irc.Event) {
+			if !b.IsConnected() {
+				return
+			}
+			if len(e.Arguments) <= 1 || b.nickManager == nil {
+				return
+			}
+			rejectedNick := e.Arguments[1]
+			isTargetNick := util.IsTargetNick(rejectedNick, b.nickManager.GetNicksToCatch())
+			isLetter := len(rejectedNick) == 1
+			if !isTargetNick && !isLetter {
+				return
+			}
+			util.Warning("Nick %s rejected on %s with %s - backing off for next iteration",
+				rejectedNick, b.ServerName, code)
+			if nm, ok := b.nickManager.(*nickmanager.NickManager); ok {
+				nm.MarkNickAsTemporarilyUnavailable(rejectedNick)
+			}
+		}
+	}
+	b.Connection.AddCallback("433", handleNickCollision("433"))
+	b.Connection.AddCallback("436", handleNickCollision("436"))
 
 	for _, code := range []string{"403", "404", "405", "471", "473", "474", "475", "476", "477"} {
 		b.Connection.AddCallback(code, b.logJoinFailure)
