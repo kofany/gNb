@@ -52,7 +52,23 @@ type NicksData struct {
 	Nicks []string `json:"nicks"`
 }
 
-const tempUnavailableTimeout = time.Duration(60) * time.Second // blokada na 60 sekund
+const (
+	// tempUnavailableTimeout — backoff stosowany przez callbacki 432-non-letter,
+	// 433 i 436 po stronie bota (MarkNickAsTemporarilyUnavailable). Blokuje
+	// retry tego targetu na 60 s, dopóki kolejne próby nie mają sensu.
+	tempUnavailableTimeout = 60 * time.Second
+
+	// nickAssignmentInflightLock — krótka blokada stawiana w processISONResponse
+	// w momencie przydzielenia targetu botowi, zanim NICK pójdzie na sieć. Sens
+	// jest jedynie anti-double-assignment: zabrania kolejnemu ISON-tickowi (1 s)
+	// przydzielić ten sam target *innemu* botowi, gdy próba pierwszego jeszcze
+	// trwa. Po wygaśnięciu tej blokady (1.5 s = pomija dokładnie jeden tick)
+	// nick wraca do puli i jest ponownie kandydatem. Specjalnie krótka, żeby
+	// nie tracić okna gdy IRCnet &SAVE/services zwalniają nick przed upływem
+	// długiego backoffu — wtedy 437 z callbacku 437 *świadomie* nie dokłada
+	// własnego MarkNickAsTemporarilyUnavailable.
+	nickAssignmentInflightLock = 1500 * time.Millisecond
+)
 
 func NewNickManager() *NickManager {
 	return &NickManager{
@@ -291,7 +307,7 @@ func (nm *NickManager) handleISONResponse(onlineNicks []string) {
 		}
 
 		assignedBots++
-		nm.tempUnavailableNicks[strings.ToLower(nick)] = time.Now().Add(tempUnavailableTimeout)
+		nm.tempUnavailableNicks[strings.ToLower(nick)] = time.Now().Add(nickAssignmentInflightLock)
 		util.Debug("Assigning priority nick %s to bot %s on server %s", nick, bot.GetCurrentNick(), bot.GetServerName())
 		go bot.AttemptNickChange(nick)
 	}
@@ -309,7 +325,7 @@ func (nm *NickManager) handleISONResponse(onlineNicks []string) {
 		}
 
 		assignedBots++
-		nm.tempUnavailableNicks[strings.ToLower(nick)] = time.Now().Add(tempUnavailableTimeout)
+		nm.tempUnavailableNicks[strings.ToLower(nick)] = time.Now().Add(nickAssignmentInflightLock)
 		util.Debug("Assigning secondary nick %s to bot %s on server %s", nick, bot.GetCurrentNick(), bot.GetServerName())
 		go bot.AttemptNickChange(nick)
 	}

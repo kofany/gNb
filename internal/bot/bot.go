@@ -629,32 +629,29 @@ func (b *Bot) addCallbacks() {
 		}
 	})
 
-	// Callback for unavailable resource (437)
+	// Callback for unavailable resource (437).
+	// Świadomie NIE blokujemy nicka po naszej stronie po 437 — na IRCnet 437
+	// oznacza karę &SAVE (10–30 min), w trakcie której serwer odrzuca każdą
+	// próbę. Nie chcemy przegapić okna gdy services zwolnią nick, więc po
+	// wygaśnięciu krótkiego nickAssignmentInflightLock z processISONResponse
+	// (~1.5 s) ISON ma znowu prawo przydzielić target kolejnemu botowi.
+	// Pre-001 puszczamy do biblioteki — robi auto-mangle żeby rejestracja
+	// w ogóle doszła do skutku.
 	b.Connection.AddCallback("437", func(e *irc.Event) {
 		if !b.IsConnected() {
-			// Jeśli bot nie jest w pełni połączony, pozwól bibliotece go-ircevo obsłużyć to standardowo
 			return
 		}
-
-		if len(e.Arguments) > 1 {
-			unavailableNick := e.Arguments[1]
-
-			// Sprawdź czy to nick z naszej listy do złapania lub literka
-			if b.nickManager != nil {
-				isTargetNick := util.IsTargetNick(unavailableNick, b.nickManager.GetNicksToCatch())
-				isLetter := len(unavailableNick) == 1
-
-				if isTargetNick || isLetter {
-					util.Warning("Nick %s temporarily unavailable on %s - marking for next iteration",
-						unavailableNick, b.ServerName)
-
-					// Oznacz nick jako tymczasowo niedostępny
-					if nm, ok := b.nickManager.(*nickmanager.NickManager); ok {
-						nm.MarkNickAsTemporarilyUnavailable(unavailableNick)
-					}
-				}
-			}
+		if len(e.Arguments) <= 1 || b.nickManager == nil {
+			return
 		}
+		unavailableNick := e.Arguments[1]
+		isTargetNick := util.IsTargetNick(unavailableNick, b.nickManager.GetNicksToCatch())
+		isLetter := len(unavailableNick) == 1
+		if !isTargetNick && !isLetter {
+			return
+		}
+		util.Warning("Nick %s temporarily unavailable on %s (437) - will retry after inflight lock expires",
+			unavailableNick, b.ServerName)
 	})
 
 	// Callbacks for nick already in use (433) and nick collision (436).
