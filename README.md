@@ -1,3 +1,21 @@
+> # ⚠️ WARNING — READ BEFORE RUNNING ⚠️
+>
+> ## 🇬🇧 ENGLISH
+> **IF YOU START gNb AS `root` OR VIA `sudo` ON A DEBIAN SYSTEM, IT WILL OVERWRITE `/etc/oidentd.conf` WITH ITS OWN GENERATED IDENTS AND RESTART THE `oidentd` SERVICE. ANY EXISTING `oidentd.conf` ON THAT BOX WILL BE LOST. BACK IT UP FIRST OR RUN gNb AS A NON-PRIVILEGED USER.**
+>
+> ## 🇩🇪 DEUTSCH
+> **WENN DU gNb ALS `root` ODER MIT `sudo` AUF EINEM DEBIAN-SYSTEM STARTEST, ÜBERSCHREIBT ES `/etc/oidentd.conf` MIT EIGENEN GENERIERTEN IDENTS UND STARTET DEN `oidentd`-DIENST NEU. EINE VORHANDENE `oidentd.conf` AUF DIESEM HOST GEHT VERLOREN. SICHERE SIE VORHER ODER FÜHRE gNb ALS UNPRIVILEGIERTER BENUTZER AUS.**
+>
+> ## 🇵🇱 POLSKI
+> **JEŚLI URUCHOMISZ gNb JAKO `root` LUB PRZEZ `sudo` NA SYSTEMIE DEBIAN, NADPISZE `/etc/oidentd.conf` WŁASNYMI WYGENEROWANYMI IDENTAMI I ZRESTARTUJE USŁUGĘ `oidentd`. ISTNIEJĄCY `oidentd.conf` NA TEJ MASZYNIE ZOSTANIE BEZPOWROTNIE UTRACONY. ZRÓB KOPIĘ ZAPASOWĄ ALBO URUCHAMIAJ gNb JAKO ZWYKŁY UŻYTKOWNIK.**
+>
+> ## 🇸🇦 العربية
+> **إذا قمت بتشغيل gNb بصلاحيات `root` أو عبر `sudo` على نظام دبيان، فسوف يقوم بالكتابة فوق `/etc/oidentd.conf` بإيدنتات مولّدة ذاتياً ويعيد تشغيل خدمة `oidentd`. أي ملف `oidentd.conf` موجود على هذا الجهاز سيُفقد. خُذ نسخة احتياطية أولاً أو شغّل gNb كمستخدم غير مميّز.**
+>
+> *— for adamsky vel grug vel komandos vel admy*
+
+---
+
 # gNb - IRC Nick Management Bot //
 
 gNb is a Go-based IRC bot designed to manage and monitor nicknames on IRC networks. It allows users to automatically track and capture desired nicknames when they become available. Additionally, gNb provides functionalities for bot owners to interact with the bot through commands and supports BNC (bouncer) capabilities via SSH connections.
