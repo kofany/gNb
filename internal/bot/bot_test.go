@@ -58,9 +58,10 @@ func (b *stubBot) GetJoinedChannels() []string {
 }
 
 type stubNickManager struct {
-	targets  []string
-	returned []string
-	mu       sync.Mutex
+	targets     []string
+	returned    []string
+	nickChanges [][2]string
+	mu          sync.Mutex
 }
 
 func (nm *stubNickManager) RegisterBot(_ types.Bot)                   {}
@@ -69,11 +70,15 @@ func (nm *stubNickManager) AddNick(_ string) error                    { return n
 func (nm *stubNickManager) RemoveNick(_ string) error                 { return nil }
 func (nm *stubNickManager) GetNicks() []string                        { return nil }
 func (nm *stubNickManager) MarkNickAsTemporarilyUnavailable(_ string) {}
-func (nm *stubNickManager) NotifyNickChange(_, _ string)              {}
 func (nm *stubNickManager) MarkServerNoLetters(_ string)              {}
 func (nm *stubNickManager) Start()                                    {}
 func (nm *stubNickManager) Stop()                                     {}
 func (nm *stubNickManager) GetNicksToCatch() []string                 { return append([]string(nil), nm.targets...) }
+func (nm *stubNickManager) NotifyNickChange(oldNick, newNick string) {
+	nm.mu.Lock()
+	defer nm.mu.Unlock()
+	nm.nickChanges = append(nm.nickChanges, [2]string{oldNick, newNick})
+}
 func (nm *stubNickManager) ReturnNickToPool(nick string) {
 	nm.mu.Lock()
 	defer nm.mu.Unlock()
@@ -100,6 +105,46 @@ func (stubSink) BotIRCEvent(string, *irc.Event)             {}
 func (stubSink) BotRawOut(string, string)                   {}
 
 var _ types.EventSink = stubSink{}
+
+// recordingSink captures the lifecycle sink calls relevant to the nick-state
+// tests below. Other methods inherit stubSink no-ops via embedding.
+type recordingSink struct {
+	stubSink
+	mu                 sync.Mutex
+	nickChangedCalls   []nickChangedCall
+	nickCapturedCalls  []nickCapturedCall
+	nickChangedCounter int
+}
+
+type nickChangedCall struct{ botID, oldNick, newNick string }
+type nickCapturedCall struct{ botID, nick, kind string }
+
+func (s *recordingSink) BotNickChanged(botID, oldNick, newNick string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.nickChangedCalls = append(s.nickChangedCalls, nickChangedCall{botID, oldNick, newNick})
+	s.nickChangedCounter++
+}
+
+func (s *recordingSink) BotNickCaptured(botID, nick, kind string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.nickCapturedCalls = append(s.nickCapturedCalls, nickCapturedCall{botID, nick, kind})
+}
+
+func (s *recordingSink) changedSnapshot() []nickChangedCall {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]nickChangedCall(nil), s.nickChangedCalls...)
+}
+
+func (s *recordingSink) capturedSnapshot() []nickCapturedCall {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]nickCapturedCall(nil), s.nickCapturedCalls...)
+}
+
+var _ types.EventSink = (*recordingSink)(nil)
 
 func TestISONMechanism(t *testing.T) {
 	requestID := "test-request-123"
@@ -234,6 +279,240 @@ func TestNickManagerStartStopIdempotent(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 	nm.Stop()
 	nm.Stop()
+}
+
+func TestTryAcceptSelfNickChangeUpdatesOnMatch(t *testing.T) {
+	sink := &recordingSink{}
+	nm := &stubNickManager{targets: []string{"target"}}
+	bot := &Bot{
+		botID:       "bot1",
+		CurrentNick: "alpha",
+		nickManager: nm,
+		sink:        sink,
+	}
+
+	accepted := bot.tryAcceptSelfNickChange("alpha", "beta")
+	if !accepted {
+		t.Fatalf("expected self-nick change to be accepted")
+	}
+	if got := bot.GetCurrentNick(); got != "beta" {
+		t.Fatalf("expected b.CurrentNick to become beta, got %q", got)
+	}
+}
+
+func TestTryAcceptSelfNickChangeRejectsForeign(t *testing.T) {
+	bot := &Bot{CurrentNick: "alpha"}
+
+	accepted := bot.tryAcceptSelfNickChange("someoneelse", "newnick")
+	if accepted {
+		t.Fatalf("expected non-self nick event to be rejected")
+	}
+	if got := bot.GetCurrentNick(); got != "alpha" {
+		t.Fatalf("expected b.CurrentNick to stay alpha, got %q", got)
+	}
+}
+
+func TestTryAcceptSelfNickChangeIgnoresEmptyNew(t *testing.T) {
+	bot := &Bot{CurrentNick: "alpha"}
+
+	accepted := bot.tryAcceptSelfNickChange("alpha", "")
+	if accepted {
+		t.Fatalf("expected empty newNick to be rejected")
+	}
+	if got := bot.GetCurrentNick(); got != "alpha" {
+		t.Fatalf("expected b.CurrentNick to stay alpha, got %q", got)
+	}
+}
+
+func TestTryAcceptSelfNickChangeRFCEquality(t *testing.T) {
+	// RFC 2812 case mapping: '[' '{' are equivalent, ']' '}' are equivalent,
+	// '\' '|' are equivalent, '~' '^' are equivalent. The server can echo our
+	// nick in either form and must still be recognised as ours.
+	cases := []struct {
+		stored string
+		echoed string
+	}{
+		{"nick[", "nick{"},
+		{"nick]", "nick}"},
+		{`nick\`, "nick|"},
+		{"nick~", "nick^"},
+		{"ALPHA", "alpha"},
+	}
+	for _, c := range cases {
+		t.Run(c.stored+"_vs_"+c.echoed, func(t *testing.T) {
+			bot := &Bot{CurrentNick: c.stored}
+			if !bot.tryAcceptSelfNickChange(c.echoed, "newone") {
+				t.Fatalf("expected RFC nick equality (%s vs %s) to be self", c.stored, c.echoed)
+			}
+		})
+	}
+}
+
+func TestEmitSelfNickChangeEmitsBotNickChanged(t *testing.T) {
+	sink := &recordingSink{}
+	nm := &stubNickManager{targets: []string{"priorityone"}}
+	bot := &Bot{
+		botID:       "bot1",
+		CurrentNick: "newnick",
+		nickManager: nm,
+		sink:        sink,
+	}
+
+	bot.emitSelfNickChange("oldnick", "newnick")
+
+	changed := sink.changedSnapshot()
+	if len(changed) != 1 {
+		t.Fatalf("expected 1 BotNickChanged emission, got %d", len(changed))
+	}
+	if changed[0] != (nickChangedCall{"bot1", "oldnick", "newnick"}) {
+		t.Fatalf("unexpected BotNickChanged payload: %+v", changed[0])
+	}
+	nm.mu.Lock()
+	defer nm.mu.Unlock()
+	if len(nm.nickChanges) != 1 || nm.nickChanges[0] != [2]string{"oldnick", "newnick"} {
+		t.Fatalf("expected NickManager.NotifyNickChange to be called with (oldnick,newnick); got %v", nm.nickChanges)
+	}
+}
+
+func TestEmitSelfNickChangeReportsLetterCapture(t *testing.T) {
+	sink := &recordingSink{}
+	nm := &stubNickManager{targets: []string{}}
+	bot := &Bot{
+		botID:       "bot1",
+		CurrentNick: "a",
+		nickManager: nm,
+		sink:        sink,
+	}
+
+	bot.emitSelfNickChange("longnick", "a")
+
+	captured := sink.capturedSnapshot()
+	if len(captured) != 1 || captured[0] != (nickCapturedCall{"bot1", "a", "letter"}) {
+		t.Fatalf("expected BotNickCaptured letter for 'a', got %v", captured)
+	}
+}
+
+func TestEmitSelfNickChangeReportsPriorityCapture(t *testing.T) {
+	sink := &recordingSink{}
+	nm := &stubNickManager{targets: []string{"hotnick"}}
+	bot := &Bot{
+		botID:       "bot1",
+		CurrentNick: "hotnick",
+		nickManager: nm,
+		sink:        sink,
+	}
+
+	bot.emitSelfNickChange("randomx", "hotnick")
+
+	captured := sink.capturedSnapshot()
+	if len(captured) != 1 || captured[0] != (nickCapturedCall{"bot1", "hotnick", "priority"}) {
+		t.Fatalf("expected BotNickCaptured priority for hotnick, got %v", captured)
+	}
+}
+
+func TestEmitSelfNickChangeNoCaptureForNeutralNick(t *testing.T) {
+	sink := &recordingSink{}
+	nm := &stubNickManager{targets: []string{"someother"}}
+	bot := &Bot{
+		botID:       "bot1",
+		CurrentNick: "neutral",
+		nickManager: nm,
+		sink:        sink,
+	}
+
+	bot.emitSelfNickChange("previous", "neutral")
+
+	captured := sink.capturedSnapshot()
+	if len(captured) != 0 {
+		t.Fatalf("expected no BotNickCaptured for neutral nick, got %v", captured)
+	}
+}
+
+func TestReconcileSelfNickFromISONFixesDesync(t *testing.T) {
+	// Models the IRCnet 436-collision case the user described: server has
+	// renamed us to a UID nick, but the bot still thinks it's on the old one.
+	// The next ISON 303 reply addresses the bot by its real (server) nick in
+	// e.Arguments[0]; reconcile must update local state and emit BotNickChanged.
+	sink := &recordingSink{}
+	nm := &stubNickManager{targets: []string{}}
+	bot := &Bot{
+		botID:       "bot1",
+		CurrentNick: "alpha",
+		nickManager: nm,
+		sink:        sink,
+	}
+
+	e := &irc.Event{
+		Code:      "303",
+		Arguments: []string{"0PNUAABO3", "a b c"},
+	}
+	bot.reconcileSelfNickFromISON(e)
+
+	if got := bot.GetCurrentNick(); got != "0PNUAABO3" {
+		t.Fatalf("expected b.CurrentNick to become 0PNUAABO3, got %q", got)
+	}
+	changed := sink.changedSnapshot()
+	if len(changed) != 1 || changed[0] != (nickChangedCall{"bot1", "alpha", "0PNUAABO3"}) {
+		t.Fatalf("expected BotNickChanged(alpha → 0PNUAABO3), got %v", changed)
+	}
+}
+
+func TestReconcileSelfNickFromISONNoOpWhenInSync(t *testing.T) {
+	sink := &recordingSink{}
+	bot := &Bot{
+		botID:       "bot1",
+		CurrentNick: "alpha",
+		sink:        sink,
+	}
+
+	e := &irc.Event{
+		Code:      "303",
+		Arguments: []string{"alpha", "a b c"},
+	}
+	bot.reconcileSelfNickFromISON(e)
+
+	if got := bot.GetCurrentNick(); got != "alpha" {
+		t.Fatalf("expected b.CurrentNick to stay alpha, got %q", got)
+	}
+	if changed := sink.changedSnapshot(); len(changed) != 0 {
+		t.Fatalf("expected no BotNickChanged when ISON target matches, got %v", changed)
+	}
+}
+
+func TestReconcileSelfNickFromISONNoOpWhenInSyncCaseInsensitive(t *testing.T) {
+	// 303 came back with a different case for the same nick — RFC says it
+	// is the same nick, so no correction needed and no spurious emission.
+	sink := &recordingSink{}
+	bot := &Bot{
+		botID:       "bot1",
+		CurrentNick: "Alpha",
+		sink:        sink,
+	}
+
+	e := &irc.Event{
+		Code:      "303",
+		Arguments: []string{"alpha", "x y z"},
+	}
+	bot.reconcileSelfNickFromISON(e)
+
+	if changed := sink.changedSnapshot(); len(changed) != 0 {
+		t.Fatalf("expected no BotNickChanged on case-only difference, got %v", changed)
+	}
+}
+
+func TestReconcileSelfNickFromISONHandlesMissingArguments(t *testing.T) {
+	sink := &recordingSink{}
+	bot := &Bot{
+		botID:       "bot1",
+		CurrentNick: "alpha",
+		sink:        sink,
+	}
+
+	e := &irc.Event{Code: "303", Arguments: nil}
+	bot.reconcileSelfNickFromISON(e)
+	if got := bot.GetCurrentNick(); got != "alpha" {
+		t.Fatalf("expected no change with empty arguments, got %q", got)
+	}
 }
 
 func TestIsTooManyHostConnectionsError(t *testing.T) {

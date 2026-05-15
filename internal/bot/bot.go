@@ -501,12 +501,18 @@ func (b *Bot) addCallbacks() {
 
 		b.markAsConnected()
 
-		// Read from the library OUTSIDE b.mutex — Connection.GetNick takes
-		// irc.Lock, which can be held for up to ~17 min by a parallel
-		// Connection.Disconnect on another bot's goroutine waiting for that
-		// bot's readLoop to exit. Holding b.mutex while waiting for irc.Lock
-		// would propagate the stall to every API caller of this bot.
-		nick := b.Connection.GetNick()
+		// 001 RPL_WELCOME format: ":server 001 <confirmed_nick> :<text>". The
+		// target argument is the nick the server actually registered us with
+		// — read it straight off the event instead of going through
+		// Connection.GetNick(): the library's own 001 callback also writes
+		// irc.nickcurrent and runs concurrently with us (see
+		// tryAcceptSelfNickChange comment for the race details). Reading
+		// e.Arguments[0] is race-free *and* avoids taking irc.Lock, which can
+		// be parked for minutes by a parallel Disconnect on another bot.
+		var nick string
+		if len(e.Arguments) > 0 {
+			nick = e.Arguments[0]
+		}
 
 		// All mutable Bot fields accessed here need the mutex. Previously
 		// ServerName, lastConnectTime and the read of b.channels were
@@ -561,47 +567,18 @@ func (b *Bot) addCallbacks() {
 		}
 	})
 
-	// Callback for nick changes
+	// Callback for nick changes. Detect self-events by comparing the event's
+	// old-nick prefix (e.Nick) to our locally maintained b.CurrentNick under
+	// b.mutex — not by reading b.Connection.GetNick(), which races the
+	// library's own NICK callback running concurrently in the same
+	// RunCallbacks batch (see tryAcceptSelfNickChange comment).
 	b.Connection.AddCallback("NICK", func(e *irc.Event) {
-		// Library updates connection nick internally. Treat this event as ours
-		// if the new nick equals the current connection nick.
-		if e.Message() == b.Connection.GetNick() {
-			oldNick := e.Nick
-			newNick := e.Message()
-			b.mutex.Lock()
-			b.CurrentNick = newNick
-			b.mutex.Unlock()
-
-			if sink := b.currentSink(); sink != nil {
-				sink.BotNickChanged(b.botID, oldNick, newNick)
-				if len(newNick) == 1 {
-					sink.BotNickCaptured(b.botID, newNick, "letter")
-				} else if b.nickManager != nil && util.IsTargetNick(newNick, b.nickManager.GetNicksToCatch()) {
-					sink.BotNickCaptured(b.botID, newNick, "priority")
-				}
-			}
-
-			// Notify the nick manager about the change
-			if b.nickManager != nil {
-				b.nickManager.NotifyNickChange(oldNick, newNick)
-
-				// Check for single letter nick changes
-				wasOneLetter := len(oldNick) == 1
-				isOneLetter := len(newNick) == 1
-
-				// Bot got a single letter nick
-				if !wasOneLetter && isOneLetter {
-					util.Debug("Bot %s got single letter nick, joining #literki", newNick)
-					b.JoinChannel("#literki")
-				}
-
-				// Bot lost a single letter nick
-				if wasOneLetter && !isOneLetter {
-					util.Debug("Bot %s lost single letter nick, leaving #literki", newNick)
-					b.PartChannel("#literki")
-				}
-			}
+		oldNick := e.Nick
+		newNick := e.Message()
+		if !b.tryAcceptSelfNickChange(oldNick, newNick) {
+			return
 		}
+		b.emitSelfNickChange(oldNick, newNick)
 	})
 
 	// Callback for ISON response
@@ -891,6 +868,13 @@ func (b *Bot) GetServerName() string {
 }
 
 func (b *Bot) handleISONResponse(e *irc.Event) {
+	// 303 RPL_ISON format: ":server 303 <our_nick> :<online_nicks>". The
+	// target argument is the server's authoritative view of our current nick
+	// at the moment of this reply, so it doubles as a periodic self-canary —
+	// any missed NICK event (callback race or 436-forced-rename to a UID) is
+	// healed here within one ISON tick (NickManager fires every ~1 s).
+	b.reconcileSelfNickFromISON(e)
+
 	isonResponse := strings.Fields(e.Message())
 	util.Debug("Bot %s received ISON response: %v", b.GetCurrentNick(), isonResponse)
 
@@ -1265,6 +1249,92 @@ func (b *Bot) SetChannels(channels []string) {
 	b.channels = channels
 	// Use b.CurrentNick directly since we already have the mutex locked
 	util.Debug("Bot %s set channels: %v", b.CurrentNick, channels)
+}
+
+// tryAcceptSelfNickChange evaluates a candidate (oldNick → newNick) transition
+// against the bot's locally stored CurrentNick under b.mutex. If oldNick
+// matches our current nick (per RFC 2812 case mapping), CurrentNick is
+// updated to newNick and the function returns true so the caller can run
+// the side-effects. Returns false for foreign-nick events or empty newNick.
+//
+// Using b.CurrentNick rather than b.Connection.GetNick() is deliberate:
+// go-ircevo dispatches each callback in its own goroutine inside RunCallbacks
+// (irc_callback.go:180), so the library's own NICK callback (which writes
+// irc.nickcurrent) runs concurrently with ours. Reading irc.nickcurrent here
+// would race the library's write — sometimes we would see the post-update
+// value and accept the change, sometimes the pre-update value and silently
+// drop it, leaving b.CurrentNick stale and emitting no BotNickChanged.
+func (b *Bot) tryAcceptSelfNickChange(oldNick, newNick string) bool {
+	if newNick == "" {
+		return false
+	}
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	if !util.NickEqualRFC(oldNick, b.CurrentNick) {
+		return false
+	}
+	b.CurrentNick = newNick
+	return true
+}
+
+// emitSelfNickChange runs the side-effects of a confirmed self nick change:
+// publish BotNickChanged, publish BotNickCaptured if the new nick is a letter
+// or a tracked priority nick, notify the NickManager, and join/part #literki
+// on a single-letter transition. Caller is responsible for having already
+// updated b.CurrentNick under b.mutex.
+func (b *Bot) emitSelfNickChange(oldNick, newNick string) {
+	if sink := b.currentSink(); sink != nil {
+		sink.BotNickChanged(b.botID, oldNick, newNick)
+		if len(newNick) == 1 {
+			sink.BotNickCaptured(b.botID, newNick, "letter")
+		} else if b.nickManager != nil && util.IsTargetNick(newNick, b.nickManager.GetNicksToCatch()) {
+			sink.BotNickCaptured(b.botID, newNick, "priority")
+		}
+	}
+
+	if b.nickManager != nil {
+		b.nickManager.NotifyNickChange(oldNick, newNick)
+
+		wasOneLetter := len(oldNick) == 1
+		isOneLetter := len(newNick) == 1
+		if !wasOneLetter && isOneLetter {
+			util.Debug("Bot %s got single letter nick, joining #literki", newNick)
+			b.JoinChannel("#literki")
+		}
+		if wasOneLetter && !isOneLetter {
+			util.Debug("Bot %s lost single letter nick, leaving #literki", newNick)
+			b.PartChannel("#literki")
+		}
+	}
+}
+
+// reconcileSelfNickFromISON uses the target nick of a 303 RPL_ISON reply
+// (e.Arguments[0]) as a periodic second-opinion on what nick the server
+// thinks we hold. On mismatch we treat it as a previously-missed self NICK
+// event — update CurrentNick and run the full emitSelfNickChange pipeline so
+// the panel, NickManager, and #literki state all converge. Common triggers:
+//   - IRCnet 436 collision where the server forces our nick to a UID and may
+//     not emit a separate NICK message before sending its next response,
+//   - any path where the library/our-callback race lost a NICK event,
+//   - services renaming us via SVSNICK/SAVE while we were holding b.mutex.
+func (b *Bot) reconcileSelfNickFromISON(e *irc.Event) {
+	if len(e.Arguments) < 1 {
+		return
+	}
+	serverNick := e.Arguments[0]
+	if serverNick == "" {
+		return
+	}
+	b.mutex.Lock()
+	oldNick := b.CurrentNick
+	if util.NickEqualRFC(serverNick, oldNick) {
+		b.mutex.Unlock()
+		return
+	}
+	b.CurrentNick = serverNick
+	b.mutex.Unlock()
+	util.Warning("Bot %s self-nick desync detected via 303 — server addressed us as %s; correcting", oldNick, serverNick)
+	b.emitSelfNickChange(oldNick, serverNick)
 }
 
 // GetCurrentNick returns the bot's confirmed nick from local state ONLY.
