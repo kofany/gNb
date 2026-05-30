@@ -99,6 +99,7 @@ func (stubSink) BotKicked(string, string, string, string)   {}
 func (stubSink) BotBanned(string, int)                      {}
 func (stubSink) BotAdded(string, string, int, bool, string) {}
 func (stubSink) BotRemoved(string)                          {}
+func (stubSink) BotRecovered(string, string)                {}
 func (stubSink) NicksChanged([]string)                      {}
 func (stubSink) OwnersChanged([]string)                     {}
 func (stubSink) BotIRCEvent(string, *irc.Event)             {}

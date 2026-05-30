@@ -44,6 +44,16 @@ type BotManager struct {
 	sink                types.EventSink
 	sinkMu              sync.RWMutex
 	runtimeState        *runtime.RuntimeState
+
+	// Connection-liveness watchdog tuning (probe-then-kill). Distinct from the
+	// runtime channel watchdog (auto-rejoin). A connected bot with no inbound
+	// IRC line for livenessIdle gets an active PING probe; if no line arrives
+	// within livenessProbeGrace, the bot is force-disconnected so the library
+	// reconnects it — catching a wedged socket the library would otherwise sit
+	// on for ~16 min before emitting DISCONNECTED.
+	livenessTick       time.Duration
+	livenessIdle       time.Duration
+	livenessProbeGrace time.Duration
 }
 
 // NewBotManager creates a new BotManager instance.
@@ -85,6 +95,10 @@ func NewBotManager(cfg *config.Config, owners auth.OwnerList, nm types.NickManag
 		cancel:              cancel,
 		startTime:           time.Now(),
 		runtimeState:        runtimeState,
+
+		livenessTick:       30 * time.Second,
+		livenessIdle:       6 * time.Minute,
+		livenessProbeGrace: 30 * time.Second,
 	}
 
 	// Creating bots
@@ -257,6 +271,61 @@ func (bm *BotManager) StartBots() {
 	bm.mutex.Lock()
 	bm.bots = connectedBots
 	bm.mutex.Unlock()
+
+	// Start the connection-liveness watchdog now that the roster is settled.
+	// Tracked by bm.wg so Stop()'s wg.Wait() joins it; it exits on bm.ctx.
+	bm.wg.Add(1)
+	go func() {
+		defer bm.wg.Done()
+		bm.livenessLoop()
+	}()
+}
+
+// livenessLoop is the manager-level connection-liveness watchdog sweeper. A
+// single ticker (cheaper than one goroutine per bot) evaluates every connected
+// bot's last-inbound-event time and drives the probe-then-kill cycle.
+func (bm *BotManager) livenessLoop() {
+	if bm.livenessTick <= 0 {
+		bm.livenessTick = 30 * time.Second
+	}
+	t := time.NewTicker(bm.livenessTick)
+	defer t.Stop()
+	for {
+		select {
+		case <-bm.ctx.Done():
+			return
+		case <-t.C:
+			bm.sweepLiveness(time.Now())
+		}
+	}
+}
+
+// sweepLiveness evaluates every live, connected bot once. A bot that fails the
+// probe-then-kill cycle is force-disconnected (so the library reconnects it)
+// after emitting a BotRecovered event for the panel.
+func (bm *BotManager) sweepLiveness(now time.Time) {
+	bm.mutex.RLock()
+	bots := append([]types.Bot(nil), bm.bots...)
+	bm.mutex.RUnlock()
+
+	for _, bt := range bots {
+		rb, ok := bt.(*Bot)
+		if !ok || !rb.IsConnected() {
+			continue
+		}
+		switch rb.applyLiveness(now, bm.livenessIdle, bm.livenessProbeGrace) {
+		case wdKill:
+			rb.clearLivenessProbe()
+			util.Warning("liveness watchdog: bot %s declared dead (no IRC events past threshold); force-disconnecting for reconnect",
+				rb.GetCurrentNick())
+			if sink := rb.currentSink(); sink != nil {
+				sink.BotRecovered(rb.GetBotID(), "liveness watchdog: no IRC events past threshold")
+			}
+			go rb.forceDisconnect("liveness watchdog: no IRC events past threshold")
+		case wdProbe:
+			util.Debug("liveness watchdog: bot %s idle; sent PING probe", rb.GetCurrentNick())
+		}
+	}
 }
 
 func (bm *BotManager) startBotWithRetry(bot types.Bot) bool {

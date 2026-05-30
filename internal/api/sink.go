@@ -59,6 +59,10 @@ func (s *serverSink) BotRemoved(botID string) {
 	s.srv.hub.Publish("node.bot_removed", map[string]any{"bot_id": botID})
 }
 
+func (s *serverSink) BotRecovered(botID, reason string) {
+	s.srv.hub.Publish("bot.recovered", map[string]any{"bot_id": botID, "reason": reason})
+}
+
 func (s *serverSink) NicksChanged(nicks []string) {
 	s.srv.hub.Publish("nicks.changed", map[string]any{"nicks": nicks})
 }

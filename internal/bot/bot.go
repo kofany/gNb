@@ -89,6 +89,15 @@ type Bot struct {
 	// taking effect) are short-circuited so we don't re-emit BotBanned and
 	// don't pile up cleanup goroutines.
 	banHandled atomic.Bool
+	// lastEventAt is the UnixNano timestamp of the most recent inbound IRC
+	// line (any event, set from the "*" callback and 001). The liveness
+	// watchdog uses it to detect a wedged connection that the library would
+	// otherwise sit on for Timeout+PingFreq (~16 min) before emitting
+	// DISCONNECTED.
+	lastEventAt atomic.Int64
+	// wdProbeAt is the UnixNano timestamp at which the watchdog sent its active
+	// PING probe, or 0 when no probe is pending.
+	wdProbeAt atomic.Int64
 }
 
 // GetBotManager returns the BotManager for this bot
@@ -165,6 +174,9 @@ func NewBot(cfg *config.BotConfig, globalConfig *config.GlobalConfig, nm types.N
 
 	bot.isConnected.Store(false)
 	bot.connected = make(chan struct{})
+	// Seed the watchdog clock so a freshly-built bot isn't flagged idle before
+	// it has had a chance to receive its first line.
+	bot.lastEventAt.Store(time.Now().UnixNano())
 
 	nm.RegisterBot(bot)
 	return bot
@@ -219,6 +231,77 @@ func (b *Bot) markAsConnected() {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	b.setConnected(true)
+}
+
+// wdAction is the verdict of one liveness evaluation.
+type wdAction int
+
+const (
+	wdNone  wdAction = iota // healthy, or probe still within grace — do nothing
+	wdProbe                 // idle past threshold — send an active PING probe
+	wdKill                  // probe went unanswered past the grace — declare dead
+	wdClear                 // an event arrived after the probe — clear probe state
+)
+
+// livenessDecision is the pure timing logic of the watchdog, factored out so
+// it can be unit-tested without a real connection. probeAt is the zero time
+// when no probe is pending.
+func livenessDecision(now, lastEvent, probeAt time.Time, idle, grace time.Duration) wdAction {
+	if !probeAt.IsZero() {
+		if lastEvent.After(probeAt) {
+			return wdClear // a line arrived since we probed — bot is alive
+		}
+		if now.Sub(probeAt) > grace {
+			return wdKill
+		}
+		return wdNone
+	}
+	if now.Sub(lastEvent) > idle {
+		return wdProbe
+	}
+	return wdNone
+}
+
+// applyLiveness evaluates this bot's liveness against the watchdog timing and
+// performs the side-effect of the decision (send a PING probe, or clear a
+// satisfied probe). The returned wdAction lets the manager-level sweeper act on
+// a wdKill verdict. Pure timing lives in livenessDecision so it stays testable.
+func (b *Bot) applyLiveness(now time.Time, idle, grace time.Duration) wdAction {
+	last := time.Unix(0, b.lastEventAt.Load())
+	var probeAt time.Time
+	if p := b.wdProbeAt.Load(); p != 0 {
+		probeAt = time.Unix(0, p)
+	}
+	act := livenessDecision(now, last, probeAt, idle, grace)
+	switch act {
+	case wdProbe:
+		b.wdProbeAt.Store(now.UnixNano())
+		// SendRaw no-ops when not connected; the sweeper only probes connected bots.
+		b.SendRaw("PING :wd")
+	case wdClear:
+		b.wdProbeAt.Store(0)
+	}
+	return act
+}
+
+// clearLivenessProbe resets the watchdog probe state.
+func (b *Bot) clearLivenessProbe() { b.wdProbeAt.Store(0) }
+
+// forceDisconnect closes a wedged connection so the library's read loop
+// (parked in ReadString on a silent socket for up to Timeout+PingFreq) unblocks
+// and reconnects. We deliberately do NOT call StopReconnect: gNb runs the
+// library-owned reconnect model (the DISCONNECTED callback just logs), so once
+// Disconnect closes the socket and emits DISCONNECTED, Loop() brings the *same*
+// bot back up. We do not send QUIT — the socket may be wedged. Disconnect runs
+// off this goroutine because it blocks on Wait() until the read loop exits.
+func (b *Bot) forceDisconnect(reason string) {
+	util.Warning("Bot %s force-disconnect: %s", b.GetCurrentNick(), reason)
+	b.mutex.Lock()
+	conn := b.Connection
+	b.mutex.Unlock()
+	if conn != nil {
+		go conn.Disconnect()
+	}
 }
 
 func (b *Bot) connectWithRetry() error {
@@ -500,6 +583,10 @@ func (b *Bot) addCallbacks() {
 		}
 
 		b.markAsConnected()
+		// Reset the watchdog clock on (re)registration so a fresh session
+		// starts from a clean idle baseline and any stale probe is cleared.
+		b.lastEventAt.Store(time.Now().UnixNano())
+		b.wdProbeAt.Store(0)
 
 		// 001 RPL_WELCOME format: ":server 001 <confirmed_nick> :<text>". The
 		// target argument is the nick the server actually registered us with
@@ -667,6 +754,9 @@ func (b *Bot) addCallbacks() {
 	// BNC + DCC
 	b.Connection.AddCallback("CTCP", b.handleCTCP)
 	b.Connection.AddCallback("*", func(e *irc.Event) {
+		// Liveness heartbeat: every inbound line (incl. PING/PONG and 303)
+		// proves the socket is alive and resets the watchdog idle clock.
+		b.lastEventAt.Store(time.Now().UnixNano())
 		// Log all events without the "DCC:" prefix
 		if b.dccTunnel != nil {
 			b.dccTunnel.WriteToConn(e.Raw)

@@ -94,6 +94,10 @@ type EventSink interface {
 	BotBanned(botID string, code int)
 	BotAdded(botID, server string, port int, ssl bool, vhost string)
 	BotRemoved(botID string)
+	// BotRecovered is emitted when the liveness watchdog declares a bot dead
+	// (no inbound IRC line past the idle+probe window) and force-disconnects
+	// it so the library reconnects. reason is a short human-readable cause.
+	BotRecovered(botID, reason string)
 	NicksChanged(nicks []string)
 	OwnersChanged(owners []string)
 
